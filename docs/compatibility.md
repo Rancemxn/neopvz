@@ -13,7 +13,7 @@ evidence; a reviewer assertion alone is never sufficient.
 Status is `verified`, `partial`, or `missing`. The progress quantity is the sum
 of `total - accepted` across all rows.
 
-Current baseline: **662 accepted / 1802 total; 1140 unresolved**.
+Current baseline: **913 accepted / 1802 total; 889 unresolved**.
 
 ## Foundation and Boundaries
 
@@ -24,7 +24,7 @@ Current baseline: **662 accepted / 1802 total; 1140 unresolved**.
 | FND-003 | Windows resource-free release artifact and local launch | 1 | 1 | verified | PR `#11`, run `29939544535`, ignored local record |
 | FND-004 | Directory, explicit path, and directory-embedded PAK discovery | 3 | 3 | verified | Issue `#4`; synthetic discovery tests and Actions |
 | FND-005 | Standalone PAK parsing and resource access | 1 | 1 | verified | PR `#23`, run `29944500864`, ignored local record |
-| FND-006 | Version identity and external-resource safety checks | 0 | 1 | missing | Issue `#13` |
+| FND-006 | Version identity and external-resource safety checks | 1 | 1 | verified | PR `#25`, runs `29947497509`/`29947497544`, ignored local record |
 | FND-007 | Deterministic replay and state-hash harness | 0 | 1 | missing | Issue `#5` |
 | FND-008 | Screenshot, semantic comparison, and independent review pipeline | 0 | 1 | missing | Issue `#14` |
 | FND-009 | Original-process instrumentation provenance and cross-checks | 0 | 1 | missing | Issue `#15` |
@@ -40,8 +40,8 @@ loader coverage. They do not authorize committing the manifest or its assets.
 | RES-IMAGE | Manifest image entries | 439 | 439 | verified | PR `#22`, run `29943384294`, ignored local record |
 | RES-FONT | Manifest font entries | 20 | 20 | verified | PR `#22`, run `29943384294`, ignored local record |
 | RES-SOUND | Manifest sound entries | 167 | 167 | verified | PR `#22`, run `29943384294`, ignored local record |
-| RES-ANIMATION | Compiled animation resources | 0 | 250 | missing | Issues `#13`, `#2` |
-| RES-MUSIC | Target music files and loop metadata | 0 | 2 | missing | Issues `#13`, `#3` |
+| RES-ANIMATION | Compiled animation resources | 250 | 250 | verified | PR `#25`, run `29947497544`, ignored local record |
+| RES-MUSIC | Target music files and loop metadata | 0 | 2 | missing | MO3 entries verified by PR `#25`; loop metadata remains in Issue `#3` |
 
 ## Simulation Entities and Effects
 

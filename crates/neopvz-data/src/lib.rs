@@ -1,15 +1,21 @@
 use std::{
-    fs,
-    io::BufRead,
+    fs::{self, File},
+    io::{BufRead, Read},
     path::{Path, PathBuf},
 };
 
 use serde::{Deserialize, Serialize};
 use thiserror::Error;
 
+mod formats;
 mod pak;
 
+pub use formats::{CompiledDefinition, CompiledError, Mo3Resource, MusicError};
 pub use pak::{PakArchive, PakEntry, PakError};
+
+pub const TARGET_RESOURCE_VERSION: &str = "1.0.0.1051";
+const RESOURCE_MANIFEST_PATH: &str = "properties/resources.xml";
+pub(crate) const MAX_RESOURCE_SIZE: u64 = 64 * 1024 * 1024;
 
 #[derive(Debug, Error)]
 pub enum DataError {
@@ -41,6 +47,14 @@ pub enum ResourceError {
     Io(#[from] std::io::Error),
     #[error(transparent)]
     Pak(#[from] PakError),
+    #[error(transparent)]
+    Manifest(#[from] ManifestError),
+    #[error(transparent)]
+    Compiled(#[from] CompiledError),
+    #[error(transparent)]
+    Music(#[from] MusicError),
+    #[error("resource is too large: {path} ({size} bytes)")]
+    TooLarge { path: String, size: u64 },
 }
 
 #[derive(Clone, Debug, Eq, PartialEq, Serialize, Deserialize)]
@@ -71,11 +85,120 @@ impl ResourceProvider {
                 if !resolved.starts_with(root) {
                     return Err(ResourcePathError::EscapesRoot(path.to_owned()).into());
                 }
-                Ok(fs::read(resolved)?)
+                let mut data = Vec::new();
+                File::open(resolved)?
+                    .take(MAX_RESOURCE_SIZE + 1)
+                    .read_to_end(&mut data)?;
+                let size = u64::try_from(data.len()).unwrap_or(u64::MAX);
+                if size > MAX_RESOURCE_SIZE {
+                    return Err(ResourceError::TooLarge {
+                        path: path.to_owned(),
+                        size,
+                    });
+                }
+                Ok(data)
             }
             Self::Pak(archive) => Ok(archive.read(&normalized)?),
         }
     }
+
+    pub fn paths(&self) -> Result<Vec<String>, ResourceError> {
+        match self {
+            Self::Directory(root) => directory_paths(root),
+            Self::Pak(archive) => Ok(archive.entries().map(|entry| entry.path.clone()).collect()),
+        }
+    }
+
+    pub fn compiled_animation_paths(&self) -> Result<Vec<String>, ResourceError> {
+        Ok(self
+            .paths()?
+            .into_iter()
+            .filter(|path| is_compiled_animation(path))
+            .collect())
+    }
+
+    pub fn music_paths(&self) -> Result<Vec<String>, ResourceError> {
+        Ok(self
+            .paths()?
+            .into_iter()
+            .filter(|path| is_music(path))
+            .collect())
+    }
+
+    pub fn read_compiled(&self, path: &str) -> Result<CompiledDefinition, ResourceError> {
+        Ok(CompiledDefinition::decode(&self.read(path)?)?)
+    }
+
+    pub fn read_music(&self, path: &str) -> Result<Mo3Resource, ResourceError> {
+        Ok(Mo3Resource::parse(self.read(path)?)?)
+    }
+
+    pub fn inventory(&self) -> Result<ResourceInventory, ResourceError> {
+        let manifest_data = self.read(RESOURCE_MANIFEST_PATH)?;
+        let manifest = ResourceManifest::parse(&manifest_data[..])?;
+        let paths = self.paths()?;
+        let compiled: Vec<_> = paths
+            .iter()
+            .filter(|path| is_compiled_animation(path))
+            .collect();
+        let music: Vec<_> = paths.iter().filter(|path| is_music(path)).collect();
+
+        for path in &compiled {
+            self.read_compiled(path)?;
+        }
+        for path in &music {
+            self.read_music(path)?;
+        }
+
+        Ok(ResourceInventory {
+            groups: manifest.groups.len(),
+            entries: manifest.entry_count(),
+            images: manifest.count(ResourceKind::Image),
+            fonts: manifest.count(ResourceKind::Font),
+            sounds: manifest.count(ResourceKind::Sound),
+            compiled_animations: compiled.len(),
+            music: music.len(),
+        })
+    }
+}
+
+fn directory_paths(root: &Path) -> Result<Vec<String>, ResourceError> {
+    let mut pending = vec![root.to_path_buf()];
+    let mut paths = Vec::new();
+    while let Some(directory) = pending.pop() {
+        for entry in fs::read_dir(directory)? {
+            let entry = entry?;
+            let file_type = entry.file_type()?;
+            if file_type.is_symlink() {
+                continue;
+            }
+
+            let path = entry.path();
+            if file_type.is_dir() {
+                pending.push(path);
+            } else if file_type.is_file() {
+                let relative = path
+                    .strip_prefix(root)
+                    .map_err(|_| ResourcePathError::Unsafe(path.display().to_string()))?;
+                let relative = relative
+                    .to_str()
+                    .ok_or_else(|| ResourcePathError::Unsafe(path.display().to_string()))?;
+                paths.push(normalize_resource_path(relative)?);
+            }
+        }
+    }
+    paths.sort_unstable();
+    Ok(paths)
+}
+
+fn is_compiled_animation(path: &str) -> bool {
+    let path = path.to_ascii_uppercase();
+    path.starts_with("COMPILED/") && path.ends_with(".COMPILED")
+}
+
+fn is_music(path: &str) -> bool {
+    let path = path.to_ascii_uppercase();
+    path.starts_with("SOUNDS/") && path.ends_with(".MO3")
 }
 
 #[derive(Clone, Debug, Eq, PartialEq, Serialize, Deserialize)]
@@ -89,6 +212,30 @@ pub enum ResourceKind {
     Image,
     Font,
     Sound,
+}
+
+#[derive(Clone, Debug, Eq, PartialEq, Serialize, Deserialize)]
+pub struct ResourceInventory {
+    pub groups: usize,
+    pub entries: usize,
+    pub images: usize,
+    pub fonts: usize,
+    pub sounds: usize,
+    pub compiled_animations: usize,
+    pub music: usize,
+}
+
+impl ResourceInventory {
+    pub fn version(&self) -> Option<&'static str> {
+        (self.groups == 29
+            && self.entries == 626
+            && self.images == 439
+            && self.fonts == 20
+            && self.sounds == 167
+            && self.compiled_animations == 250
+            && self.music == 2)
+            .then_some(TARGET_RESOURCE_VERSION)
+    }
 }
 
 #[derive(Clone, Debug, Eq, PartialEq, Serialize, Deserialize)]
@@ -430,11 +577,19 @@ mod tests {
             b"<ResourceManifest />",
         )
         .unwrap();
+        fs::create_dir_all(directory.join("compiled/reanim")).unwrap();
+        fs::write(directory.join("compiled/reanim/test.compiled"), b"compiled").unwrap();
+        fs::create_dir(directory.join("sounds")).unwrap();
+        fs::write(directory.join("sounds/mainmusic.mo3"), b"MO3\0music").unwrap();
 
         let pak_path = root.path().join("main.pak");
         fs::write(
             &pak_path,
-            pak::fixture(&[("properties\\resources.xml", b"<ResourceManifest />")]),
+            pak::fixture(&[
+                ("properties\\resources.xml", b"<ResourceManifest />"),
+                ("compiled\\reanim\\test.compiled", b"compiled"),
+                ("sounds\\mainmusic.mo3", b"MO3\0music"),
+            ]),
         )
         .unwrap();
 
@@ -444,6 +599,10 @@ mod tests {
             loose.read("properties\\resources.xml").unwrap(),
             pak.read("properties\\resources.xml").unwrap()
         );
+        assert_eq!(loose.compiled_animation_paths().unwrap().len(), 1);
+        assert_eq!(pak.compiled_animation_paths().unwrap().len(), 1);
+        assert_eq!(loose.music_paths().unwrap().len(), 1);
+        assert_eq!(pak.music_paths().unwrap().len(), 1);
     }
 
     #[test]
@@ -479,5 +638,19 @@ mod tests {
             provider.read("escape"),
             Err(ResourceError::Path(ResourcePathError::EscapesRoot(_)))
         ));
+    }
+
+    #[test]
+    fn identifies_the_target_inventory() {
+        let inventory = ResourceInventory {
+            groups: 29,
+            entries: 626,
+            images: 439,
+            fonts: 20,
+            sounds: 167,
+            compiled_animations: 250,
+            music: 2,
+        };
+        assert_eq!(inventory.version(), Some(TARGET_RESOURCE_VERSION));
     }
 }
