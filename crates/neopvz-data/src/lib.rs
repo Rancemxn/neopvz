@@ -145,12 +145,9 @@ impl From<RawGroup> for ResourceGroup {
                     &path,
                     entry,
                 )),
-                RawItem::Font(entry) => entries.push(resource_entry(
-                    ResourceKind::Font,
-                    &id_prefix,
-                    &path,
-                    entry,
-                )),
+                RawItem::Font(entry) => {
+                    entries.push(resource_entry(ResourceKind::Font, &id_prefix, &path, entry))
+                }
                 RawItem::Sound(entry) => entries.push(resource_entry(
                     ResourceKind::Sound,
                     &id_prefix,
