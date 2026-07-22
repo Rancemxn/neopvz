@@ -14,14 +14,16 @@ struct Cli {
 }
 
 fn main() {
+    tracing_subscriber::fmt::init();
+
     let cli = Cli::parse();
     let explicit = cli.data_dir.as_deref().or(cli.pak.as_deref());
     match AssetLayout::discover(explicit) {
-        Ok(layout) => println!("neopvz resource source: {:?}", layout.source),
-        Err(error) => eprintln!("neopvz resource discovery failed: {error}"),
+        Ok(layout) => tracing::info!(source = ?layout.source, "resource source selected"),
+        Err(error) => tracing::error!(%error, "resource discovery failed"),
     }
 
     let mut game = Game::new(0, SceneKind::Title);
     game.advance(Default::default());
-    println!("neopvz simulation tick: {}", game.state().tick);
+    tracing::info!(tick = game.state().tick, "simulation advanced");
 }
