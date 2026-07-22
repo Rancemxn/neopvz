@@ -1,0 +1,27 @@
+name: Feature or parity task
+description: Track a gameplay, resource, platform, or tooling task.
+title: "feat: "
+labels:
+  - enhancement
+body:
+  - type: textarea
+    id: goal
+    attributes:
+      label: Goal
+      description: State the observable behavior to add or match.
+    validations:
+      required: true
+  - type: textarea
+    id: acceptance
+    attributes:
+      label: Acceptance criteria
+      description: List replay, screenshot, resource, or manual checks.
+    validations:
+      required: true
+  - type: checkboxes
+    id: assets
+    attributes:
+      label: Repository boundary
+      options:
+        - label: This task does not require committing copyrighted assets or reference databases.
+          required: true

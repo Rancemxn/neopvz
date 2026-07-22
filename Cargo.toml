@@ -1,0 +1,33 @@
+[workspace]
+members = [
+    "crates/neopvz-core",
+    "crates/neopvz-data",
+    "crates/neopvz-render",
+    "crates/neopvz-audio",
+    "crates/neopvz-platform",
+    "crates/neopvz-app",
+]
+resolver = "3"
+
+[workspace.package]
+edition = "2024"
+license = "AGPL-3.0-or-later"
+repository = "https://github.com/Rancemxn/neopvz"
+
+[workspace.dependencies]
+bytemuck = { version = "1.25", features = ["derive"] }
+cpal = "0.18"
+clap = { version = "4", features = ["derive"] }
+image = "0.25"
+quick-xml = { version = "0.41", features = ["serialize"] }
+rand = "0.10"
+rand_chacha = "0.10"
+serde = { version = "1.0", features = ["derive"] }
+serde_json = "1.0"
+sha2 = "0.10"
+symphonia = "0.6"
+thiserror = "2.0"
+tracing = "0.1"
+tracing-subscriber = { version = "0.3", features = ["env-filter"] }
+wgpu = "30"
+winit = "0.30"
