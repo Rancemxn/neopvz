@@ -10,3 +10,7 @@
 - Use issues, pull requests, milestones, and Actions to drive development. Do not create tags or releases until the project is stable.
 - Search files with `fd`, `sg`, or `rg`; list directories with `eza`.
 - Do not manually convert numeric representations. Use the configured IDA `int_convert` MCP tool for reverse-engineering values and Math MCP for calculations.
+- Use the current Tavily MCP namespace (`mcp__tavily_hikari__*`) for web
+  research. Every search must set `search_depth="advanced"`; crawl/extract
+  calls must set `extract_depth="advanced"` whenever supported. Do not use
+  `basic`, `fast`, or `ultra-fast` modes.
