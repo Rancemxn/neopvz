@@ -32,10 +32,10 @@ Use issues and milestones for work planning, pull requests for changes, and
 Actions for verification. Tags and releases will be introduced after the
 implementation is stable.
 
-The complete gate currently runs on Ubuntu. Windows release binaries must also
-be built in Actions without original resources, then downloaded for local GUI,
-visual, and audio verification. Original resources and local comparison
-evidence must never be uploaded to the repository or Actions.
+The complete gate runs on Ubuntu. The `windows-artifact` workflow builds a
+resource-free Windows executable for download and local GUI, visual, and audio
+verification. Original resources and local comparison evidence must never be
+uploaded to the repository or Actions.
 
 See [the development workflow](docs/development.md) for verification and
 reference boundaries. The bounded compatibility contract is in [loop.md](loop.md).
