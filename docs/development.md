@@ -17,10 +17,10 @@ The local machine is intentionally not a build environment. Do not run local
 Cargo compilation or tests. Every implementation PR must pass `.github/workflows/full-gate.yml`.
 
 The full gate runs formatting, Clippy, unit tests, and a release build on
-Ubuntu. A Windows Action must run its required non-GUI checks, build a release
-binary without original resources, and upload that binary as an artifact. Do
-not spend Action capacity on macOS or mobile until the Ubuntu and Windows paths
-are stable.
+Ubuntu. `.github/workflows/windows-artifact.yml` runs the required non-GUI
+tests, builds a release binary without original resources, and uploads that
+binary as an artifact. Do not spend Action capacity on macOS or mobile until
+the Ubuntu and Windows paths are stable.
 
 Download the Windows artifact for local resource-bound GUI, input, screenshot,
 and audio checks. This local execution does not permit local Cargo compilation.

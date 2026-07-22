@@ -1,0 +1,53 @@
+name: windows-artifact
+
+on:
+  pull_request:
+  push:
+    branches:
+      - main
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: windows-artifact-${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  windows-artifact:
+    name: test and build (windows-latest)
+    runs-on: windows-latest
+
+    steps:
+      - name: Check out source
+        uses: actions/checkout@v7
+
+      - name: Install stable Rust
+        uses: dtolnay/rust-toolchain@stable
+        with:
+          toolchain: stable
+
+      - name: Cache Cargo data
+        uses: Swatinem/rust-cache@v2
+
+      - name: Run tests
+        run: cargo test --locked --workspace --all-features
+
+      - name: Build release binaries
+        run: cargo build --locked --workspace --release
+
+      - name: Verify executable
+        shell: pwsh
+        run: |
+          if (-not (Test-Path -LiteralPath 'target\release\neopvz.exe')) {
+            throw 'target\release\neopvz.exe was not produced'
+          }
+
+      - name: Upload Windows executable
+        uses: actions/upload-artifact@v7
+        with:
+          name: neopvz-windows-${{ github.sha }}
+          path: target/release/neopvz.exe
+          if-no-files-found: error
+          retention-days: 14
