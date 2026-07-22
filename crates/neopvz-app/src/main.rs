@@ -26,7 +26,7 @@ fn main() {
                     if let Some(path) = layout.manifest.as_deref() {
                         log_manifest(ResourceManifest::load(path));
                     }
-                },
+                }
                 ResourceSource::Pak(path) => match PakArchive::load(path) {
                     Ok(pak) => {
                         tracing::info!(entries = pak.entry_count(), "PAK archive parsed");
@@ -38,7 +38,7 @@ fn main() {
                         }
                     }
                     Err(error) => tracing::error!(%error, "PAK archive parsing failed"),
-                }
+                },
             }
         }
         Err(error) => tracing::error!(%error, "resource discovery failed"),
