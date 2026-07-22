@@ -7,6 +7,10 @@ use std::{
 use serde::{Deserialize, Serialize};
 use thiserror::Error;
 
+mod pak;
+
+pub use pak::{PakArchive, PakEntry, PakError};
+
 #[derive(Debug, Error)]
 pub enum DataError {
     #[error("resource path does not exist: {0}")]

@@ -1,8 +1,10 @@
-use std::path::PathBuf;
+use std::{fmt::Display, path::PathBuf};
 
 use clap::Parser;
 use neopvz_core::{Game, SceneKind};
-use neopvz_data::{AssetLayout, ResourceKind, ResourceManifest};
+use neopvz_data::{
+    AssetLayout, PakArchive, ResourceKind, ResourceManifest, ResourceSource,
+};
 
 #[derive(Debug, Parser)]
 #[command(name = "neopvz", version, about = "Rust PvZ reimplementation")]
@@ -21,17 +23,23 @@ fn main() {
     match AssetLayout::discover(explicit) {
         Ok(layout) => {
             tracing::info!(source = ?layout.source, "resource source selected");
-            if let Some(manifest) = layout.manifest {
-                match ResourceManifest::load(&manifest) {
-                    Ok(manifest) => tracing::info!(
-                        groups = manifest.groups.len(),
-                        entries = manifest.entry_count(),
-                        images = manifest.count(ResourceKind::Image),
-                        fonts = manifest.count(ResourceKind::Font),
-                        sounds = manifest.count(ResourceKind::Sound),
-                        "resource manifest parsed"
-                    ),
-                    Err(error) => tracing::error!(%error, "resource manifest parsing failed"),
+            match &layout.source {
+                ResourceSource::Directory(_) => {
+                    if let Some(path) = layout.manifest.as_deref() {
+                        log_manifest(ResourceManifest::load(path));
+                    }
+                }
+                ResourceSource::Pak(path) => match PakArchive::load(path) {
+                    Ok(pak) => {
+                        tracing::info!(entries = pak.entry_count(), "PAK archive parsed");
+                        match pak.read("properties/resources.xml") {
+                            Ok(xml) => log_manifest(ResourceManifest::parse(&xml[..])),
+                            Err(error) => {
+                                tracing::error!(%error, "PAK resource manifest lookup failed")
+                            }
+                        }
+                    }
+                    Err(error) => tracing::error!(%error, "PAK archive parsing failed"),
                 }
             }
         }
@@ -41,4 +49,18 @@ fn main() {
     let mut game = Game::new(0, SceneKind::Title);
     game.advance(Default::default());
     tracing::info!(tick = game.state().tick, "simulation advanced");
+}
+
+fn log_manifest(error_or_manifest: Result<ResourceManifest, impl Display>) {
+    match error_or_manifest {
+        Ok(manifest) => tracing::info!(
+            groups = manifest.groups.len(),
+            entries = manifest.entry_count(),
+            images = manifest.count(ResourceKind::Image),
+            fonts = manifest.count(ResourceKind::Font),
+            sounds = manifest.count(ResourceKind::Sound),
+            "resource manifest parsed"
+        ),
+        Err(error) => tracing::error!(%error, "resource manifest parsing failed"),
+    }
 }
