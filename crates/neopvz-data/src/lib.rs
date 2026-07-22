@@ -25,12 +25,16 @@ pub struct AssetLayout {
 
 impl AssetLayout {
     pub fn discover(explicit: Option<&Path>) -> Result<Self, DataError> {
+        let current = std::env::current_dir().unwrap_or_else(|_| PathBuf::from("."));
+        Self::discover_from(&current, explicit)
+    }
+
+    fn discover_from(current: &Path, explicit: Option<&Path>) -> Result<Self, DataError> {
         let candidates = explicit
             .map(|path| vec![path.to_path_buf()])
             .unwrap_or_else(|| {
-                let current = std::env::current_dir().unwrap_or_else(|_| PathBuf::from("."));
                 vec![
-                    current.clone(),
+                    current.to_path_buf(),
                     current.join("data"),
                     current.join("resources"),
                 ]
@@ -109,6 +113,43 @@ mod tests {
         fs::write(&pak, []).unwrap();
 
         let layout = AssetLayout::discover(Some(root.path())).unwrap();
+        assert_eq!(layout.source, ResourceSource::Pak(pak));
+        assert_eq!(layout.manifest, None);
+    }
+
+    #[test]
+    fn discovers_explicit_pak_file() {
+        let root = tempfile::tempdir().unwrap();
+        let pak = root.path().join("game.PAK");
+        fs::write(&pak, []).unwrap();
+
+        let layout = AssetLayout::discover(Some(&pak)).unwrap();
+        assert_eq!(layout.source, ResourceSource::Pak(pak));
+        assert_eq!(layout.manifest, None);
+    }
+
+    #[test]
+    fn auto_discovers_data_directory() {
+        let root = tempfile::tempdir().unwrap();
+        let data = root.path().join("data");
+        let properties = data.join("properties");
+        fs::create_dir_all(&properties).unwrap();
+        fs::write(properties.join("resources.xml"), "<ResourceManifest />").unwrap();
+
+        let layout = AssetLayout::discover_from(root.path(), None).unwrap();
+        assert_eq!(layout.source, ResourceSource::Directory(data));
+        assert_eq!(layout.manifest, Some(properties.join("resources.xml")));
+    }
+
+    #[test]
+    fn auto_discovers_resources_main_pak() {
+        let root = tempfile::tempdir().unwrap();
+        let resources = root.path().join("resources");
+        fs::create_dir(&resources).unwrap();
+        let pak = resources.join("main.pak");
+        fs::write(&pak, []).unwrap();
+
+        let layout = AssetLayout::discover_from(root.path(), None).unwrap();
         assert_eq!(layout.source, ResourceSource::Pak(pak));
         assert_eq!(layout.manifest, None);
     }
