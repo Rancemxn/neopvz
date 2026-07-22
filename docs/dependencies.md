@@ -9,6 +9,7 @@ the ignored `third_party-src/` directory and are never committed.
 | --- | --- | --- | --- | --- |
 | clap | 4 | Command-line resource overrides | https://github.com/clap-rs/clap | v4.6.4 |
 | kira (`cpal`, `ogg`, `vorbis`) | 0.12 | OGG decoding, game mixer, music/effect tracks | https://github.com/tesselode/kira | v0.12.2 |
+| quick-xml | 0.41 | Streaming resource-manifest XML parsing | https://github.com/tafia/quick-xml | v0.41.0 |
 | rand (`chacha`) | 0.10 | Deterministic simulation RNG | https://github.com/rust-random/rand | 0.10.2 |
 | serde | 1.0 | State and resource metadata types | https://github.com/serde-rs/serde | v1.0.229 |
 | serde_json | 1.0 | Stable state snapshots and initial save format | https://github.com/serde-rs/json | v1.0.151 |
