@@ -7,6 +7,8 @@ use std::{
 
 use thiserror::Error;
 
+use crate::{ResourcePathError, normalize_resource_path};
+
 const PAK_MAGIC: u32 = 0xBAC04AC0;
 const PAK_VERSION: u32 = 0;
 const XOR_KEY: u8 = 0xF7;
@@ -32,6 +34,8 @@ pub enum PakError {
     MissingEntry(String),
     #[error("PAK entry is too large for this platform: {0}")]
     EntryTooLarge(u64),
+    #[error(transparent)]
+    UnsafePath(#[from] ResourcePathError),
 }
 
 #[derive(Clone, Debug, Eq, PartialEq)]
@@ -73,7 +77,7 @@ impl PakArchive {
             let name_len = usize::from(read_u8(&mut reader)?);
             let mut name = vec![0; name_len];
             read_decoded(&mut reader, &mut name)?;
-            let name = normalize_pak_path(&String::from_utf8(name)?);
+            let name = normalize_pak_path(&String::from_utf8(name)?)?;
             let size = u64::from(read_u32(&mut reader)?);
             let modified = read_i64(&mut reader)?;
             pending.push((name, size, modified));
@@ -111,7 +115,7 @@ impl PakArchive {
     }
 
     pub fn read(&self, path: &str) -> Result<Vec<u8>, PakError> {
-        let key = normalize_pak_path(path);
+        let key = normalize_pak_path(path)?;
         let entry = self
             .entries
             .get(&key)
@@ -125,10 +129,8 @@ impl PakArchive {
     }
 }
 
-fn normalize_pak_path(path: &str) -> String {
-    path.replace('\\', "/")
-        .trim_start_matches("./")
-        .to_ascii_uppercase()
+fn normalize_pak_path(path: &str) -> Result<String, ResourcePathError> {
+    Ok(normalize_resource_path(path)?.to_ascii_uppercase())
 }
 
 fn read_decoded(reader: &mut impl Read, buffer: &mut [u8]) -> Result<(), std::io::Error> {
@@ -158,30 +160,31 @@ fn read_i64(reader: &mut impl Read) -> Result<i64, std::io::Error> {
 }
 
 #[cfg(test)]
+pub(crate) fn fixture(entries: &[(&str, &[u8])]) -> Vec<u8> {
+    let mut data = Vec::new();
+    data.extend_from_slice(&PAK_MAGIC.to_le_bytes());
+    data.extend_from_slice(&PAK_VERSION.to_le_bytes());
+    for (name, contents) in entries {
+        data.push(0);
+        data.push(u8::try_from(name.len()).unwrap());
+        data.extend_from_slice(name.as_bytes());
+        data.extend_from_slice(&u32::try_from(contents.len()).unwrap().to_le_bytes());
+        data.extend_from_slice(&0_i64.to_le_bytes());
+    }
+    data.push(END_FLAG);
+    for (_, contents) in entries {
+        data.extend_from_slice(contents);
+    }
+    for byte in &mut data {
+        *byte ^= XOR_KEY;
+    }
+    data
+}
+
+#[cfg(test)]
 mod tests {
     use super::*;
     use std::fs;
-
-    fn fixture(entries: &[(&str, &[u8])]) -> Vec<u8> {
-        let mut data = Vec::new();
-        data.extend_from_slice(&PAK_MAGIC.to_le_bytes());
-        data.extend_from_slice(&PAK_VERSION.to_le_bytes());
-        for (name, contents) in entries {
-            data.push(0);
-            data.push(u8::try_from(name.len()).unwrap());
-            data.extend_from_slice(name.as_bytes());
-            data.extend_from_slice(&u32::try_from(contents.len()).unwrap().to_le_bytes());
-            data.extend_from_slice(&0_i64.to_le_bytes());
-        }
-        data.push(END_FLAG);
-        for (_, contents) in entries {
-            data.extend_from_slice(contents);
-        }
-        for byte in &mut data {
-            *byte ^= XOR_KEY;
-        }
-        data
-    }
 
     #[test]
     fn reads_entries_by_normalized_path() {
@@ -215,5 +218,15 @@ mod tests {
 
         let error = PakArchive::load(path).unwrap_err();
         assert!(matches!(error, PakError::InvalidMagic(_)));
+    }
+
+    #[test]
+    fn rejects_unsafe_entry_path() {
+        let root = tempfile::tempdir().unwrap();
+        let path = root.path().join("unsafe.pak");
+        fs::write(&path, fixture(&[("../outside", b"private")])).unwrap();
+
+        let error = PakArchive::load(path).unwrap_err();
+        assert!(matches!(error, PakError::UnsafePath(_)));
     }
 }

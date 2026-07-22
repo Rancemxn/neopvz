@@ -2,7 +2,7 @@ use std::{fmt::Display, path::PathBuf};
 
 use clap::Parser;
 use neopvz_core::{Game, SceneKind};
-use neopvz_data::{AssetLayout, PakArchive, ResourceKind, ResourceManifest, ResourceSource};
+use neopvz_data::{AssetLayout, ResourceKind, ResourceManifest, ResourceProvider};
 
 #[derive(Debug, Parser)]
 #[command(name = "neopvz", version, about = "Rust PvZ reimplementation")]
@@ -21,24 +21,12 @@ fn main() {
     match AssetLayout::discover(explicit) {
         Ok(layout) => {
             tracing::info!(source = ?layout.source, "resource source selected");
-            match &layout.source {
-                ResourceSource::Directory(_) => {
-                    if let Some(path) = layout.manifest.as_deref() {
-                        log_manifest(ResourceManifest::load(path));
-                    }
-                }
-                ResourceSource::Pak(path) => match PakArchive::load(path) {
-                    Ok(pak) => {
-                        tracing::info!(entries = pak.entry_count(), "PAK archive parsed");
-                        match pak.read("properties/resources.xml") {
-                            Ok(xml) => log_manifest(ResourceManifest::parse(&xml[..])),
-                            Err(error) => {
-                                tracing::error!(%error, "PAK resource manifest lookup failed")
-                            }
-                        }
-                    }
-                    Err(error) => tracing::error!(%error, "PAK archive parsing failed"),
+            match ResourceProvider::open(&layout.source) {
+                Ok(resources) => match resources.read("properties/resources.xml") {
+                    Ok(xml) => log_manifest(ResourceManifest::parse(&xml[..])),
+                    Err(error) => tracing::error!(%error, "resource manifest lookup failed"),
                 },
+                Err(error) => tracing::error!(%error, "resource source opening failed"),
             }
         }
         Err(error) => tracing::error!(%error, "resource discovery failed"),
