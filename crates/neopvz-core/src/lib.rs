@@ -142,6 +142,9 @@ mod tests {
             first.advance(input.clone());
             second.advance(input);
         }
-        assert_eq!(first.snapshot_hash().unwrap(), second.snapshot_hash().unwrap());
+        assert_eq!(
+            first.snapshot_hash().unwrap(),
+            second.snapshot_hash().unwrap()
+        );
     }
 }

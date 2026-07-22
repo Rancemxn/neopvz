@@ -29,7 +29,11 @@ impl AssetLayout {
             .map(|path| vec![path.to_path_buf()])
             .unwrap_or_else(|| {
                 let current = std::env::current_dir().unwrap_or_else(|_| PathBuf::from("."));
-                vec![current.clone(), current.join("data"), current.join("resources")]
+                vec![
+                    current.clone(),
+                    current.join("data"),
+                    current.join("resources"),
+                ]
             });
 
         for candidate in candidates {
