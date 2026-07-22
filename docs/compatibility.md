@@ -13,7 +13,7 @@ evidence; a reviewer assertion alone is never sufficient.
 Status is `verified`, `partial`, or `missing`. The progress quantity is the sum
 of `total - accepted` across all rows.
 
-Current baseline: **661 accepted / 1802 total; 1141 unresolved**.
+Current baseline: **662 accepted / 1802 total; 1140 unresolved**.
 
 ## Foundation and Boundaries
 
@@ -23,7 +23,7 @@ Current baseline: **661 accepted / 1802 total; 1141 unresolved**.
 | FND-002 | Ubuntu format, lint, test, and release gate | 1 | 1 | verified | Action run `29939544390` |
 | FND-003 | Windows resource-free release artifact and local launch | 1 | 1 | verified | PR `#11`, run `29939544535`, ignored local record |
 | FND-004 | Directory, explicit path, and directory-embedded PAK discovery | 3 | 3 | verified | Issue `#4`; synthetic discovery tests and Actions |
-| FND-005 | Standalone PAK parsing and resource access | 0 | 1 | missing | Issue `#13` |
+| FND-005 | Standalone PAK parsing and resource access | 1 | 1 | verified | PR `#23`, run `29944500864`, ignored local record |
 | FND-006 | Version identity and external-resource safety checks | 0 | 1 | missing | Issue `#13` |
 | FND-007 | Deterministic replay and state-hash harness | 0 | 1 | missing | Issue `#5` |
 | FND-008 | Screenshot, semantic comparison, and independent review pipeline | 0 | 1 | missing | Issue `#14` |
