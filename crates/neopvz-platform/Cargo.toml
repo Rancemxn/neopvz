@@ -5,5 +5,3 @@ edition.workspace = true
 license.workspace = true
 
 [dependencies]
-neopvz-core = { path = "../neopvz-core" }
-winit.workspace = true

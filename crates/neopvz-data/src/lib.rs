@@ -82,10 +82,34 @@ fn is_pak(path: &Path) -> bool {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use std::fs;
 
     #[test]
     fn detects_pak_extension_case_insensitively() {
         assert!(is_pak(Path::new("main.PAK")));
         assert!(!is_pak(Path::new("main.dat")));
+    }
+
+    #[test]
+    fn discovers_loose_resource_directory() {
+        let root = tempfile::tempdir().unwrap();
+        let properties = root.path().join("properties");
+        fs::create_dir(&properties).unwrap();
+        fs::write(properties.join("resources.xml"), "<ResourceManifest />").unwrap();
+
+        let layout = AssetLayout::discover(Some(root.path())).unwrap();
+        assert_eq!(layout.source, ResourceSource::Directory(root.path().into()));
+        assert_eq!(layout.manifest, Some(properties.join("resources.xml")));
+    }
+
+    #[test]
+    fn discovers_main_pak_in_directory() {
+        let root = tempfile::tempdir().unwrap();
+        let pak = root.path().join("main.pak");
+        fs::write(&pak, []).unwrap();
+
+        let layout = AssetLayout::discover(Some(root.path())).unwrap();
+        assert_eq!(layout.source, ResourceSource::Pak(pak));
+        assert_eq!(layout.manifest, None);
     }
 }

@@ -8,6 +8,5 @@ license.workspace = true
 clap.workspace = true
 neopvz-core = { path = "../neopvz-core" }
 neopvz-data = { path = "../neopvz-data" }
-neopvz-platform = { path = "../neopvz-platform" }
 tracing.workspace = true
 tracing-subscriber.workspace = true
