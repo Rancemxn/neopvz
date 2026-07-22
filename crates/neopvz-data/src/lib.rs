@@ -1,6 +1,6 @@
 use std::{
-    fs::File,
-    io::{BufRead, BufReader},
+    fs,
+    io::BufRead,
     path::{Path, PathBuf},
 };
 
@@ -21,16 +21,63 @@ pub enum DataError {
 
 #[derive(Debug, Error)]
 pub enum ManifestError {
-    #[error("failed to read resource manifest: {0}")]
-    Io(#[from] std::io::Error),
     #[error("invalid resource manifest XML: {0}")]
     Xml(#[from] quick_xml::DeError),
+}
+
+#[derive(Debug, Error)]
+pub enum ResourcePathError {
+    #[error("unsafe resource path: {0}")]
+    Unsafe(String),
+    #[error("resource path escapes the resource directory: {0}")]
+    EscapesRoot(String),
+}
+
+#[derive(Debug, Error)]
+pub enum ResourceError {
+    #[error(transparent)]
+    Path(#[from] ResourcePathError),
+    #[error("failed to read loose resource: {0}")]
+    Io(#[from] std::io::Error),
+    #[error(transparent)]
+    Pak(#[from] PakError),
 }
 
 #[derive(Clone, Debug, Eq, PartialEq, Serialize, Deserialize)]
 pub enum ResourceSource {
     Directory(PathBuf),
     Pak(PathBuf),
+}
+
+#[derive(Debug)]
+pub enum ResourceProvider {
+    Directory(PathBuf),
+    Pak(PakArchive),
+}
+
+impl ResourceProvider {
+    pub fn open(source: &ResourceSource) -> Result<Self, ResourceError> {
+        match source {
+            ResourceSource::Directory(root) => {
+                Ok(Self::Directory(root.canonicalize()?))
+            }
+            ResourceSource::Pak(path) => Ok(Self::Pak(PakArchive::load(path)?)),
+        }
+    }
+
+    pub fn read(&self, path: &str) -> Result<Vec<u8>, ResourceError> {
+        let normalized = normalize_resource_path(path)?;
+        match self {
+            Self::Directory(root) => {
+                let resolved = root.join(&normalized).canonicalize()?;
+                if !resolved.starts_with(root) {
+                    return Err(ResourcePathError::EscapesRoot(path.to_owned()).into());
+                }
+                Ok(fs::read(resolved)?)
+            }
+            Self::Pak(archive) => Ok(archive.read(&normalized)?),
+        }
+    }
 }
 
 #[derive(Clone, Debug, Eq, PartialEq, Serialize, Deserialize)]
@@ -65,10 +112,6 @@ pub struct ResourceManifest {
 }
 
 impl ResourceManifest {
-    pub fn load(path: &Path) -> Result<Self, ManifestError> {
-        Self::parse(BufReader::new(File::open(path)?))
-    }
-
     pub fn parse<R: BufRead>(source: R) -> Result<Self, ManifestError> {
         let raw: RawManifest = quick_xml::de::from_reader(source)?;
         Ok(Self {
@@ -87,6 +130,27 @@ impl ResourceManifest {
     pub fn entry_count(&self) -> usize {
         self.groups.iter().map(|group| group.entries.len()).sum()
     }
+}
+
+pub(crate) fn normalize_resource_path(path: &str) -> Result<String, ResourcePathError> {
+    let path = path.replace('\\', "/");
+    if path.is_empty() || path.starts_with('/') {
+        return Err(ResourcePathError::Unsafe(path));
+    }
+
+    let mut normalized = Vec::new();
+    for component in path.split('/') {
+        if component.is_empty()
+            || component == "."
+            || component == ".."
+            || component.contains(':')
+            || component.contains('\0')
+        {
+            return Err(ResourcePathError::Unsafe(path));
+        }
+        normalized.push(component);
+    }
+    Ok(normalized.join("/"))
 }
 
 #[derive(Deserialize)]
@@ -356,5 +420,66 @@ mod tests {
         )
         .unwrap_err();
         assert!(matches!(error, ManifestError::Xml(_)));
+    }
+
+    #[test]
+    fn directory_and_pak_providers_read_the_same_path() {
+        let root = tempfile::tempdir().unwrap();
+        let directory = root.path().join("loose");
+        fs::create_dir_all(directory.join("properties")).unwrap();
+        fs::write(
+            directory.join("properties/resources.xml"),
+            b"<ResourceManifest />",
+        )
+        .unwrap();
+
+        let pak_path = root.path().join("main.pak");
+        fs::write(
+            &pak_path,
+            pak::fixture(&[("properties\\resources.xml", b"<ResourceManifest />")]),
+        )
+        .unwrap();
+
+        let loose = ResourceProvider::open(&ResourceSource::Directory(directory)).unwrap();
+        let pak = ResourceProvider::open(&ResourceSource::Pak(pak_path)).unwrap();
+        assert_eq!(
+            loose.read("properties\\resources.xml").unwrap(),
+            pak.read("properties\\resources.xml").unwrap()
+        );
+    }
+
+    #[test]
+    fn rejects_unsafe_resource_paths() {
+        for path in [
+            "",
+            "/absolute",
+            "\\absolute",
+            "C:\\absolute",
+            "../outside",
+            "inside/../outside",
+            "./inside",
+            "inside//file",
+        ] {
+            assert!(normalize_resource_path(path).is_err(), "accepted {path:?}");
+        }
+    }
+
+    #[cfg(unix)]
+    #[test]
+    fn directory_provider_rejects_symlink_escape() {
+        use std::os::unix::fs::symlink;
+
+        let root = tempfile::tempdir().unwrap();
+        let directory = root.path().join("loose");
+        fs::create_dir(&directory).unwrap();
+        let outside = root.path().join("outside");
+        fs::write(&outside, b"private").unwrap();
+        symlink(&outside, directory.join("escape")).unwrap();
+
+        let provider = ResourceProvider::open(&ResourceSource::Directory(directory)).unwrap();
+        assert!(matches!(
+            provider.read("escape"),
+            Err(ResourceError::Path(ResourcePathError::EscapesRoot(_)))
+        ));
     }
 }
