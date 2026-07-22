@@ -116,8 +116,7 @@ impl PakArchive {
             .entries
             .get(&key)
             .ok_or_else(|| PakError::MissingEntry(path.to_owned()))?;
-        let size = usize::try_from(entry.size)
-            .map_err(|_| PakError::EntryTooLarge(entry.size))?;
+        let size = usize::try_from(entry.size).map_err(|_| PakError::EntryTooLarge(entry.size))?;
         let mut file = File::open(&self.path)?;
         file.seek(SeekFrom::Start(entry.offset))?;
         let mut data = vec![0; size];

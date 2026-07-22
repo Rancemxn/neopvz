@@ -2,9 +2,7 @@ use std::{fmt::Display, path::PathBuf};
 
 use clap::Parser;
 use neopvz_core::{Game, SceneKind};
-use neopvz_data::{
-    AssetLayout, PakArchive, ResourceKind, ResourceManifest, ResourceSource,
-};
+use neopvz_data::{AssetLayout, PakArchive, ResourceKind, ResourceManifest, ResourceSource};
 
 #[derive(Debug, Parser)]
 #[command(name = "neopvz", version, about = "Rust PvZ reimplementation")]
@@ -28,7 +26,7 @@ fn main() {
                     if let Some(path) = layout.manifest.as_deref() {
                         log_manifest(ResourceManifest::load(path));
                     }
-                }
+                },
                 ResourceSource::Pak(path) => match PakArchive::load(path) {
                     Ok(pak) => {
                         tracing::info!(entries = pak.entry_count(), "PAK archive parsed");
