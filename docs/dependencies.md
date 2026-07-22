@@ -8,6 +8,7 @@ the ignored `third_party-src/` directory and are never committed.
 | Crate | Stable line | Purpose | Upstream source | Reference tag |
 | --- | --- | --- | --- | --- |
 | clap | 4 | Command-line resource overrides | https://github.com/clap-rs/clap | v4.6.4 |
+| flate2 | 1.1 | Bounded zlib decoding for compiled definitions | https://github.com/rust-lang/flate2-rs | 1.1.9 |
 | kira (`cpal`, `ogg`, `vorbis`) | 0.12 | OGG decoding, game mixer, music/effect tracks | https://github.com/tesselode/kira | v0.12.2 |
 | quick-xml | 0.41 | Streaming resource-manifest XML parsing | https://github.com/tafia/quick-xml | v0.41.0 |
 | rand (`chacha`) | 0.10 | Deterministic simulation RNG | https://github.com/rust-random/rand | 0.10.2 |
@@ -23,7 +24,9 @@ the ignored `third_party-src/` directory and are never committed.
 
 - `wgpu`, `winit`, `bytemuck`, and `image`: add with the first real renderer
   and window implementation.
-- `quick-xml` and `binrw`: add with the manifest and PAK/compiled parsers.
+- `binrw`: add only if compiled-definition field parsing needs declarative
+  binary layouts; the current bounded zlib/header parser uses the standard
+  library and `flate2`.
 - `image_dds`: add after the loader decides between CPU DXT3 decoding and
   direct compressed texture upload.
 - `atomic-write-file` and `directories`: add with the first save/config write.

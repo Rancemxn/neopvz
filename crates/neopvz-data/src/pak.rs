@@ -7,7 +7,7 @@ use std::{
 
 use thiserror::Error;
 
-use crate::{ResourcePathError, normalize_resource_path};
+use crate::{MAX_RESOURCE_SIZE, ResourcePathError, normalize_resource_path};
 
 const PAK_MAGIC: u32 = 0xBAC04AC0;
 const PAK_VERSION: u32 = 0;
@@ -32,7 +32,7 @@ pub enum PakError {
     TruncatedArchive,
     #[error("PAK entry not found: {0}")]
     MissingEntry(String),
-    #[error("PAK entry is too large for this platform: {0}")]
+    #[error("PAK entry is too large: {0}")]
     EntryTooLarge(u64),
     #[error(transparent)]
     UnsafePath(#[from] ResourcePathError),
@@ -79,6 +79,9 @@ impl PakArchive {
             read_decoded(&mut reader, &mut name)?;
             let name = normalize_pak_path(&String::from_utf8(name)?)?;
             let size = u64::from(read_u32(&mut reader)?);
+            if size > MAX_RESOURCE_SIZE {
+                return Err(PakError::EntryTooLarge(size));
+            }
             let modified = read_i64(&mut reader)?;
             pending.push((name, size, modified));
         }
