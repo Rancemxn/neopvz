@@ -17,6 +17,7 @@ repository = "https://github.com/Rancemxn/neopvz"
 [workspace.dependencies]
 clap = { version = "4", features = ["derive"] }
 kira = { version = "0.12", default-features = false, features = ["cpal", "ogg", "vorbis"] }
+quick-xml = { version = "0.41", features = ["serialize"] }
 rand = { version = "0.10", features = ["chacha"] }
 serde = { version = "1.0", features = ["derive"] }
 serde_json = "1.0"

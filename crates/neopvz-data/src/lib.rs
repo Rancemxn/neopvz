@@ -1,4 +1,8 @@
-use std::path::{Path, PathBuf};
+use std::{
+    fs::File,
+    io::{BufRead, BufReader},
+    path::{Path, PathBuf},
+};
 
 use serde::{Deserialize, Serialize};
 use thiserror::Error;
@@ -11,6 +15,14 @@ pub enum DataError {
     UnsupportedPath(PathBuf),
 }
 
+#[derive(Debug, Error)]
+pub enum ManifestError {
+    #[error("failed to read resource manifest: {0}")]
+    Io(#[from] std::io::Error),
+    #[error("invalid resource manifest XML: {0}")]
+    Xml(#[from] quick_xml::DeError),
+}
+
 #[derive(Clone, Debug, Eq, PartialEq, Serialize, Deserialize)]
 pub enum ResourceSource {
     Directory(PathBuf),
@@ -21,6 +33,163 @@ pub enum ResourceSource {
 pub struct AssetLayout {
     pub source: ResourceSource,
     pub manifest: Option<PathBuf>,
+}
+
+#[derive(Clone, Copy, Debug, Eq, PartialEq, Serialize, Deserialize)]
+pub enum ResourceKind {
+    Image,
+    Font,
+    Sound,
+}
+
+#[derive(Clone, Debug, Eq, PartialEq, Serialize, Deserialize)]
+pub struct ResourceEntry {
+    pub kind: ResourceKind,
+    pub id: String,
+    pub path: String,
+}
+
+#[derive(Clone, Debug, Eq, PartialEq, Serialize, Deserialize)]
+pub struct ResourceGroup {
+    pub id: String,
+    pub entries: Vec<ResourceEntry>,
+}
+
+#[derive(Clone, Debug, Eq, PartialEq, Serialize, Deserialize)]
+pub struct ResourceManifest {
+    pub groups: Vec<ResourceGroup>,
+}
+
+impl ResourceManifest {
+    pub fn load(path: &Path) -> Result<Self, ManifestError> {
+        Self::parse(BufReader::new(File::open(path)?))
+    }
+
+    pub fn parse<R: BufRead>(source: R) -> Result<Self, ManifestError> {
+        let raw: RawManifest = quick_xml::de::from_reader(source)?;
+        Ok(Self {
+            groups: raw.groups.into_iter().map(ResourceGroup::from).collect(),
+        })
+    }
+
+    pub fn count(&self, kind: ResourceKind) -> usize {
+        self.groups
+            .iter()
+            .flat_map(|group| &group.entries)
+            .filter(|entry| entry.kind == kind)
+            .count()
+    }
+
+    pub fn entry_count(&self) -> usize {
+        self.groups.iter().map(|group| group.entries.len()).sum()
+    }
+}
+
+#[derive(Deserialize)]
+struct RawManifest {
+    #[serde(rename = "Resources", default)]
+    groups: Vec<RawGroup>,
+}
+
+#[derive(Deserialize)]
+struct RawGroup {
+    #[serde(rename = "@id")]
+    id: String,
+    #[serde(rename = "$value", default)]
+    items: Vec<RawItem>,
+}
+
+#[derive(Deserialize)]
+enum RawItem {
+    SetDefaults(RawDefaults),
+    Image(RawEntry),
+    Font(RawEntry),
+    Sound(RawEntry),
+}
+
+#[derive(Default, Deserialize)]
+struct RawDefaults {
+    #[serde(rename = "@path", default)]
+    path: Option<String>,
+    #[serde(rename = "@idprefix", default)]
+    id_prefix: Option<String>,
+}
+
+#[derive(Deserialize)]
+struct RawEntry {
+    #[serde(rename = "@id")]
+    id: String,
+    #[serde(rename = "@path")]
+    path: String,
+}
+
+impl From<RawGroup> for ResourceGroup {
+    fn from(raw: RawGroup) -> Self {
+        let mut path = String::new();
+        let mut id_prefix = String::new();
+        let mut entries = Vec::new();
+
+        for item in raw.items {
+            match item {
+                RawItem::SetDefaults(defaults) => {
+                    if let Some(value) = defaults.path {
+                        path = value;
+                    }
+                    if let Some(value) = defaults.id_prefix {
+                        id_prefix = value;
+                    }
+                }
+                RawItem::Image(entry) => entries.push(resource_entry(
+                    ResourceKind::Image,
+                    &id_prefix,
+                    &path,
+                    entry,
+                )),
+                RawItem::Font(entry) => entries.push(resource_entry(
+                    ResourceKind::Font,
+                    &id_prefix,
+                    &path,
+                    entry,
+                )),
+                RawItem::Sound(entry) => entries.push(resource_entry(
+                    ResourceKind::Sound,
+                    &id_prefix,
+                    &path,
+                    entry,
+                )),
+            }
+        }
+
+        Self {
+            id: raw.id,
+            entries,
+        }
+    }
+}
+
+fn resource_entry(
+    kind: ResourceKind,
+    id_prefix: &str,
+    base_path: &str,
+    raw: RawEntry,
+) -> ResourceEntry {
+    ResourceEntry {
+        kind,
+        id: format!("{id_prefix}{}", raw.id),
+        path: join_resource_path(base_path, &raw.path),
+    }
+}
+
+fn join_resource_path(base: &str, path: &str) -> String {
+    let base = base.trim_end_matches(&['/', '\\'][..]);
+    let path = path.trim_start_matches(&['/', '\\'][..]);
+    if base.is_empty() {
+        path.replace('\\', "/")
+    } else if path.is_empty() {
+        base.replace('\\', "/")
+    } else {
+        format!("{base}/{path}").replace('\\', "/")
+    }
 }
 
 impl AssetLayout {
@@ -152,5 +321,39 @@ mod tests {
         let layout = AssetLayout::discover_from(root.path(), None).unwrap();
         assert_eq!(layout.source, ResourceSource::Pak(pak));
         assert_eq!(layout.manifest, None);
+    }
+
+    #[test]
+    fn parses_manifest_defaults_and_counts_entries() {
+        let xml = br#"
+            <ResourceManifest>
+              <Resources id="Init">
+                <SetDefaults path="images" idprefix="IMAGE_" />
+                <Image id="LOGO" path="logo" />
+                <SetDefaults path="sounds" idprefix="SOUND_" />
+                <Sound id="CLICK" path="click" />
+              </Resources>
+            </ResourceManifest>
+        "#;
+
+        let manifest = ResourceManifest::parse(&xml[..]).unwrap();
+        assert_eq!(manifest.groups.len(), 1);
+        assert_eq!(manifest.entry_count(), 2);
+        assert_eq!(manifest.count(ResourceKind::Image), 1);
+        assert_eq!(manifest.count(ResourceKind::Font), 0);
+        assert_eq!(manifest.count(ResourceKind::Sound), 1);
+        assert_eq!(manifest.groups[0].entries[0].id, "IMAGE_LOGO");
+        assert_eq!(manifest.groups[0].entries[0].path, "images/logo");
+        assert_eq!(manifest.groups[0].entries[1].id, "SOUND_CLICK");
+        assert_eq!(manifest.groups[0].entries[1].path, "sounds/click");
+    }
+
+    #[test]
+    fn rejects_resource_without_path() {
+        let error = ResourceManifest::parse(
+            &b"<ResourceManifest><Resources id=\"Init\"><Image id=\"x\" /></Resources></ResourceManifest>"[..],
+        )
+        .unwrap_err();
+        assert!(matches!(error, ManifestError::Xml(_)));
     }
 }
