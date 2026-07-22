@@ -38,7 +38,8 @@ verification. Original resources and local comparison evidence must never be
 uploaded to the repository or Actions.
 
 See [the development workflow](docs/development.md) for verification and
-reference boundaries. The bounded compatibility contract is in [loop.md](loop.md).
+reference boundaries. The bounded compatibility contract is in [loop.md](loop.md),
+and current progress is recorded in the [compatibility ledger](docs/compatibility.md).
 
 ## License
 

@@ -71,7 +71,8 @@
 - **Bounded quantity that must advance:** The compatibility ledger is finite.
   Each unresolved required behavior, evidence gap, or critical blocker is one
   unresolved obligation. The primary progress quantity is the number of
-  unresolved obligations.
+  unresolved obligations. `docs/compatibility.md` is the public ledger; detailed
+  target mappings and original-game evidence remain in ignored local storage.
 - **How each path advances or exits:** Every valid iteration must retire at
   least one obligation, replace a discovered placeholder with an equal or
   smaller set of concrete obligations, or terminate through the conditions
