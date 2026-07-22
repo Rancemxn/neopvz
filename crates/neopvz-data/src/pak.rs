@@ -7,7 +7,7 @@ use std::{
 
 use thiserror::Error;
 
-use crate::{normalize_resource_path, ResourcePathError};
+use crate::{ResourcePathError, normalize_resource_path};
 
 const PAK_MAGIC: u32 = 0xBAC04AC0;
 const PAK_VERSION: u32 = 0;

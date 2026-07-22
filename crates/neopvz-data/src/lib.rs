@@ -58,9 +58,7 @@ pub enum ResourceProvider {
 impl ResourceProvider {
     pub fn open(source: &ResourceSource) -> Result<Self, ResourceError> {
         match source {
-            ResourceSource::Directory(root) => {
-                Ok(Self::Directory(root.canonicalize()?))
-            }
+            ResourceSource::Directory(root) => Ok(Self::Directory(root.canonicalize()?)),
             ResourceSource::Pak(path) => Ok(Self::Pak(PakArchive::load(path)?)),
         }
     }
