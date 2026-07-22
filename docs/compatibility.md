@@ -13,7 +13,7 @@ evidence; a reviewer assertion alone is never sufficient.
 Status is `verified`, `partial`, or `missing`. The progress quantity is the sum
 of `total - accepted` across all rows.
 
-Current baseline: **6 accepted / 1802 total; 1796 unresolved**.
+Current baseline: **661 accepted / 1802 total; 1141 unresolved**.
 
 ## Foundation and Boundaries
 
@@ -36,10 +36,10 @@ loader coverage. They do not authorize committing the manifest or its assets.
 
 | Obligation | Resource domain | Accepted | Total | Status | Evidence / owner |
 |---|---|---:|---:|---|---|
-| RES-GROUP | Manifest resource groups | 0 | 29 | missing | Issue `#13` |
-| RES-IMAGE | Manifest image entries | 0 | 439 | missing | Issue `#13` |
-| RES-FONT | Manifest font entries | 0 | 20 | missing | Issue `#13` |
-| RES-SOUND | Manifest sound entries | 0 | 167 | missing | Issues `#13`, `#19` |
+| RES-GROUP | Manifest resource groups | 29 | 29 | verified | PR `#22`, run `29943384294`, ignored local record |
+| RES-IMAGE | Manifest image entries | 439 | 439 | verified | PR `#22`, run `29943384294`, ignored local record |
+| RES-FONT | Manifest font entries | 20 | 20 | verified | PR `#22`, run `29943384294`, ignored local record |
+| RES-SOUND | Manifest sound entries | 167 | 167 | verified | PR `#22`, run `29943384294`, ignored local record |
 | RES-ANIMATION | Compiled animation resources | 0 | 250 | missing | Issues `#13`, `#2` |
 | RES-MUSIC | Target music files and loop metadata | 0 | 2 | missing | Issues `#13`, `#3` |
 
