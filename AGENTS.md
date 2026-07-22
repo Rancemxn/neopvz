@@ -4,6 +4,7 @@
 - Do not add copyrighted game assets, binaries, IDA databases, function tables, or reverse-engineering reference repositories to this repository.
 - Resources are external inputs. Auto-detect a resource directory, `main.pak`/PAK archive, or use an explicit `--data-dir`/`--pak` path.
 - Local compilation and tests are forbidden because the local machine lacks the required resources. Use the GitHub Actions `full-gate` workflow for formatting, linting, tests, and builds.
+- Run the full gate on Ubuntu only until it is consistently green. Add Windows and macOS back after the Ubuntu baseline is stable.
 - Dependencies default to the latest stable versions. They may be changed when implementation evidence requires it.
 - When a direct dependency is confirmed, clone its upstream source at the exact version used by Cargo into the ignored `third_party-src/` directory for reference. Do not commit that directory.
 - Use issues, pull requests, milestones, and Actions to drive development. Do not create tags or releases until the project is stable.

@@ -1,5 +1,5 @@
+use rand::rngs::ChaCha8Rng;
 use rand::{Rng, SeedableRng};
-use rand_chacha::ChaCha8Rng;
 use serde::{Deserialize, Serialize};
 use sha2::{Digest, Sha256};
 use thiserror::Error;
