@@ -3,7 +3,7 @@
 `neopvz` is a clean-room Rust reimplementation of the observable gameplay of
 Plants vs. Zombies 1.0.0.1051. The simulation and rendering algorithms may be
 different from the original program; the target is equivalent gameplay,
-timing, animation, audio events, and mainline progression.
+timing, animation, audio, progression, and all player-accessible content.
 
 The repository intentionally contains no original game assets, binaries, IDA
 databases, function tables, or reverse-engineering reference projects. Supply
@@ -30,7 +30,15 @@ gh workflow run full-gate.yml --repo Rancemxn/neopvz --ref <branch>
 
 Use issues and milestones for work planning, pull requests for changes, and
 Actions for verification. Tags and releases will be introduced after the
-mainline implementation is stable.
+implementation is stable.
+
+The complete gate currently runs on Ubuntu. Windows release binaries must also
+be built in Actions without original resources, then downloaded for local GUI,
+visual, and audio verification. Original resources and local comparison
+evidence must never be uploaded to the repository or Actions.
+
+See [the development workflow](docs/development.md) for verification and
+reference boundaries. The bounded compatibility contract is in [loop.md](loop.md).
 
 ## License
 
