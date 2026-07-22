@@ -48,8 +48,8 @@ impl CompiledDefinition {
         }
 
         let mut decoded = Vec::new();
-        let mut decoder = ZlibDecoder::new(&data[COMPILED_HEADER_SIZE..])
-            .take(u64::from(declared) + 1);
+        let mut decoder =
+            ZlibDecoder::new(&data[COMPILED_HEADER_SIZE..]).take(u64::from(declared) + 1);
         decoder.read_to_end(&mut decoded)?;
         if decoded.len() != declared as usize {
             return Err(CompiledError::SizeMismatch {
@@ -61,8 +61,7 @@ impl CompiledDefinition {
             return Err(CompiledError::MissingSchema);
         }
 
-        let schema_hash =
-            u32::from_le_bytes([decoded[0], decoded[1], decoded[2], decoded[3]]);
+        let schema_hash = u32::from_le_bytes([decoded[0], decoded[1], decoded[2], decoded[3]]);
         Ok(Self {
             schema_hash,
             payload: decoded.split_off(SCHEMA_HASH_SIZE),
@@ -157,11 +156,7 @@ mod tests {
         ));
 
         let mut oversized = COMPILED_COOKIE.to_le_bytes().to_vec();
-        oversized.extend_from_slice(
-            &u32::try_from(MAX_RESOURCE_SIZE + 1)
-                .unwrap()
-                .to_le_bytes(),
-        );
+        oversized.extend_from_slice(&u32::try_from(MAX_RESOURCE_SIZE + 1).unwrap().to_le_bytes());
         assert!(matches!(
             CompiledDefinition::decode(&oversized),
             Err(CompiledError::TooLarge(_))

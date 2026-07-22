@@ -105,10 +105,7 @@ impl ResourceProvider {
     pub fn paths(&self) -> Result<Vec<String>, ResourceError> {
         match self {
             Self::Directory(root) => directory_paths(root),
-            Self::Pak(archive) => Ok(archive
-                .entries()
-                .map(|entry| entry.path.clone())
-                .collect()),
+            Self::Pak(archive) => Ok(archive.entries().map(|entry| entry.path.clone()).collect()),
         }
     }
 
