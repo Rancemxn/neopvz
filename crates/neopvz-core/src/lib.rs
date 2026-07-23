@@ -16,6 +16,7 @@ const SUN_COUNTDOWN: u32 = 425;
 const SUN_COUNTDOWN_RANGE: u32 = 275;
 const SUN_COUNTDOWN_MAX: u32 = 950;
 const MAX_SUN: u32 = 9_990;
+const MAX_SEED_SLOTS: u8 = 53;
 
 pub type Tick = u64;
 pub type EntityId = u32;
@@ -58,23 +59,192 @@ pub enum SceneKind {
 pub enum PlantType {
     Peashooter,
     Sunflower,
+    Other(u8),
 }
 
 impl PlantType {
-    fn cost(self) -> u32 {
-        match self {
-            Self::Peashooter => 100,
-            Self::Sunflower => 50,
+    fn from_slot(slot: u8) -> Option<Self> {
+        match slot {
+            0 => Some(Self::Peashooter),
+            1 => Some(Self::Sunflower),
+            2..=52 => Some(Self::Other(slot)),
+            _ => None,
         }
     }
 
-    fn launch_rate(self) -> u32 {
+    fn slot(self) -> u8 {
         match self {
-            Self::Peashooter => 150,
-            Self::Sunflower => 2_500,
+            Self::Peashooter => 0,
+            Self::Sunflower => 1,
+            Self::Other(slot) => slot,
+        }
+    }
+
+    fn definition(self) -> PlantDefinition {
+        PLANT_DEFINITIONS[usize::from(self.slot())]
+    }
+
+    fn cost(self) -> u32 {
+        self.definition().cost
+    }
+
+    fn launch_rate(self) -> u32 {
+        self.definition().launch_rate
+    }
+
+    fn refresh_time(self) -> u32 {
+        self.definition().refresh_time
+    }
+
+    fn max_health(self) -> i32 {
+        self.definition().max_health
+    }
+
+    fn is_producer(self) -> bool {
+        matches!(self.slot(), 1 | 9 | 41)
+    }
+
+    fn is_shooter(self) -> bool {
+        matches!(
+            self.slot(),
+            0 | 5 | 7 | 8 | 10 | 13 | 18 | 24 | 26 | 28 | 29 | 32 | 34 | 39 | 40
+                | 42 | 43 | 44 | 52
+        )
+    }
+
+    fn projectile_type(self) -> ProjectileType {
+        match self.slot() {
+            5 => ProjectileType::SnowPea,
+            8 | 10 | 13 | 24 => ProjectileType::Puff,
+            26 | 43 => ProjectileType::Spike,
+            29 => ProjectileType::Star,
+            32 => ProjectileType::Cabbage,
+            34 => ProjectileType::Kernel,
+            39 => ProjectileType::Melon,
+            44 => ProjectileType::WinterMelon,
+            _ => ProjectileType::Pea,
         }
     }
 }
+
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+struct PlantDefinition {
+    cost: u32,
+    refresh_time: u32,
+    launch_rate: u32,
+    max_health: i32,
+}
+
+// Values are the player-facing seed packet values from the target build.
+// Keep this slot order aligned with SeedType; field names make each value auditable.
+const PLANT_DEFINITIONS: [PlantDefinition; 53] = [
+    // 0 Peashooter
+    PlantDefinition { cost: 100, refresh_time: 750, launch_rate: 150, max_health: 300 },
+    // 1 Sunflower
+    PlantDefinition { cost: 50, refresh_time: 750, launch_rate: 2_500, max_health: 300 },
+    // 2 CherryBomb
+    PlantDefinition { cost: 150, refresh_time: 5_000, launch_rate: 0, max_health: 300 },
+    // 3 Wallnut
+    PlantDefinition { cost: 50, refresh_time: 3_000, launch_rate: 0, max_health: 4_000 },
+    // 4 PotatoMine
+    PlantDefinition { cost: 25, refresh_time: 3_000, launch_rate: 0, max_health: 300 },
+    // 5 SnowPea
+    PlantDefinition { cost: 175, refresh_time: 750, launch_rate: 150, max_health: 300 },
+    // 6 Chomper
+    PlantDefinition { cost: 150, refresh_time: 750, launch_rate: 0, max_health: 300 },
+    // 7 Repeater
+    PlantDefinition { cost: 200, refresh_time: 750, launch_rate: 150, max_health: 300 },
+    // 8 PuffShroom
+    PlantDefinition { cost: 0, refresh_time: 750, launch_rate: 150, max_health: 300 },
+    // 9 SunShroom
+    PlantDefinition { cost: 25, refresh_time: 750, launch_rate: 2_500, max_health: 300 },
+    // 10 FumeShroom
+    PlantDefinition { cost: 75, refresh_time: 750, launch_rate: 150, max_health: 300 },
+    // 11 GraveBuster
+    PlantDefinition { cost: 75, refresh_time: 750, launch_rate: 0, max_health: 300 },
+    // 12 HypnoShroom
+    PlantDefinition { cost: 75, refresh_time: 3_000, launch_rate: 0, max_health: 300 },
+    // 13 ScaredyShroom
+    PlantDefinition { cost: 25, refresh_time: 750, launch_rate: 150, max_health: 300 },
+    // 14 IceShroom
+    PlantDefinition { cost: 75, refresh_time: 5_000, launch_rate: 0, max_health: 300 },
+    // 15 DoomShroom
+    PlantDefinition { cost: 125, refresh_time: 5_000, launch_rate: 0, max_health: 300 },
+    // 16 LilyPad
+    PlantDefinition { cost: 25, refresh_time: 750, launch_rate: 0, max_health: 300 },
+    // 17 Squash
+    PlantDefinition { cost: 50, refresh_time: 3_000, launch_rate: 0, max_health: 300 },
+    // 18 ThreePeater
+    PlantDefinition { cost: 325, refresh_time: 750, launch_rate: 150, max_health: 300 },
+    // 19 TangleKelp
+    PlantDefinition { cost: 25, refresh_time: 3_000, launch_rate: 0, max_health: 300 },
+    // 20 Jalapeno
+    PlantDefinition { cost: 125, refresh_time: 5_000, launch_rate: 0, max_health: 300 },
+    // 21 Spikeweed
+    PlantDefinition { cost: 100, refresh_time: 750, launch_rate: 0, max_health: 300 },
+    // 22 Torchwood
+    PlantDefinition { cost: 175, refresh_time: 750, launch_rate: 0, max_health: 300 },
+    // 23 Tallnut
+    PlantDefinition { cost: 125, refresh_time: 3_000, launch_rate: 0, max_health: 8_000 },
+    // 24 SeaShroom
+    PlantDefinition { cost: 0, refresh_time: 3_000, launch_rate: 150, max_health: 300 },
+    // 25 Plantern
+    PlantDefinition { cost: 25, refresh_time: 3_000, launch_rate: 2_500, max_health: 300 },
+    // 26 Cactus
+    PlantDefinition { cost: 125, refresh_time: 750, launch_rate: 150, max_health: 300 },
+    // 27 Blover
+    PlantDefinition { cost: 100, refresh_time: 750, launch_rate: 0, max_health: 300 },
+    // 28 SplitPea
+    PlantDefinition { cost: 125, refresh_time: 750, launch_rate: 150, max_health: 300 },
+    // 29 Starfruit
+    PlantDefinition { cost: 125, refresh_time: 750, launch_rate: 150, max_health: 300 },
+    // 30 PumpkinShell
+    PlantDefinition { cost: 125, refresh_time: 3_000, launch_rate: 0, max_health: 4_000 },
+    // 31 MagnetShroom
+    PlantDefinition { cost: 100, refresh_time: 750, launch_rate: 0, max_health: 300 },
+    // 32 CabbagePult
+    PlantDefinition { cost: 100, refresh_time: 750, launch_rate: 300, max_health: 300 },
+    // 33 FlowerPot
+    PlantDefinition { cost: 25, refresh_time: 750, launch_rate: 0, max_health: 300 },
+    // 34 KernelPult
+    PlantDefinition { cost: 100, refresh_time: 750, launch_rate: 300, max_health: 300 },
+    // 35 InstantCoffee
+    PlantDefinition { cost: 75, refresh_time: 750, launch_rate: 0, max_health: 300 },
+    // 36 Garlic
+    PlantDefinition { cost: 50, refresh_time: 750, launch_rate: 0, max_health: 400 },
+    // 37 Umbrella
+    PlantDefinition { cost: 100, refresh_time: 750, launch_rate: 0, max_health: 300 },
+    // 38 Marigold
+    PlantDefinition { cost: 50, refresh_time: 3_000, launch_rate: 2_500, max_health: 300 },
+    // 39 MelonPult
+    PlantDefinition { cost: 300, refresh_time: 750, launch_rate: 300, max_health: 300 },
+    // 40 GatlingPea
+    PlantDefinition { cost: 250, refresh_time: 5_000, launch_rate: 150, max_health: 300 },
+    // 41 TwinSunflower
+    PlantDefinition { cost: 150, refresh_time: 5_000, launch_rate: 2_500, max_health: 300 },
+    // 42 GloomShroom
+    PlantDefinition { cost: 150, refresh_time: 5_000, launch_rate: 200, max_health: 300 },
+    // 43 Cattail
+    PlantDefinition { cost: 225, refresh_time: 5_000, launch_rate: 150, max_health: 300 },
+    // 44 WinterMelon
+    PlantDefinition { cost: 200, refresh_time: 5_000, launch_rate: 300, max_health: 300 },
+    // 45 GoldMagnet
+    PlantDefinition { cost: 50, refresh_time: 5_000, launch_rate: 0, max_health: 300 },
+    // 46 SpikeRock
+    PlantDefinition { cost: 125, refresh_time: 5_000, launch_rate: 0, max_health: 300 },
+    // 47 CobCannon
+    PlantDefinition { cost: 500, refresh_time: 5_000, launch_rate: 600, max_health: 300 },
+    // 48 Imitater
+    PlantDefinition { cost: 0, refresh_time: 750, launch_rate: 0, max_health: 300 },
+    // 49 ExplodeONut
+    PlantDefinition { cost: 0, refresh_time: 3_000, launch_rate: 0, max_health: 4_000 },
+    // 50 GiantWallnut
+    PlantDefinition { cost: 0, refresh_time: 3_000, launch_rate: 0, max_health: 4_000 },
+    // 51 Sprout
+    PlantDefinition { cost: 0, refresh_time: 3_000, launch_rate: 0, max_health: 300 },
+    // 52 LeftPeater
+    PlantDefinition { cost: 200, refresh_time: 750, launch_rate: 150, max_health: 300 },
+];
 
 #[derive(Clone, Copy, Debug, Deserialize, Eq, PartialEq, Serialize)]
 pub enum ZombieType {
@@ -84,6 +254,47 @@ pub enum ZombieType {
 #[derive(Clone, Copy, Debug, Deserialize, Eq, PartialEq, Serialize)]
 pub enum ProjectileType {
     Pea,
+    SnowPea,
+    Puff,
+    Cabbage,
+    Melon,
+    WinterMelon,
+    Kernel,
+    Butter,
+    Spike,
+    Star,
+    Fireball,
+    Cob,
+    ZombiePea,
+    Other(u8),
+}
+
+#[derive(Clone, Copy, Debug, Deserialize, Eq, PartialEq, Serialize)]
+pub enum ProjectileMotion {
+    Straight,
+    Backwards,
+    Lobbed,
+    Homing,
+    Star,
+}
+
+impl ProjectileType {
+    fn damage(self) -> i32 {
+        match self {
+            Self::Pea | Self::SnowPea | Self::Puff | Self::Kernel | Self::Spike | Self::Star => 20,
+            Self::Cabbage | Self::Fireball | Self::Butter => 40,
+            Self::Melon | Self::WinterMelon => 80,
+            Self::Cob => 1_800,
+            Self::ZombiePea | Self::Other(_) => 20,
+        }
+    }
+
+    fn motion(self) -> ProjectileMotion {
+        match self {
+            Self::Star => ProjectileMotion::Star,
+            _ => ProjectileMotion::Straight,
+        }
+    }
 }
 
 #[derive(Clone, Copy, Debug, Deserialize, Eq, PartialEq, Serialize)]
@@ -150,6 +361,7 @@ pub struct ZombieState {
     pub max_health: i32,
     pub age: u32,
     pub groan_counter: i32,
+    pub chilled_counter: u32,
     pub eating: bool,
     pub from_wave: u32,
 }
@@ -158,6 +370,7 @@ pub struct ZombieState {
 pub struct ProjectileState {
     pub id: EntityId,
     pub projectile_type: ProjectileType,
+    pub motion: ProjectileMotion,
     pub row: u8,
     pub position_x: i64,
     pub velocity_x: i64,
@@ -211,18 +424,15 @@ impl BoardState {
             columns: GRID_COLUMNS,
             next_entity_id: 1,
             selected_seed: None,
-            seed_packets: vec![
-                SeedPacketState {
-                    slot: 0,
-                    plant_type: PlantType::Peashooter,
-                    refresh_remaining: 0,
-                },
-                SeedPacketState {
-                    slot: 1,
-                    plant_type: PlantType::Sunflower,
-                    refresh_remaining: 0,
-                },
-            ],
+            seed_packets: (0..MAX_SEED_SLOTS)
+                .filter_map(|slot| {
+                    PlantType::from_slot(slot).map(|plant_type| SeedPacketState {
+                        slot,
+                        plant_type,
+                        refresh_remaining: 0,
+                    })
+                })
+                .collect(),
             plants: Vec::new(),
             zombies: Vec::new(),
             projectiles: Vec::new(),
@@ -670,7 +880,7 @@ impl Game {
 
         self.state.sun -= plant_type.cost();
         self.state.board.selected_seed = None;
-        self.state.board.seed_packets[packet_index].refresh_remaining = 751;
+        self.state.board.seed_packets[packet_index].refresh_remaining = plant_type.refresh_time() + 1;
         let id = self.state.board.allocate_entity();
 
         // Preserve the original gameplay RNG stream even before render state consumes these values.
@@ -681,17 +891,21 @@ impl Game {
             let _head_animation_rate = self.rng.next();
         }
         let launch_rate = plant_type.launch_rate();
-        let launch_counter = match plant_type {
-            PlantType::Peashooter => self.rng.range_inclusive(0, launch_rate),
-            PlantType::Sunflower => self.rng.range_inclusive(300, launch_rate / 2),
+        let launch_counter = if launch_rate == 0 {
+            0
+        } else if plant_type.is_producer() {
+            self.rng.range_inclusive(300, launch_rate / 2)
+        } else {
+            self.rng.range_inclusive(0, launch_rate)
         };
+        let max_health = plant_type.max_health();
         self.state.board.plants.push(PlantState {
             id,
             plant_type,
             row,
             column,
-            health: 300,
-            max_health: 300,
+            health: max_health,
+            max_health,
             launch_counter,
             launch_rate,
             shooting_counter: 0,
@@ -763,7 +977,7 @@ impl Game {
             });
 
             let mut fire = false;
-            let mut produce_sun = false;
+            let mut produce_suns = 0;
             {
                 let plant = &mut self.state.board.plants[index];
                 if plant.shooting_counter > 0 {
@@ -771,30 +985,27 @@ impl Game {
                     fire = plant.shooting_counter == 1;
                 }
 
-                if plant.launch_counter <= 1 {
-                    match plant_type {
-                        PlantType::Peashooter => {
-                            plant.launch_counter = plant.launch_rate - self.rng.range(15);
-                            if has_target {
-                                plant.shooting_counter = 33;
-                            }
-                        }
-                        PlantType::Sunflower => {
-                            plant.launch_counter = self
-                                .rng
-                                .range_inclusive(plant.launch_rate - 150, plant.launch_rate);
-                            produce_sun = true;
+                if plant.launch_rate != 0 && plant.launch_counter <= 1 {
+                    if plant_type.is_producer() {
+                        plant.launch_counter = self
+                            .rng
+                            .range_inclusive(plant.launch_rate - 150, plant.launch_rate);
+                        produce_suns = if plant_type.slot() == 41 { 2 } else { 1 };
+                    } else if plant_type.is_shooter() {
+                        plant.launch_counter = plant.launch_rate - self.rng.range(15);
+                        if has_target {
+                            plant.shooting_counter = 33;
                         }
                     }
-                } else {
+                } else if plant.launch_counter > 0 {
                     plant.launch_counter -= 1;
                 }
             }
 
             if fire {
-                self.fire_pea(id, row, column, events);
+                self.fire_projectile(id, plant_type, row, column, events);
             }
-            if produce_sun {
+            for _ in 0..produce_suns {
                 self.spawn_sun(SunSource::Plant(id), grid_x(column), grid_y(row), events);
                 let _vertical_motion = self.rng.next();
                 let _horizontal_motion = self.rng.next();
@@ -817,11 +1028,17 @@ impl Game {
                 let zombie = &mut self.state.board.zombies[zombie_index];
                 zombie.age = zombie.age.saturating_add(1);
                 zombie.groan_counter -= 1;
+                zombie.chilled_counter = zombie.chilled_counter.saturating_sub(1);
                 if zombie.groan_counter == 0 && self.rng.range(zombie_count) == 0 {
                     zombie.groan_counter = (self.rng.range(1_000) + 500) as i32;
                 }
                 if !zombie.eating {
-                    zombie.position_x -= zombie.speed;
+                    let speed = if zombie.chilled_counter == 0 {
+                        zombie.speed
+                    } else {
+                        zombie.speed * 2 / 5
+                    };
+                    zombie.position_x -= speed;
                 }
                 (
                     zombie.id,
@@ -961,21 +1178,35 @@ impl Game {
             .map(|(index, _)| index)
     }
 
-    fn fire_pea(&mut self, source: EntityId, row: u8, column: u8, events: &mut Vec<GameEvent>) {
+    fn fire_projectile(
+        &mut self,
+        source: EntityId,
+        plant_type: PlantType,
+        row: u8,
+        column: u8,
+        events: &mut Vec<GameEvent>,
+    ) {
+        let projectile_type = plant_type.projectile_type();
+        let motion = projectile_type.motion();
         let id = self.state.board.allocate_entity();
         self.state.board.projectiles.push(ProjectileState {
             id,
-            projectile_type: ProjectileType::Pea,
+            projectile_type,
+            motion,
             row,
             position_x: grid_x(column) + 60 * POSITION_SCALE,
-            velocity_x: 3_330_000,
-            damage: 20,
+            velocity_x: match motion {
+                ProjectileMotion::Backwards => -3_330_000,
+                ProjectileMotion::Lobbed => 2_800_000,
+                _ => 3_330_000,
+            },
+            damage: projectile_type.damage(),
             age: 0,
         });
         events.push(GameEvent::ProjectileFired {
             entity: id,
             source,
-            projectile_type: ProjectileType::Pea,
+            projectile_type,
             row,
         });
     }
@@ -1024,6 +1255,7 @@ impl Game {
             max_health: 270,
             age: 0,
             groan_counter,
+            chilled_counter: 0,
             eating: false,
             from_wave: wave,
         });
