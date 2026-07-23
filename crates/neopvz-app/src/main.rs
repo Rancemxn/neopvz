@@ -263,6 +263,14 @@ impl App {
             KeyCode::Digit2 if self.game.state().scene == SceneKind::Day => {
                 self.pending_input.push(InputAction::SelectSeed { slot: 1 });
             }
+            KeyCode::Space if self.game.state().scene == SceneKind::Day => {
+                let action = if self.game.state().paused {
+                    InputAction::Resume
+                } else {
+                    InputAction::Pause
+                };
+                self.pending_input.push(action);
+            }
             KeyCode::KeyP if self.game.state().scene == SceneKind::Day => {
                 self.pending_input
                     .push(InputAction::Plant { row: 2, column: 2 });
@@ -371,6 +379,16 @@ impl App {
                         z: 10,
                         scale: 36.0,
                         alpha: 1.0,
+                    });
+                }
+                if self.game.state().paused {
+                    frame.sprites.push(SpriteCommand {
+                        resource_id: SCREEN_PIXEL_IMAGE_ID,
+                        x: 0.0,
+                        y: 0.0,
+                        z: 20,
+                        scale: 800.0,
+                        alpha: 0.65,
                     });
                 }
             }
