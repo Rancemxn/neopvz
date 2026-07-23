@@ -13,7 +13,7 @@ evidence; a reviewer assertion alone is never sufficient.
 Status is `verified`, `partial`, or `missing`. The progress quantity is the sum
 of `total - accepted` across all rows.
 
-Current baseline: **933 accepted / 1802 total; 869 unresolved**.
+Current baseline: **934 accepted / 1802 total; 868 unresolved**.
 
 ## Foundation and Boundaries
 
@@ -47,18 +47,19 @@ loader coverage. They do not authorize committing the manifest or its assets.
 
 | Obligation | Entity/effect domain | Accepted | Total | Status | Evidence / owner |
 |---|---|---:|---:|---|---|
-| ENT-PLANT | Plant definitions and player-observable behavior | 13 | 49 | partial | PRs `#27`, `#30`, `#33`, `#36`, `#39`, `#42`, `#44`, `#48`; runs `29969908209`/`29973097050`/`29973716257`/`29974169417`/`29974744365`/`29975305952`/`29975305940`/`29975652655`/`29975652651`/`29978884187`/`29978884201`; ignored local source/runtime records |
+| ENT-PLANT | Plant definitions and player-observable behavior | 14 | 49 | partial | PRs `#27`, `#30`, `#33`, `#36`, `#39`, `#42`, `#44`, `#48`, `#50`; runs `29969908209`/`29973097050`/`29973716257`/`29974169417`/`29974744365`/`29975305952`/`29975305940`/`29975652655`/`29975652651`/`29978884187`/`29978884201`/`29979356134`/`29979356138`; ignored local source/runtime records |
 | ENT-ZOMBIE | Zombie definitions and player-observable behavior | 1 | 33 | partial | PR `#27`; runs `29969908209`/`29969908244`; ignored local source/runtime records |
 | ENT-PROJECTILE | Projectile types and collision behavior | 5 | 14 | partial | PRs `#30`, `#33`, `#36`; runs `29973097050`/`29973716257`/`29974169417`; ignored local source/runtime records |
 | ENT-PICKUP | Sun, coins, prizes, and pickup behavior | 0 | 26 | missing | Issue `#5` |
-| ENT-GRID | Graves, craters, portals, vases, and other grid items | 0 | 13 | missing | Issue `#5` |
+| ENT-GRID | Graves, craters, portals, vases, and other grid items | 1 | 13 | partial | PR `#50`; runs `29979356134`/`29979356138`; ignored local source/runtime records |
 | ENT-LAWNMOWER | Lawn, pool, roof, and special mower behavior | 0 | 4 | missing | Issue `#5` |
 | ENT-EFFECT | Player-observable particle/effect events | 0 | 105 | missing | Issues `#2`, `#5` |
 | SIM-SYSTEM | Tick ordering, RNG, damage, cooldown, resources, waves, collisions, placement, special rules, pause, win/loss, and restart | 0 | 13 | missing | Issue `#5` |
 
 The current partial entity acceptance is intentionally narrow: Peashooter,
 Sunflower, SnowPea, Repeater, Threepeater, Starfruit, Cattail, SunShroom,
-TwinSunflower, CherryBomb, PotatoMine, Jalapeno, and IceShroom behavior; the
+TwinSunflower, CherryBomb, PotatoMine, Jalapeno, IceShroom, and DoomShroom
+behavior; the
 normal zombie;
 and Pea, SnowPea, Melon, Star, and Spike projectile/collision behavior. Remaining
 definitions are unresolved until their player-observable rules and domain-matched
