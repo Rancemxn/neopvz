@@ -457,7 +457,10 @@ impl App {
 
     fn handle_mouse_click(&mut self) {
         let scene = self.game.state().scene;
-        if scene != SceneKind::Day && scene != SceneKind::AdventureSelect {
+        if scene != SceneKind::Title
+            && scene != SceneKind::Day
+            && scene != SceneKind::AdventureSelect
+        {
             return;
         }
         let Some(position) = self.cursor_position else {
@@ -474,6 +477,12 @@ impl App {
         }) else {
             return;
         };
+        if scene == SceneKind::Title {
+            if (300.0..500.0).contains(&x) && (520.0..600.0).contains(&y) {
+                self.start_scene(SceneKind::AdventureSelect);
+            }
+            return;
+        }
         if scene == SceneKind::AdventureSelect {
             if (400.0..730.0).contains(&x) && (55.0..175.0).contains(&y) {
                 self.start_scene(SceneKind::SeedChooser);
