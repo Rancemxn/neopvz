@@ -107,8 +107,24 @@ impl PlantType {
     fn is_shooter(self) -> bool {
         matches!(
             self.slot(),
-            0 | 5 | 7 | 8 | 10 | 13 | 18 | 24 | 26 | 28 | 29 | 32 | 34 | 39 | 40
-                | 42 | 43 | 44 | 52
+            0 | 5
+                | 7
+                | 8
+                | 10
+                | 13
+                | 18
+                | 24
+                | 26
+                | 28
+                | 29
+                | 32
+                | 34
+                | 39
+                | 40
+                | 42
+                | 43
+                | 44
+                | 52
         )
     }
 
@@ -139,111 +155,376 @@ struct PlantDefinition {
 // Keep this slot order aligned with SeedType; field names make each value auditable.
 const PLANT_DEFINITIONS: [PlantDefinition; 53] = [
     // 0 Peashooter
-    PlantDefinition { cost: 100, refresh_time: 750, launch_rate: 150, max_health: 300 },
+    PlantDefinition {
+        cost: 100,
+        refresh_time: 750,
+        launch_rate: 150,
+        max_health: 300,
+    },
     // 1 Sunflower
-    PlantDefinition { cost: 50, refresh_time: 750, launch_rate: 2_500, max_health: 300 },
+    PlantDefinition {
+        cost: 50,
+        refresh_time: 750,
+        launch_rate: 2_500,
+        max_health: 300,
+    },
     // 2 CherryBomb
-    PlantDefinition { cost: 150, refresh_time: 5_000, launch_rate: 0, max_health: 300 },
+    PlantDefinition {
+        cost: 150,
+        refresh_time: 5_000,
+        launch_rate: 0,
+        max_health: 300,
+    },
     // 3 Wallnut
-    PlantDefinition { cost: 50, refresh_time: 3_000, launch_rate: 0, max_health: 4_000 },
+    PlantDefinition {
+        cost: 50,
+        refresh_time: 3_000,
+        launch_rate: 0,
+        max_health: 4_000,
+    },
     // 4 PotatoMine
-    PlantDefinition { cost: 25, refresh_time: 3_000, launch_rate: 0, max_health: 300 },
+    PlantDefinition {
+        cost: 25,
+        refresh_time: 3_000,
+        launch_rate: 0,
+        max_health: 300,
+    },
     // 5 SnowPea
-    PlantDefinition { cost: 175, refresh_time: 750, launch_rate: 150, max_health: 300 },
+    PlantDefinition {
+        cost: 175,
+        refresh_time: 750,
+        launch_rate: 150,
+        max_health: 300,
+    },
     // 6 Chomper
-    PlantDefinition { cost: 150, refresh_time: 750, launch_rate: 0, max_health: 300 },
+    PlantDefinition {
+        cost: 150,
+        refresh_time: 750,
+        launch_rate: 0,
+        max_health: 300,
+    },
     // 7 Repeater
-    PlantDefinition { cost: 200, refresh_time: 750, launch_rate: 150, max_health: 300 },
+    PlantDefinition {
+        cost: 200,
+        refresh_time: 750,
+        launch_rate: 150,
+        max_health: 300,
+    },
     // 8 PuffShroom
-    PlantDefinition { cost: 0, refresh_time: 750, launch_rate: 150, max_health: 300 },
+    PlantDefinition {
+        cost: 0,
+        refresh_time: 750,
+        launch_rate: 150,
+        max_health: 300,
+    },
     // 9 SunShroom
-    PlantDefinition { cost: 25, refresh_time: 750, launch_rate: 2_500, max_health: 300 },
+    PlantDefinition {
+        cost: 25,
+        refresh_time: 750,
+        launch_rate: 2_500,
+        max_health: 300,
+    },
     // 10 FumeShroom
-    PlantDefinition { cost: 75, refresh_time: 750, launch_rate: 150, max_health: 300 },
+    PlantDefinition {
+        cost: 75,
+        refresh_time: 750,
+        launch_rate: 150,
+        max_health: 300,
+    },
     // 11 GraveBuster
-    PlantDefinition { cost: 75, refresh_time: 750, launch_rate: 0, max_health: 300 },
+    PlantDefinition {
+        cost: 75,
+        refresh_time: 750,
+        launch_rate: 0,
+        max_health: 300,
+    },
     // 12 HypnoShroom
-    PlantDefinition { cost: 75, refresh_time: 3_000, launch_rate: 0, max_health: 300 },
+    PlantDefinition {
+        cost: 75,
+        refresh_time: 3_000,
+        launch_rate: 0,
+        max_health: 300,
+    },
     // 13 ScaredyShroom
-    PlantDefinition { cost: 25, refresh_time: 750, launch_rate: 150, max_health: 300 },
+    PlantDefinition {
+        cost: 25,
+        refresh_time: 750,
+        launch_rate: 150,
+        max_health: 300,
+    },
     // 14 IceShroom
-    PlantDefinition { cost: 75, refresh_time: 5_000, launch_rate: 0, max_health: 300 },
+    PlantDefinition {
+        cost: 75,
+        refresh_time: 5_000,
+        launch_rate: 0,
+        max_health: 300,
+    },
     // 15 DoomShroom
-    PlantDefinition { cost: 125, refresh_time: 5_000, launch_rate: 0, max_health: 300 },
+    PlantDefinition {
+        cost: 125,
+        refresh_time: 5_000,
+        launch_rate: 0,
+        max_health: 300,
+    },
     // 16 LilyPad
-    PlantDefinition { cost: 25, refresh_time: 750, launch_rate: 0, max_health: 300 },
+    PlantDefinition {
+        cost: 25,
+        refresh_time: 750,
+        launch_rate: 0,
+        max_health: 300,
+    },
     // 17 Squash
-    PlantDefinition { cost: 50, refresh_time: 3_000, launch_rate: 0, max_health: 300 },
+    PlantDefinition {
+        cost: 50,
+        refresh_time: 3_000,
+        launch_rate: 0,
+        max_health: 300,
+    },
     // 18 ThreePeater
-    PlantDefinition { cost: 325, refresh_time: 750, launch_rate: 150, max_health: 300 },
+    PlantDefinition {
+        cost: 325,
+        refresh_time: 750,
+        launch_rate: 150,
+        max_health: 300,
+    },
     // 19 TangleKelp
-    PlantDefinition { cost: 25, refresh_time: 3_000, launch_rate: 0, max_health: 300 },
+    PlantDefinition {
+        cost: 25,
+        refresh_time: 3_000,
+        launch_rate: 0,
+        max_health: 300,
+    },
     // 20 Jalapeno
-    PlantDefinition { cost: 125, refresh_time: 5_000, launch_rate: 0, max_health: 300 },
+    PlantDefinition {
+        cost: 125,
+        refresh_time: 5_000,
+        launch_rate: 0,
+        max_health: 300,
+    },
     // 21 Spikeweed
-    PlantDefinition { cost: 100, refresh_time: 750, launch_rate: 0, max_health: 300 },
+    PlantDefinition {
+        cost: 100,
+        refresh_time: 750,
+        launch_rate: 0,
+        max_health: 300,
+    },
     // 22 Torchwood
-    PlantDefinition { cost: 175, refresh_time: 750, launch_rate: 0, max_health: 300 },
+    PlantDefinition {
+        cost: 175,
+        refresh_time: 750,
+        launch_rate: 0,
+        max_health: 300,
+    },
     // 23 Tallnut
-    PlantDefinition { cost: 125, refresh_time: 3_000, launch_rate: 0, max_health: 8_000 },
+    PlantDefinition {
+        cost: 125,
+        refresh_time: 3_000,
+        launch_rate: 0,
+        max_health: 8_000,
+    },
     // 24 SeaShroom
-    PlantDefinition { cost: 0, refresh_time: 3_000, launch_rate: 150, max_health: 300 },
+    PlantDefinition {
+        cost: 0,
+        refresh_time: 3_000,
+        launch_rate: 150,
+        max_health: 300,
+    },
     // 25 Plantern
-    PlantDefinition { cost: 25, refresh_time: 3_000, launch_rate: 2_500, max_health: 300 },
+    PlantDefinition {
+        cost: 25,
+        refresh_time: 3_000,
+        launch_rate: 2_500,
+        max_health: 300,
+    },
     // 26 Cactus
-    PlantDefinition { cost: 125, refresh_time: 750, launch_rate: 150, max_health: 300 },
+    PlantDefinition {
+        cost: 125,
+        refresh_time: 750,
+        launch_rate: 150,
+        max_health: 300,
+    },
     // 27 Blover
-    PlantDefinition { cost: 100, refresh_time: 750, launch_rate: 0, max_health: 300 },
+    PlantDefinition {
+        cost: 100,
+        refresh_time: 750,
+        launch_rate: 0,
+        max_health: 300,
+    },
     // 28 SplitPea
-    PlantDefinition { cost: 125, refresh_time: 750, launch_rate: 150, max_health: 300 },
+    PlantDefinition {
+        cost: 125,
+        refresh_time: 750,
+        launch_rate: 150,
+        max_health: 300,
+    },
     // 29 Starfruit
-    PlantDefinition { cost: 125, refresh_time: 750, launch_rate: 150, max_health: 300 },
+    PlantDefinition {
+        cost: 125,
+        refresh_time: 750,
+        launch_rate: 150,
+        max_health: 300,
+    },
     // 30 PumpkinShell
-    PlantDefinition { cost: 125, refresh_time: 3_000, launch_rate: 0, max_health: 4_000 },
+    PlantDefinition {
+        cost: 125,
+        refresh_time: 3_000,
+        launch_rate: 0,
+        max_health: 4_000,
+    },
     // 31 MagnetShroom
-    PlantDefinition { cost: 100, refresh_time: 750, launch_rate: 0, max_health: 300 },
+    PlantDefinition {
+        cost: 100,
+        refresh_time: 750,
+        launch_rate: 0,
+        max_health: 300,
+    },
     // 32 CabbagePult
-    PlantDefinition { cost: 100, refresh_time: 750, launch_rate: 300, max_health: 300 },
+    PlantDefinition {
+        cost: 100,
+        refresh_time: 750,
+        launch_rate: 300,
+        max_health: 300,
+    },
     // 33 FlowerPot
-    PlantDefinition { cost: 25, refresh_time: 750, launch_rate: 0, max_health: 300 },
+    PlantDefinition {
+        cost: 25,
+        refresh_time: 750,
+        launch_rate: 0,
+        max_health: 300,
+    },
     // 34 KernelPult
-    PlantDefinition { cost: 100, refresh_time: 750, launch_rate: 300, max_health: 300 },
+    PlantDefinition {
+        cost: 100,
+        refresh_time: 750,
+        launch_rate: 300,
+        max_health: 300,
+    },
     // 35 InstantCoffee
-    PlantDefinition { cost: 75, refresh_time: 750, launch_rate: 0, max_health: 300 },
+    PlantDefinition {
+        cost: 75,
+        refresh_time: 750,
+        launch_rate: 0,
+        max_health: 300,
+    },
     // 36 Garlic
-    PlantDefinition { cost: 50, refresh_time: 750, launch_rate: 0, max_health: 400 },
+    PlantDefinition {
+        cost: 50,
+        refresh_time: 750,
+        launch_rate: 0,
+        max_health: 400,
+    },
     // 37 Umbrella
-    PlantDefinition { cost: 100, refresh_time: 750, launch_rate: 0, max_health: 300 },
+    PlantDefinition {
+        cost: 100,
+        refresh_time: 750,
+        launch_rate: 0,
+        max_health: 300,
+    },
     // 38 Marigold
-    PlantDefinition { cost: 50, refresh_time: 3_000, launch_rate: 2_500, max_health: 300 },
+    PlantDefinition {
+        cost: 50,
+        refresh_time: 3_000,
+        launch_rate: 2_500,
+        max_health: 300,
+    },
     // 39 MelonPult
-    PlantDefinition { cost: 300, refresh_time: 750, launch_rate: 300, max_health: 300 },
+    PlantDefinition {
+        cost: 300,
+        refresh_time: 750,
+        launch_rate: 300,
+        max_health: 300,
+    },
     // 40 GatlingPea
-    PlantDefinition { cost: 250, refresh_time: 5_000, launch_rate: 150, max_health: 300 },
+    PlantDefinition {
+        cost: 250,
+        refresh_time: 5_000,
+        launch_rate: 150,
+        max_health: 300,
+    },
     // 41 TwinSunflower
-    PlantDefinition { cost: 150, refresh_time: 5_000, launch_rate: 2_500, max_health: 300 },
+    PlantDefinition {
+        cost: 150,
+        refresh_time: 5_000,
+        launch_rate: 2_500,
+        max_health: 300,
+    },
     // 42 GloomShroom
-    PlantDefinition { cost: 150, refresh_time: 5_000, launch_rate: 200, max_health: 300 },
+    PlantDefinition {
+        cost: 150,
+        refresh_time: 5_000,
+        launch_rate: 200,
+        max_health: 300,
+    },
     // 43 Cattail
-    PlantDefinition { cost: 225, refresh_time: 5_000, launch_rate: 150, max_health: 300 },
+    PlantDefinition {
+        cost: 225,
+        refresh_time: 5_000,
+        launch_rate: 150,
+        max_health: 300,
+    },
     // 44 WinterMelon
-    PlantDefinition { cost: 200, refresh_time: 5_000, launch_rate: 300, max_health: 300 },
+    PlantDefinition {
+        cost: 200,
+        refresh_time: 5_000,
+        launch_rate: 300,
+        max_health: 300,
+    },
     // 45 GoldMagnet
-    PlantDefinition { cost: 50, refresh_time: 5_000, launch_rate: 0, max_health: 300 },
+    PlantDefinition {
+        cost: 50,
+        refresh_time: 5_000,
+        launch_rate: 0,
+        max_health: 300,
+    },
     // 46 SpikeRock
-    PlantDefinition { cost: 125, refresh_time: 5_000, launch_rate: 0, max_health: 300 },
+    PlantDefinition {
+        cost: 125,
+        refresh_time: 5_000,
+        launch_rate: 0,
+        max_health: 300,
+    },
     // 47 CobCannon
-    PlantDefinition { cost: 500, refresh_time: 5_000, launch_rate: 600, max_health: 300 },
+    PlantDefinition {
+        cost: 500,
+        refresh_time: 5_000,
+        launch_rate: 600,
+        max_health: 300,
+    },
     // 48 Imitater
-    PlantDefinition { cost: 0, refresh_time: 750, launch_rate: 0, max_health: 300 },
+    PlantDefinition {
+        cost: 0,
+        refresh_time: 750,
+        launch_rate: 0,
+        max_health: 300,
+    },
     // 49 ExplodeONut
-    PlantDefinition { cost: 0, refresh_time: 3_000, launch_rate: 0, max_health: 4_000 },
+    PlantDefinition {
+        cost: 0,
+        refresh_time: 3_000,
+        launch_rate: 0,
+        max_health: 4_000,
+    },
     // 50 GiantWallnut
-    PlantDefinition { cost: 0, refresh_time: 3_000, launch_rate: 0, max_health: 4_000 },
+    PlantDefinition {
+        cost: 0,
+        refresh_time: 3_000,
+        launch_rate: 0,
+        max_health: 4_000,
+    },
     // 51 Sprout
-    PlantDefinition { cost: 0, refresh_time: 3_000, launch_rate: 0, max_health: 300 },
+    PlantDefinition {
+        cost: 0,
+        refresh_time: 3_000,
+        launch_rate: 0,
+        max_health: 300,
+    },
     // 52 LeftPeater
-    PlantDefinition { cost: 200, refresh_time: 750, launch_rate: 150, max_health: 300 },
+    PlantDefinition {
+        cost: 200,
+        refresh_time: 750,
+        launch_rate: 150,
+        max_health: 300,
+    },
 ];
 
 #[derive(Clone, Copy, Debug, Deserialize, Eq, PartialEq, Serialize)]
@@ -880,7 +1161,8 @@ impl Game {
 
         self.state.sun -= plant_type.cost();
         self.state.board.selected_seed = None;
-        self.state.board.seed_packets[packet_index].refresh_remaining = plant_type.refresh_time() + 1;
+        self.state.board.seed_packets[packet_index].refresh_remaining =
+            plant_type.refresh_time() + 1;
         let id = self.state.board.allocate_entity();
 
         // Preserve the original gameplay RNG stream even before render state consumes these values.
