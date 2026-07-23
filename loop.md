@@ -46,19 +46,23 @@
 # Termination Conditions
 
 - **Max iterations / budget:** 500 total iterations, including failed and
-  no-progress attempts. A progress-producing iteration yields a new
-  implementation, a reproducible behavior difference, a verified
-  compatibility entry, a reusable reverse-engineering conclusion, or a
-  resolved technical blocker.
+  no-progress attempts. A progress-producing iteration retires at least one
+  ledger obligation, replaces a placeholder with an equal or smaller set of
+  concrete obligations while reducing the placeholder count, or resolves a
+  technical blocker with evidence. A new implementation, behavior difference,
+  or reverse-engineering conclusion counts only when it does one of those
+  things.
 - **Goal-achievement check:** Evaluate every required ledger entry and every
   success signal above against code, Action results, deterministic records,
   GUI runs, screenshots, audio/event records, and local resource-boundary
   checks. Claims without domain-matched evidence do not pass.
-- **No-progress condition:** Three consecutive iterations that produce
-  no accepted artifact, no reduced ledger remainder, and no resolved blocker;
-  or the same root cause fails three consecutive recovery attempts. The
-  current work path terminates and routes to PLANNER. If PLANNER cannot define
-  a new finite path that preserves the goal, the loop terminates incomplete.
+- **No-progress condition:** Three consecutive iterations that neither retire
+  an obligation, replace a placeholder with an equal or smaller set of concrete
+  obligations while reducing the placeholder count, nor resolve a technical
+  blocker; or the same root cause fails three consecutive recovery attempts.
+  The current work path terminates and routes to PLANNER. If PLANNER cannot
+  define a new finite path that preserves the goal, the loop terminates
+  incomplete.
 - **Blocked condition:** All remaining required entries depend on the same
   unavailable external resource, permission, credential, legal decision, or
   irreproducible original behavior after the permitted recovery attempts.
@@ -70,14 +74,18 @@
 
 - **Bounded quantity that must advance:** The compatibility ledger is finite.
   Each unresolved required behavior, evidence gap, or critical blocker is one
-  unresolved obligation. The primary progress quantity is the number of
-  unresolved obligations. `docs/compatibility.md` is the public ledger; detailed
-  target mappings and original-game evidence remain in ignored local storage.
+  unresolved obligation. Progress is lexicographic: first reduce the number of
+  unresolved obligations, then reduce the number of unresolved placeholder
+  obligations when the total is unchanged. A placeholder is an obligation
+  missing either a concrete target behavior or its domain-matched acceptance
+  artifact; record both counts in each ledger snapshot. `docs/compatibility.md`
+  is the public ledger; detailed target mappings and original-game evidence
+  remain in ignored local storage.
 - **How each path advances or exits:** Every valid iteration must retire at
-  least one obligation, replace a discovered placeholder with an equal or
-  smaller set of concrete obligations, or terminate through the conditions
-  above. A path that neither decreases the remainder nor terminates is not
-  valid progress.
+  least one obligation, or replace a discovered placeholder with an equal or
+  smaller set of concrete obligations while decreasing the placeholder count;
+  otherwise it must terminate through the conditions above. A path that does
+  neither is not valid progress.
 
 # Approval Gates
 
