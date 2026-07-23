@@ -153,6 +153,10 @@ impl PlantType {
         self.slot() == 15
     }
 
+    fn is_torchwood(self) -> bool {
+        self.slot() == 22
+    }
+
     fn is_shooter(self) -> bool {
         matches!(
             self.slot(),
@@ -1897,6 +1901,7 @@ impl Game {
                 projectile.position_x += projectile.velocity_x;
                 projectile.position_y += projectile.velocity_y;
             }
+            self.apply_torchwood(projectile_index);
             let projectile = self.state.board.projectiles[projectile_index].clone();
             let projectile_row = projectile_row(projectile.position_y, self.state.board.rows);
             let target = self
@@ -1939,6 +1944,41 @@ impl Game {
                 projectile_index += 1;
             }
         }
+    }
+
+    fn apply_torchwood(&mut self, projectile_index: usize) {
+        let projectile_type = self.state.board.projectiles[projectile_index].projectile_type;
+        if !matches!(
+            projectile_type,
+            ProjectileType::Pea | ProjectileType::SnowPea
+        ) {
+            return;
+        }
+
+        let projectile = &self.state.board.projectiles[projectile_index];
+        let projectile_row = projectile.row;
+        let previous_x = projectile.position_x - projectile.velocity_x;
+        let current_x = projectile.position_x;
+        let (left_x, right_x) = if previous_x <= current_x {
+            (previous_x, current_x)
+        } else {
+            (current_x, previous_x)
+        };
+        if !self.state.board.plants.iter().any(|plant| {
+            let torchwood_x = grid_x(plant.column);
+            plant.row == projectile_row
+                && plant.plant_type.is_torchwood()
+                && left_x <= torchwood_x
+                && torchwood_x <= right_x
+        }) {
+            return;
+        }
+
+        // ponytail: upgrade only the verified pea-family shots here; widen the bullet matrix once
+        // the remaining torchwood cases are observed locally.
+        let projectile = &mut self.state.board.projectiles[projectile_index];
+        projectile.projectile_type = ProjectileType::Fireball;
+        projectile.damage = ProjectileType::Fireball.damage();
     }
 
     fn steer_homing_projectile(&mut self, projectile_index: usize) {
@@ -2448,6 +2488,53 @@ mod tests {
 
         assert!(hit);
         assert!(game.state.board.zombies[0].health < 270);
+    }
+
+    #[test]
+    fn torchwood_turns_pea_shots_into_fireballs() {
+        let mut game = Game::new(7, SceneKind::Day);
+        game.state.sun = 300;
+        game.advance(InputFrame {
+            actions: vec![
+                InputAction::SelectSeed { slot: 22 },
+                InputAction::Plant { row: 2, column: 1 },
+                InputAction::SelectSeed { slot: 0 },
+                InputAction::Plant { row: 2, column: 0 },
+            ],
+        });
+        game.state
+            .board
+            .plants
+            .iter_mut()
+            .find(|plant| plant.plant_type == PlantType::Peashooter)
+            .expect("peashooter")
+            .launch_counter = 1;
+        let mut setup_events = Vec::new();
+        game.spawn_normal_zombie(2, 0, Some(500 * POSITION_SCALE), &mut setup_events);
+        game.spawn_normal_zombie(1, 0, Some(500 * POSITION_SCALE), &mut setup_events);
+
+        let mut saw_fireball = false;
+        let mut saw_fireball_hit = false;
+        let mut saw_fireball_splash = false;
+        for _ in 0..140 {
+            let events = game.advance(InputFrame::default());
+            saw_fireball |= game.state.board.projectiles.iter().any(|projectile| {
+                projectile.projectile_type == ProjectileType::Fireball && projectile.damage == 40
+            });
+            saw_fireball_hit |= events
+                .iter()
+                .any(|event| matches!(event, GameEvent::ProjectileHit { damage: 40, .. }));
+            saw_fireball_splash |= events
+                .iter()
+                .any(|event| matches!(event, GameEvent::ProjectileSplashHit { damage: 13, .. }));
+            if saw_fireball && saw_fireball_hit && saw_fireball_splash {
+                break;
+            }
+        }
+
+        assert!(saw_fireball);
+        assert!(saw_fireball_hit);
+        assert!(saw_fireball_splash);
     }
 
     #[test]
