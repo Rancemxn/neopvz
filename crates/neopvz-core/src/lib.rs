@@ -1535,8 +1535,8 @@ impl Game {
 
     fn steer_homing_projectile(&mut self, projectile_index: usize) {
         let projectile = &self.state.board.projectiles[projectile_index];
-        let current_row = projectile_row(projectile.position_y, self.state.board.rows)
-            .unwrap_or(projectile.row);
+        let current_row =
+            projectile_row(projectile.position_y, self.state.board.rows).unwrap_or(projectile.row);
         let target_row = self
             .state
             .board
