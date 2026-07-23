@@ -128,6 +128,14 @@ impl PlantType {
         )
     }
 
+    fn burst_count(self) -> u8 {
+        match self.slot() {
+            7 => 2,
+            40 => 4,
+            _ => 1,
+        }
+    }
+
     fn projectile_type(self) -> ProjectileType {
         match self.slot() {
             5 => ProjectileType::SnowPea,
@@ -628,6 +636,8 @@ pub struct PlantState {
     pub launch_counter: u32,
     pub launch_rate: u32,
     pub shooting_counter: u32,
+    pub burst_remaining: u8,
+    pub burst_delay: u32,
     pub blink_counter: u32,
 }
 
@@ -654,7 +664,9 @@ pub struct ProjectileState {
     pub motion: ProjectileMotion,
     pub row: u8,
     pub position_x: i64,
+    pub position_y: i64,
     pub velocity_x: i64,
+    pub velocity_y: i64,
     pub damage: i32,
     pub age: u32,
 }
@@ -1191,6 +1203,8 @@ impl Game {
             launch_counter,
             launch_rate,
             shooting_counter: 0,
+            burst_remaining: 0,
+            burst_delay: 0,
             blink_counter,
         });
         events.push(GameEvent::PlantPlaced {
@@ -1253,21 +1267,54 @@ impl Game {
                 (plant.id, plant.plant_type, plant.row, plant.column)
             };
             let has_target = self.state.board.zombies.iter().any(|zombie| {
-                zombie.row == row
-                    && zombie.health > 0
-                    && zombie.position_x > plant_attack_start(column)
+                if zombie.health <= 0 {
+                    return false;
+                }
+                let row_distance = zombie.row.abs_diff(row);
+                match plant_type.slot() {
+                    18 | 29 => row_distance <= 2,
+                    28 => {
+                        row_distance == 0
+                            && (zombie.position_x > plant_attack_start(column)
+                                || zombie.position_x < grid_x(column))
+                    }
+                    52 => row_distance == 0 && zombie.position_x < grid_x(column),
+                    _ => {
+                        row_distance == 0 && zombie.position_x > plant_attack_start(column)
+                    }
+                }
             });
 
             let mut fire = false;
             let mut produce_suns = 0;
             {
                 let plant = &mut self.state.board.plants[index];
-                if plant.shooting_counter > 0 {
+                if plant.burst_remaining > 0 {
+                    if plant.burst_delay > 0 {
+                        plant.burst_delay -= 1;
+                    }
+                    if plant.burst_delay == 0 {
+                        fire = true;
+                        plant.burst_remaining -= 1;
+                        if plant.burst_remaining > 0 {
+                            plant.burst_delay = 5;
+                        }
+                    }
+                } else if plant.shooting_counter > 0 {
                     plant.shooting_counter -= 1;
                     fire = plant.shooting_counter == 1;
+                    if fire {
+                        plant.shooting_counter = 0;
+                        plant.burst_remaining = plant_type.burst_count().saturating_sub(1);
+                        plant.burst_delay = if plant.burst_remaining == 0 { 0 } else { 5 };
+                    }
                 }
 
-                if plant.launch_rate != 0 && plant.launch_counter <= 1 {
+                if plant.launch_rate != 0
+                    && plant.launch_counter <= 1
+                    && plant.shooting_counter == 0
+                    && plant.burst_remaining == 0
+                {
                     if plant_type.is_producer() {
                         plant.launch_counter = self
                             .rng
@@ -1285,7 +1332,7 @@ impl Game {
             }
 
             if fire {
-                self.fire_projectile(id, plant_type, row, column, events);
+                self.fire_projectiles(id, plant_type, row, column, events);
             }
             for _ in 0..produce_suns {
                 self.spawn_sun(SunSource::Plant(id), grid_x(column), grid_y(row), events);
@@ -1368,15 +1415,17 @@ impl Game {
                 let projectile = &mut self.state.board.projectiles[projectile_index];
                 projectile.age = projectile.age.saturating_add(1);
                 projectile.position_x += projectile.velocity_x;
+                projectile.position_y += projectile.velocity_y;
             }
             let projectile = self.state.board.projectiles[projectile_index].clone();
+            let projectile_row = projectile_row(projectile.position_y, self.state.board.rows);
             let target = self
                 .state
                 .board
                 .zombies
                 .iter()
                 .enumerate()
-                .filter(|(_, zombie)| zombie.row == projectile.row && zombie.health > 0)
+                .filter(|(_, zombie)| Some(zombie.row) == projectile_row && zombie.health > 0)
                 .filter(|(_, zombie)| projectile_hits(projectile.position_x, zombie.position_x))
                 .min_by_key(|(_, zombie)| zombie.position_x)
                 .map(|(index, _)| index);
@@ -1397,7 +1446,10 @@ impl Game {
                     self.state.board.zombies.remove(zombie_index);
                     events.push(GameEvent::ZombieDied { entity: zombie_id });
                 }
-            } else if projectile.position_x > i64::from(LOGICAL_WIDTH) * POSITION_SCALE {
+            } else if projectile.position_x > i64::from(LOGICAL_WIDTH) * POSITION_SCALE
+                || projectile.position_x < -100 * POSITION_SCALE
+                || projectile_row.is_none()
+            {
                 self.state.board.projectiles.remove(projectile_index);
             } else {
                 projectile_index += 1;
@@ -1460,7 +1512,7 @@ impl Game {
             .map(|(index, _)| index)
     }
 
-    fn fire_projectile(
+    fn fire_projectiles(
         &mut self,
         source: EntityId,
         plant_type: PlantType,
@@ -1469,19 +1521,123 @@ impl Game {
         events: &mut Vec<GameEvent>,
     ) {
         let projectile_type = plant_type.projectile_type();
-        let motion = projectile_type.motion();
+        let position_x = grid_x(column) + 60 * POSITION_SCALE;
+        let position_y = grid_y(row);
+        match plant_type.slot() {
+            18 => {
+                for target_row in [
+                    row.checked_sub(1),
+                    Some(row),
+                    row.checked_add(1).filter(|target_row| *target_row < self.state.board.rows),
+                ]
+                .into_iter()
+                .flatten()
+                {
+                    self.fire_projectile(
+                        source,
+                        projectile_type,
+                        ProjectileMotion::Straight,
+                        target_row,
+                        position_x,
+                        grid_y(target_row),
+                        3_330_000,
+                        0,
+                        events,
+                    );
+                }
+            }
+            28 => {
+                self.fire_projectile(
+                    source,
+                    projectile_type,
+                    ProjectileMotion::Straight,
+                    row,
+                    position_x,
+                    position_y,
+                    3_330_000,
+                    0,
+                    events,
+                );
+                self.fire_projectile(
+                    source,
+                    projectile_type,
+                    ProjectileMotion::Backwards,
+                    row,
+                    grid_x(column) + 20 * POSITION_SCALE,
+                    position_y,
+                    -3_330_000,
+                    0,
+                    events,
+                );
+            }
+            29 => {
+                for (velocity_x, velocity_y) in [
+                    (-3_330_000, 0),
+                    (0, 3_330_000),
+                    (0, -3_330_000),
+                    (2_883_865, 1_665_000),
+                    (2_883_865, -1_665_000),
+                ] {
+                    self.fire_projectile(
+                        source,
+                        projectile_type,
+                        ProjectileMotion::Star,
+                        row,
+                        position_x,
+                        position_y,
+                        velocity_x,
+                        velocity_y,
+                        events,
+                    );
+                }
+            }
+            52 => self.fire_projectile(
+                source,
+                projectile_type,
+                ProjectileMotion::Backwards,
+                row,
+                grid_x(column) + 20 * POSITION_SCALE,
+                position_y,
+                -3_330_000,
+                0,
+                events,
+            ),
+            _ => self.fire_projectile(
+                source,
+                projectile_type,
+                projectile_type.motion(),
+                row,
+                position_x,
+                position_y,
+                3_330_000,
+                0,
+                events,
+            ),
+        }
+    }
+
+    fn fire_projectile(
+        &mut self,
+        source: EntityId,
+        projectile_type: ProjectileType,
+        motion: ProjectileMotion,
+        row: u8,
+        position_x: i64,
+        position_y: i64,
+        velocity_x: i64,
+        velocity_y: i64,
+        events: &mut Vec<GameEvent>,
+    ) {
         let id = self.state.board.allocate_entity();
         self.state.board.projectiles.push(ProjectileState {
             id,
             projectile_type,
             motion,
             row,
-            position_x: grid_x(column) + 60 * POSITION_SCALE,
-            velocity_x: match motion {
-                ProjectileMotion::Backwards => -3_330_000,
-                ProjectileMotion::Lobbed => 2_800_000,
-                _ => 3_330_000,
-            },
+            position_x,
+            position_y,
+            velocity_x,
+            velocity_y,
             damage: projectile_type.damage(),
             age: 0,
         });
@@ -1557,6 +1713,20 @@ fn grid_x(column: u8) -> i64 {
 
 fn grid_y(row: u8) -> i64 {
     i64::from(row) * 100 * POSITION_SCALE + 80 * POSITION_SCALE
+}
+
+fn projectile_row(position_y: i64, rows: u8) -> Option<u8> {
+    let first_row_edge = 30 * POSITION_SCALE;
+    let row_height = 100 * POSITION_SCALE;
+    if position_y < first_row_edge {
+        return None;
+    }
+    let row = (position_y - first_row_edge) / row_height;
+    if row >= i64::from(rows) {
+        None
+    } else {
+        Some(row as u8)
+    }
 }
 
 fn plant_attack_start(column: u8) -> i64 {
@@ -1639,6 +1809,89 @@ mod tests {
 
         assert!(hit);
         assert!(game.state.board.zombies[0].health < 270);
+    }
+
+    #[test]
+    fn repeater_emits_a_two_shot_burst() {
+        let mut game = Game::new(7, SceneKind::Day);
+        game.state.sun = 250;
+        game.advance(InputFrame {
+            actions: vec![
+                InputAction::SelectSeed { slot: 7 },
+                InputAction::Plant { row: 2, column: 0 },
+            ],
+        });
+        game.state.board.plants[0].launch_counter = 1;
+        let mut setup_events = Vec::new();
+        game.spawn_normal_zombie(2, 0, Some(500 * POSITION_SCALE), &mut setup_events);
+
+        let fired = (0..50)
+            .flat_map(|_| game.advance(InputFrame::default()))
+            .filter(|event| matches!(event, GameEvent::ProjectileFired { .. }))
+            .count();
+
+        assert_eq!(fired, 2);
+    }
+
+    #[test]
+    fn threepeater_targets_the_three_adjacent_rows() {
+        let mut game = Game::new(7, SceneKind::Day);
+        game.state.sun = 400;
+        game.advance(InputFrame {
+            actions: vec![
+                InputAction::SelectSeed { slot: 18 },
+                InputAction::Plant { row: 2, column: 0 },
+            ],
+        });
+        game.state.board.plants[0].launch_counter = 1;
+        let mut setup_events = Vec::new();
+        for row in 1..=3 {
+            game.spawn_normal_zombie(row, 0, Some(500 * POSITION_SCALE), &mut setup_events);
+        }
+
+        let fired_rows = (0..40)
+            .flat_map(|_| game.advance(InputFrame::default()))
+            .filter_map(|event| match event {
+                GameEvent::ProjectileFired { row, .. } => Some(row),
+                _ => None,
+            })
+            .collect::<Vec<_>>();
+
+        assert_eq!(fired_rows, vec![1, 2, 3]);
+    }
+
+    #[test]
+    fn starfruit_emits_five_directional_projectiles() {
+        let mut game = Game::new(7, SceneKind::Day);
+        game.state.sun = 250;
+        game.advance(InputFrame {
+            actions: vec![
+                InputAction::SelectSeed { slot: 29 },
+                InputAction::Plant { row: 2, column: 0 },
+            ],
+        });
+        game.state.board.plants[0].launch_counter = 1;
+        let mut setup_events = Vec::new();
+        game.spawn_normal_zombie(2, 0, Some(500 * POSITION_SCALE), &mut setup_events);
+
+        let events = (0..40)
+            .flat_map(|_| game.advance(InputFrame::default()))
+            .collect::<Vec<_>>();
+
+        assert_eq!(
+            events
+                .iter()
+                .filter(|event| matches!(event, GameEvent::ProjectileFired { .. }))
+                .count(),
+            5
+        );
+        assert_eq!(game.state.board.projectiles.len(), 5);
+        assert!(game
+            .state
+            .board
+            .projectiles
+            .iter()
+            .any(|projectile| projectile.velocity_y != 0));
     }
 
     #[test]
