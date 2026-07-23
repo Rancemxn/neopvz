@@ -22,6 +22,14 @@ const SMALL_SUN_VALUE: u32 = 15;
 const INSTANT_PLANT_COUNTDOWN: u32 = 100;
 const POTATO_ARM_TICKS: u32 = 1_500;
 const PLANT_SPECIAL_DAMAGE: i32 = 1_800;
+const SQUASH_LOOK_TICKS: u32 = 80;
+const SQUASH_JUMP_UP_TICKS: u32 = 45;
+const SQUASH_AIR_TICKS: u32 = 50;
+const SQUASH_LANDING_HIT_TICKS: u32 = 5;
+const SQUASH_HIT_DELAY_TICKS: u32 =
+    SQUASH_JUMP_UP_TICKS + SQUASH_AIR_TICKS + SQUASH_LANDING_HIT_TICKS;
+const SQUASH_TARGET_GAP: i64 = 70;
+const SQUASH_EATING_TARGET_GAP: i64 = 110;
 const ICE_SHROOM_INITIAL_FREEZE_TICKS: u32 = 400;
 const ICE_SHROOM_REFRESH_FREEZE_TICKS: u32 = 300;
 const ICE_SHROOM_CHILL_TICKS: u32 = 2_000;
@@ -143,6 +151,10 @@ impl PlantType {
 
     fn is_jalapeno(self) -> bool {
         self.slot() == 20
+    }
+
+    fn is_squash(self) -> bool {
+        self.slot() == 17
     }
 
     fn is_ice_shroom(self) -> bool {
@@ -1479,6 +1491,11 @@ impl Game {
             } else {
                 None
             };
+            let squash_target = if plant_type.is_squash() {
+                self.find_squash_target(row, column)
+            } else {
+                None
+            };
             let potato_trigger = plant_type.is_potato_mine()
                 && self.state.board.zombies.iter().any(|zombie| {
                     zombie.health > 0
@@ -1491,6 +1508,7 @@ impl Game {
             let mut produce_value = 25;
             let mut special = false;
             let mut chomper_bite_target = None;
+            let mut squash_hit_target = None;
             {
                 let plant = &mut self.state.board.plants[index];
                 if plant_type.is_chomper() {
@@ -1523,6 +1541,23 @@ impl Game {
                         if plant.special_counter == 0 {
                             plant.special_armed = true;
                         }
+                    }
+                } else if plant_type.is_squash() {
+                    if plant.special_armed {
+                        plant.special_counter = plant.special_counter.saturating_sub(1);
+                        if plant.special_counter == 0 {
+                            squash_hit_target = plant.special_target.take().or(squash_target);
+                            plant.health = 0;
+                        }
+                    } else if plant.special_target.is_some() {
+                        plant.special_counter = plant.special_counter.saturating_sub(1);
+                        if plant.special_counter == 0 {
+                            plant.special_armed = true;
+                            plant.special_counter = SQUASH_HIT_DELAY_TICKS;
+                        }
+                    } else if let Some(target) = squash_target {
+                        plant.special_target = Some(target);
+                        plant.special_counter = SQUASH_LOOK_TICKS;
                     }
                 }
                 if plant_type.is_sunshroom() {
@@ -1593,6 +1628,34 @@ impl Game {
                     plant_type,
                 });
                 events.push(GameEvent::ZombieDied { entity: zombie_id });
+            }
+            if let Some(zombie_id) = squash_hit_target {
+                events.push(GameEvent::PlantSpecialTriggered {
+                    entity: id,
+                    plant_type,
+                });
+                if let Some(zombie_index) = self
+                    .state
+                    .board
+                    .zombies
+                    .iter()
+                    .position(|zombie| zombie.id == zombie_id && zombie.health > 0)
+                {
+                    self.state.board.zombies[zombie_index].health -= PLANT_SPECIAL_DAMAGE;
+                    let health_remaining = self.state.board.zombies[zombie_index].health;
+                    events.push(GameEvent::PlantSpecialHit {
+                        plant: id,
+                        zombie: zombie_id,
+                        damage: PLANT_SPECIAL_DAMAGE,
+                        health_remaining,
+                    });
+                    if health_remaining <= 0 {
+                        self.state.board.zombies.remove(zombie_index);
+                        events.push(GameEvent::ZombieDied { entity: zombie_id });
+                    }
+                }
+                events.push(GameEvent::PlantDied { entity: id });
+                continue;
             }
             if special {
                 self.trigger_plant_special(id, plant_type, row, column, events);
@@ -2162,6 +2225,27 @@ impl Game {
                     && matches!(zombie.zombie_type, ZombieType::Normal)
                     && zombie.position_x >= center_x - 20 * POSITION_SCALE
                     && zombie.position_x <= center_x + 80 * POSITION_SCALE
+            })
+            .min_by_key(|zombie| zombie.position_x.abs_diff(center_x))
+            .map(|zombie| zombie.id)
+    }
+
+    fn find_squash_target(&self, row: u8, column: u8) -> Option<EntityId> {
+        let center_x = grid_x(column);
+        self.state
+            .board
+            .zombies
+            .iter()
+            .filter(|zombie| {
+                let maximum_gap = if zombie.eating {
+                    SQUASH_EATING_TARGET_GAP
+                } else {
+                    SQUASH_TARGET_GAP
+                } * POSITION_SCALE;
+                zombie.health > 0
+                    && zombie.row == row
+                    && matches!(zombie.zombie_type, ZombieType::Normal)
+                    && (zombie.position_x - center_x).abs() <= maximum_gap
             })
             .min_by_key(|zombie| zombie.position_x.abs_diff(center_x))
             .map(|zombie| zombie.id)
@@ -2991,6 +3075,93 @@ mod tests {
         )));
         assert!(game.state.board.plants.is_empty());
         assert!(game.state.board.zombies.is_empty());
+    }
+
+    #[test]
+    fn squash_tracks_nearby_normal_zombie_then_smashes_it() {
+        let mut game = Game::new(7, SceneKind::Day);
+        game.state.sun = 100;
+        game.advance(InputFrame {
+            actions: vec![
+                InputAction::SelectSeed { slot: 17 },
+                InputAction::Plant { row: 2, column: 2 },
+            ],
+        });
+        let squash = game.state.board.plants[0].id;
+        let center = grid_x(2);
+        let mut setup_events = Vec::new();
+        let target =
+            game.spawn_normal_zombie(2, 0, Some(center + 50 * POSITION_SCALE), &mut setup_events);
+        let far =
+            game.spawn_normal_zombie(2, 0, Some(center + 200 * POSITION_SCALE), &mut setup_events);
+        let other_row =
+            game.spawn_normal_zombie(1, 0, Some(center + 50 * POSITION_SCALE), &mut setup_events);
+
+        let acquired = game.advance(InputFrame::default());
+        assert!(
+            !acquired
+                .iter()
+                .any(|event| matches!(event, GameEvent::PlantSpecialHit { .. }))
+        );
+        assert_eq!(game.state.board.plants[0].special_target, Some(target));
+        assert_eq!(
+            game.state.board.plants[0].special_counter,
+            SQUASH_LOOK_TICKS
+        );
+        assert!(!game.state.board.plants[0].special_armed);
+
+        game.state.board.plants[0].special_counter = 1;
+        let jump = game.advance(InputFrame::default());
+        assert!(
+            !jump
+                .iter()
+                .any(|event| matches!(event, GameEvent::PlantSpecialHit { .. }))
+        );
+        assert!(game.state.board.plants[0].special_armed);
+        assert_eq!(
+            game.state.board.plants[0].special_counter,
+            SQUASH_HIT_DELAY_TICKS
+        );
+
+        game.state.board.plants[0].special_counter = 1;
+        let events = game.advance(InputFrame::default());
+
+        assert!(events.iter().any(|event| matches!(
+            event,
+            GameEvent::PlantSpecialTriggered {
+                entity,
+                plant_type: PlantType::Other(17),
+            } if *entity == squash
+        )));
+        assert!(events.iter().any(|event| matches!(
+            event,
+            GameEvent::PlantSpecialHit {
+                plant,
+                zombie,
+                damage: PLANT_SPECIAL_DAMAGE,
+                ..
+            } if *plant == squash && *zombie == target
+        )));
+        assert!(
+            events.iter().any(
+                |event| matches!(event, GameEvent::ZombieDied { entity } if *entity == target)
+            )
+        );
+        assert!(
+            events
+                .iter()
+                .any(|event| matches!(event, GameEvent::PlantDied { entity } if *entity == squash))
+        );
+        assert!(game.state.board.plants.is_empty());
+        assert_eq!(
+            game.state
+                .board
+                .zombies
+                .iter()
+                .map(|zombie| zombie.id)
+                .collect::<Vec<_>>(),
+            vec![far, other_row]
+        );
     }
 
     #[test]
