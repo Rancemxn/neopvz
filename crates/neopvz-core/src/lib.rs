@@ -2092,15 +2092,7 @@ mod tests {
 
         let splash = (0..200)
             .flat_map(|_| game.advance(InputFrame::default()))
-            .any(|event| {
-                matches!(
-                    event,
-                    GameEvent::ProjectileSplashHit {
-                        damage: 26,
-                        ..
-                    }
-                )
-            });
+            .any(|event| matches!(event, GameEvent::ProjectileSplashHit { damage: 26, .. }));
 
         assert!(splash);
         assert_eq!(game.state.board.zombies[1].health, 244);
