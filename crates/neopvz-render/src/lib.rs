@@ -4,7 +4,10 @@ use bytemuck::{Pod, Zeroable};
 use neopvz_core::{LOGICAL_HEIGHT, LOGICAL_WIDTH};
 use thiserror::Error;
 use wgpu::util::DeviceExt;
-use winit::{dpi::PhysicalSize, window::Window};
+use winit::{
+    dpi::{PhysicalPosition, PhysicalSize},
+    window::Window,
+};
 
 pub const TITLE_IMAGE_ID: u32 = 1;
 pub const SEED_CHOOSER_IMAGE_ID: u32 = 2;
@@ -64,6 +67,29 @@ pub fn letterbox_rect(
         width,
         height,
     }
+}
+
+pub fn logical_position(
+    window_width: u32,
+    window_height: u32,
+    position: PhysicalPosition<f64>,
+    logical_viewport: LogicalViewport,
+) -> Option<(f32, f32)> {
+    let rect = letterbox_rect(window_width, window_height, logical_viewport);
+    if rect.width == 0
+        || position.x < f64::from(rect.x)
+        || position.y < f64::from(rect.y)
+        || position.x >= f64::from(rect.x + rect.width)
+        || position.y >= f64::from(rect.y + rect.height)
+    {
+        return None;
+    }
+
+    let scale = f64::from(rect.width) / f64::from(logical_viewport.width);
+    Some((
+        ((position.x - f64::from(rect.x)) / scale) as f32,
+        ((position.y - f64::from(rect.y)) / scale) as f32,
+    ))
 }
 
 #[derive(Clone, Debug, Eq, PartialEq)]
@@ -591,6 +617,28 @@ mod tests {
                 width: 800,
                 height: 600,
             }
+        );
+    }
+
+    #[test]
+    fn logical_position_ignores_letterbox_borders() {
+        assert_eq!(
+            logical_position(
+                1280,
+                720,
+                PhysicalPosition::new(10.0, 10.0),
+                LogicalViewport::default(),
+            ),
+            None
+        );
+        assert_eq!(
+            logical_position(
+                1280,
+                720,
+                PhysicalPosition::new(160.0, 0.0),
+                LogicalViewport::default(),
+            ),
+            Some((0.0, 0.0))
         );
     }
 

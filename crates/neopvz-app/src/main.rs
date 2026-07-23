@@ -10,13 +10,14 @@ use clap::Parser;
 use neopvz_core::{Game, InputAction, InputFrame, SaveError, SaveProfile, SceneKind};
 use neopvz_data::{AssetLayout, ResourceProvider};
 use neopvz_render::{
-    DAY_BACKGROUND_IMAGE_ID, GpuRenderer, ImageAsset, RenderFrame, SCREEN_PIXEL_IMAGE_ID,
-    SEED_CHOOSER_IMAGE_ID, SpriteCommand, TITLE_IMAGE_ID, UI_PIXEL_IMAGE_ID,
+    DAY_BACKGROUND_IMAGE_ID, GpuRenderer, ImageAsset, LogicalViewport, RenderFrame,
+    SCREEN_PIXEL_IMAGE_ID, SEED_CHOOSER_IMAGE_ID, SpriteCommand, TITLE_IMAGE_ID, UI_PIXEL_IMAGE_ID,
+    logical_position,
 };
 use winit::{
     application::ApplicationHandler,
-    dpi::LogicalSize,
-    event::{ElementState, WindowEvent},
+    dpi::{LogicalSize, PhysicalPosition},
+    event::{ElementState, MouseButton, WindowEvent},
     event_loop::{ActiveEventLoop, ControlFlow, EventLoop},
     keyboard::{KeyCode, PhysicalKey},
     window::{Window, WindowId},
@@ -188,6 +189,7 @@ struct App {
     pending_input: Vec<InputAction>,
     last_update: Option<Instant>,
     simulation_accumulator: Duration,
+    cursor_position: Option<PhysicalPosition<f64>>,
 }
 
 impl App {
@@ -199,6 +201,7 @@ impl App {
             pending_input: Vec::new(),
             last_update: None,
             simulation_accumulator: Duration::ZERO,
+            cursor_position: None,
         }
     }
 
@@ -257,6 +260,9 @@ impl App {
             KeyCode::Digit1 if self.game.state().scene == SceneKind::Day => {
                 self.pending_input.push(InputAction::SelectSeed { slot: 0 });
             }
+            KeyCode::Digit2 if self.game.state().scene == SceneKind::Day => {
+                self.pending_input.push(InputAction::SelectSeed { slot: 1 });
+            }
             KeyCode::KeyP if self.game.state().scene == SceneKind::Day => {
                 self.pending_input
                     .push(InputAction::Plant { row: 2, column: 2 });
@@ -270,6 +276,33 @@ impl App {
         self.pending_input.clear();
         self.simulation_accumulator = Duration::ZERO;
         self.last_update = Some(Instant::now());
+    }
+
+    fn handle_mouse_click(&mut self) {
+        if self.game.state().scene != SceneKind::Day {
+            return;
+        }
+        let Some(position) = self.cursor_position else {
+            return;
+        };
+        let Some((x, y)) = self.renderer.as_ref().and_then(|renderer| {
+            let size = renderer.window().inner_size();
+            logical_position(
+                size.width,
+                size.height,
+                position,
+                LogicalViewport::default(),
+            )
+        }) else {
+            return;
+        };
+        if !(80.0..800.0).contains(&x) || !(120.0..570.0).contains(&y) {
+            return;
+        }
+        self.pending_input.push(InputAction::Plant {
+            row: ((y - 120.0) / 90.0) as u8,
+            column: ((x - 80.0) / 80.0) as u8,
+        });
     }
 
     fn advance_simulation(&mut self) {
@@ -360,6 +393,14 @@ impl ApplicationHandler for App {
                     renderer.resize(size);
                 }
             }
+            WindowEvent::CursorMoved { position, .. } => {
+                self.cursor_position = Some(position);
+            }
+            WindowEvent::MouseInput {
+                state: ElementState::Pressed,
+                button: MouseButton::Left,
+                ..
+            } => self.handle_mouse_click(),
             WindowEvent::KeyboardInput { event, .. }
                 if event.state == ElementState::Pressed && !event.repeat =>
             {
