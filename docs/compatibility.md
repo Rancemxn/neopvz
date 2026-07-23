@@ -13,7 +13,7 @@ evidence; a reviewer assertion alone is never sufficient.
 Status is `verified`, `partial`, or `missing`. The progress quantity is the sum
 of `total - accepted` across all rows.
 
-Current baseline: **938 accepted / 1802 total; 864 unresolved**.
+Current baseline: **939 accepted / 1802 total; 863 unresolved**.
 
 ## Foundation and Boundaries
 
@@ -47,7 +47,7 @@ loader coverage. They do not authorize committing the manifest or its assets.
 
 | Obligation | Entity/effect domain | Accepted | Total | Status | Evidence / owner |
 |---|---|---:|---:|---|---|
-| ENT-PLANT | Plant definitions and player-observable behavior | 18 | 49 | partial | PRs `#27`, `#30`, `#33`, `#36`, `#39`, `#42`, `#44`, `#48`, `#50`, `#53`, `#56`, `#58`; runs `29969908209`/`29973097050`/`29973716257`/`29974169417`/`29974744365`/`29975305952`/`29975305940`/`29975652655`/`29975652651`/`29978884187`/`29978884201`/`29979356134`/`29979356138`/`29980230929`/`29980230938`/`29980841578`/`29980841574`/`30002936972`/`30002936877`; ignored local source/runtime records |
+| ENT-PLANT | Plant definitions and player-observable behavior | 19 | 49 | partial | PRs `#27`, `#30`, `#33`, `#36`, `#39`, `#42`, `#44`, `#48`, `#50`, `#53`, `#56`, `#58`, `#59`; runs `29969908209`/`29973097050`/`29973716257`/`29974169417`/`29974744365`/`29975305952`/`29975305940`/`29975652655`/`29975652651`/`29978884187`/`29978884201`/`29979356134`/`29979356138`/`29980230929`/`29980230938`/`29980841578`/`29980841574`/`30002936972`/`30002936877`/`30004214119`/`30004214079`; ignored local source/runtime records |
 | ENT-ZOMBIE | Zombie definitions and player-observable behavior | 1 | 33 | partial | PR `#27`; runs `29969908209`/`29969908244`; ignored local source/runtime records |
 | ENT-PROJECTILE | Projectile types and collision behavior | 5 | 14 | partial | PRs `#30`, `#33`, `#36`; runs `29973097050`/`29973716257`/`29974169417`; ignored local source/runtime records |
 | ENT-PICKUP | Sun, coins, prizes, and pickup behavior | 0 | 26 | missing | Issue `#5` |
@@ -59,8 +59,8 @@ loader coverage. They do not authorize committing the manifest or its assets.
 The current partial entity acceptance is intentionally narrow: Peashooter,
 Sunflower, SnowPea, Repeater, Threepeater, Starfruit, Cattail, Torchwood
 projectile conversion, SunShroom, TwinSunflower, CherryBomb, PotatoMine,
-Jalapeno, IceShroom, DoomShroom, Wallnut, Tallnut, and Chomper behavior; the
-normal zombie; and Pea, SnowPea, Melon, Star, and Spike projectile/collision
+Squash, Jalapeno, IceShroom, DoomShroom, Wallnut, Tallnut, and Chomper behavior;
+the normal zombie; and Pea, SnowPea, Melon, Star, and Spike projectile/collision
 behavior. Remaining definitions are unresolved until their player-observable
 rules and domain-matched evidence are implemented.
 
