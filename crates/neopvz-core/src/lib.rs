@@ -22,6 +22,11 @@ const SMALL_SUN_VALUE: u32 = 15;
 const INSTANT_PLANT_COUNTDOWN: u32 = 100;
 const POTATO_ARM_TICKS: u32 = 1_500;
 const PLANT_SPECIAL_DAMAGE: i32 = 1_800;
+const ICE_SHROOM_INITIAL_FREEZE_TICKS: u32 = 400;
+const ICE_SHROOM_REFRESH_FREEZE_TICKS: u32 = 300;
+const ICE_SHROOM_CHILL_TICKS: u32 = 2_000;
+const ICE_SHROOM_DAMAGE: i32 = 20;
+const BOARD_ICE_TICKS: u32 = 300;
 
 pub type Tick = u64;
 pub type EntityId = u32;
@@ -127,6 +132,10 @@ impl PlantType {
 
     fn is_jalapeno(self) -> bool {
         self.slot() == 20
+    }
+
+    fn is_ice_shroom(self) -> bool {
+        self.slot() == 14
     }
 
     fn is_shooter(self) -> bool {
@@ -739,6 +748,7 @@ pub struct ZombieState {
     pub max_health: i32,
     pub age: u32,
     pub groan_counter: i32,
+    pub frozen_counter: u32,
     pub chilled_counter: u32,
     pub eating: bool,
     pub from_wave: u32,
@@ -789,6 +799,7 @@ pub struct BoardState {
     pub wave: WaveState,
     pub sun_countdown: u32,
     pub suns_fallen: u32,
+    pub ice_counter: u32,
 }
 
 impl BoardState {
@@ -825,6 +836,7 @@ impl BoardState {
             },
             sun_countdown,
             suns_fallen: 0,
+            ice_counter: 0,
         }
     }
 
@@ -932,6 +944,10 @@ pub enum GameEvent {
         health_remaining: i32,
     },
     ZombieChilled {
+        entity: EntityId,
+        duration: u32,
+    },
+    ZombieFrozen {
         entity: EntityId,
         duration: u32,
     },
@@ -1158,6 +1174,7 @@ impl Game {
             self.update_seed_packets();
             self.update_sun_spawning(&mut events);
             self.update_wave_spawning(&mut events);
+            self.state.board.ice_counter = self.state.board.ice_counter.saturating_sub(1);
             self.state.tick = self.state.tick.saturating_add(1);
             self.state.wave = self.state.board.wave.current;
             events.push(GameEvent::StateChanged);
@@ -1300,14 +1317,16 @@ impl Game {
             self.rng.range_inclusive(0, launch_rate)
         };
         let max_health = plant_type.max_health();
-        let (special_counter, special_armed) =
-            if plant_type.is_cherry_bomb() || plant_type.is_jalapeno() {
-                (INSTANT_PLANT_COUNTDOWN, false)
-            } else if plant_type.is_potato_mine() {
-                (POTATO_ARM_TICKS, false)
-            } else {
-                (0, false)
-            };
+        let (special_counter, special_armed) = if plant_type.is_cherry_bomb()
+            || plant_type.is_jalapeno()
+            || plant_type.is_ice_shroom()
+        {
+            (INSTANT_PLANT_COUNTDOWN, false)
+        } else if plant_type.is_potato_mine() {
+            (POTATO_ARM_TICKS, false)
+        } else {
+            (0, false)
+        };
         self.state.board.plants.push(PlantState {
             id,
             plant_type,
@@ -1417,7 +1436,10 @@ impl Game {
             let mut special = false;
             {
                 let plant = &mut self.state.board.plants[index];
-                if plant_type.is_cherry_bomb() || plant_type.is_jalapeno() {
+                if plant_type.is_cherry_bomb()
+                    || plant_type.is_jalapeno()
+                    || plant_type.is_ice_shroom()
+                {
                     plant.special_counter = plant.special_counter.saturating_sub(1);
                     special = plant.special_counter == 0;
                 } else if plant_type.is_potato_mine() {
@@ -1519,6 +1541,85 @@ impl Game {
         column: u8,
         events: &mut Vec<GameEvent>,
     ) {
+        events.push(GameEvent::PlantSpecialTriggered {
+            entity: plant_id,
+            plant_type,
+        });
+
+        if plant_type.is_ice_shroom() {
+            self.state.board.ice_counter = BOARD_ICE_TICKS;
+            let target_ids = self
+                .state
+                .board
+                .zombies
+                .iter()
+                .filter(|zombie| zombie.health > 0)
+                .map(|zombie| zombie.id)
+                .collect::<Vec<_>>();
+
+            for zombie_id in target_ids {
+                let Some(zombie_index) = self
+                    .state
+                    .board
+                    .zombies
+                    .iter()
+                    .position(|zombie| zombie.id == zombie_id)
+                else {
+                    continue;
+                };
+
+                let zombie = &mut self.state.board.zombies[zombie_index];
+                let had_debuff = zombie.frozen_counter != 0 || zombie.chilled_counter != 0;
+                zombie.chilled_counter = zombie.chilled_counter.max(ICE_SHROOM_CHILL_TICKS);
+                events.push(GameEvent::ZombieChilled {
+                    entity: zombie_id,
+                    duration: ICE_SHROOM_CHILL_TICKS,
+                });
+
+                // The current implementation only exposes Normal zombies, which
+                // are freezeable in the target. Keep the eligibility decision
+                // explicit so future zombie types cannot inherit this blindly.
+                let can_freeze = matches!(zombie.zombie_type, ZombieType::Normal);
+                if can_freeze {
+                    let duration = if had_debuff {
+                        ICE_SHROOM_REFRESH_FREEZE_TICKS
+                    } else {
+                        ICE_SHROOM_INITIAL_FREEZE_TICKS
+                    };
+                    zombie.frozen_counter = zombie.frozen_counter.max(duration);
+                    events.push(GameEvent::ZombieFrozen {
+                        entity: zombie_id,
+                        duration,
+                    });
+
+                    zombie.health -= ICE_SHROOM_DAMAGE;
+                    let health_remaining = zombie.health;
+                    events.push(GameEvent::PlantSpecialHit {
+                        plant: plant_id,
+                        zombie: zombie_id,
+                        damage: ICE_SHROOM_DAMAGE,
+                        health_remaining,
+                    });
+                    if health_remaining <= 0 {
+                        self.state.board.zombies.remove(zombie_index);
+                        events.push(GameEvent::ZombieDied { entity: zombie_id });
+                    }
+                }
+            }
+
+            if let Some(plant) = self
+                .state
+                .board
+                .plants
+                .iter_mut()
+                .find(|plant| plant.id == plant_id)
+            {
+                plant.health = 0;
+            }
+            events.push(GameEvent::PlantDied { entity: plant_id });
+            return;
+        }
+
         let (radius, row_radius, row_wide) = if plant_type.is_potato_mine() {
             (60 * POSITION_SCALE, 0, false)
         } else if plant_type.is_jalapeno() {
@@ -1527,10 +1628,6 @@ impl Game {
             (115 * POSITION_SCALE, 1, false)
         };
         let center_x = grid_x(column);
-        events.push(GameEvent::PlantSpecialTriggered {
-            entity: plant_id,
-            plant_type,
-        });
         let target_ids = self
             .state
             .board
@@ -1581,15 +1678,17 @@ impl Game {
     fn update_zombies(&mut self, events: &mut Vec<GameEvent>) {
         let zombie_count = self.state.board.zombies.len() as u32;
         for zombie_index in 0..self.state.board.zombies.len() {
-            let (entity, row, position_x, age, was_eating) = {
+            let (entity, row, position_x, age, was_eating, frozen) = {
                 let zombie = &mut self.state.board.zombies[zombie_index];
                 zombie.age = zombie.age.saturating_add(1);
                 zombie.groan_counter -= 1;
+                zombie.frozen_counter = zombie.frozen_counter.saturating_sub(1);
                 zombie.chilled_counter = zombie.chilled_counter.saturating_sub(1);
                 if zombie.groan_counter == 0 && self.rng.range(zombie_count) == 0 {
                     zombie.groan_counter = (self.rng.range(1_000) + 500) as i32;
                 }
-                if !zombie.eating {
+                let frozen = zombie.frozen_counter != 0;
+                if !frozen && !zombie.eating {
                     let speed = if zombie.chilled_counter == 0 {
                         zombie.speed
                     } else {
@@ -1603,10 +1702,13 @@ impl Game {
                     zombie.position_x,
                     zombie.age,
                     zombie.eating,
+                    frozen,
                 )
             };
 
-            if age % 4 == 0 {
+            if frozen {
+                self.state.board.zombies[zombie_index].eating = false;
+            } else if age % 4 == 0 {
                 let target = self.find_plant_for_zombie(row, position_x);
                 self.state.board.zombies[zombie_index].eating = target.is_some();
                 if let Some(plant_index) = target {
@@ -2055,6 +2157,7 @@ impl Game {
             max_health: 270,
             age: 0,
             groan_counter,
+            frozen_counter: 0,
             chilled_counter: 0,
             eating: false,
             from_wave: wave,
@@ -2285,6 +2388,120 @@ mod tests {
 
         assert!(chilled);
         assert!(game.state.board.zombies[0].chilled_counter > 0);
+    }
+
+    #[test]
+    fn ice_shroom_freezes_every_normal_zombie_and_applies_target_damage() {
+        let mut game = Game::new(7, SceneKind::Day);
+        game.state.sun = 200;
+        game.advance(InputFrame {
+            actions: vec![
+                InputAction::SelectSeed { slot: 14 },
+                InputAction::Plant { row: 2, column: 2 },
+            ],
+        });
+        game.state.board.plants[0].special_counter = 1;
+        let center = grid_x(2);
+        let mut setup_events = Vec::new();
+        let first = game.spawn_normal_zombie(0, 0, Some(center), &mut setup_events);
+        let second = game.spawn_normal_zombie(4, 0, Some(center), &mut setup_events);
+        game.state.board.zombies[1].chilled_counter = 1;
+
+        let events = game.advance(InputFrame::default());
+
+        assert_eq!(game.state.board.ice_counter, BOARD_ICE_TICKS - 1);
+        assert!(game.state.board.plants.is_empty());
+        assert!(events.iter().any(|event| matches!(
+            event,
+            GameEvent::PlantSpecialTriggered {
+                plant_type: PlantType::Other(14),
+                ..
+            }
+        )));
+        assert_eq!(
+            events
+                .iter()
+                .filter(|event| matches!(
+                    event,
+                    GameEvent::ZombieChilled {
+                        duration: ICE_SHROOM_CHILL_TICKS,
+                        ..
+                    }
+                ))
+                .count(),
+            2
+        );
+        assert!(events.iter().any(|event| matches!(
+            event,
+            GameEvent::ZombieFrozen {
+                entity,
+                duration: ICE_SHROOM_INITIAL_FREEZE_TICKS,
+            } if *entity == first
+        )));
+        assert!(events.iter().any(|event| matches!(
+            event,
+            GameEvent::ZombieFrozen {
+                entity,
+                duration: ICE_SHROOM_REFRESH_FREEZE_TICKS,
+            } if *entity == second
+        )));
+        assert_eq!(
+            events
+                .iter()
+                .filter(|event| matches!(
+                    event,
+                    GameEvent::PlantSpecialHit {
+                        damage: ICE_SHROOM_DAMAGE,
+                        ..
+                    }
+                ))
+                .count(),
+            2
+        );
+        assert!(
+            game.state
+                .board
+                .zombies
+                .iter()
+                .all(|zombie| zombie.health == 270 - ICE_SHROOM_DAMAGE)
+        );
+    }
+
+    #[test]
+    fn frozen_zombies_do_not_move_or_eat_until_the_counter_expires() {
+        let mut game = Game::new(7, SceneKind::Day);
+        game.state.sun = 200;
+        game.advance(InputFrame {
+            actions: vec![
+                InputAction::SelectSeed { slot: 14 },
+                InputAction::Plant { row: 2, column: 2 },
+            ],
+        });
+        game.state.board.plants[0].special_counter = 1;
+        let mut setup_events = Vec::new();
+        let zombie = game.spawn_normal_zombie(2, 0, Some(500 * POSITION_SCALE), &mut setup_events);
+        let before = game
+            .state
+            .board
+            .zombies
+            .iter()
+            .find(|candidate| candidate.id == zombie)
+            .expect("spawned zombie")
+            .position_x;
+
+        game.advance(InputFrame::default());
+
+        let frozen = game
+            .state
+            .board
+            .zombies
+            .iter()
+            .find(|candidate| candidate.id == zombie)
+            .expect("frozen zombie")
+            .clone();
+        assert_eq!(frozen.position_x, before);
+        assert!(!frozen.eating);
+        assert!(frozen.frozen_counter > 0);
     }
 
     #[test]
