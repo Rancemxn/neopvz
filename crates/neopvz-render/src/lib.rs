@@ -10,6 +10,7 @@ pub const TITLE_IMAGE_ID: u32 = 1;
 pub const SEED_CHOOSER_IMAGE_ID: u32 = 2;
 pub const DAY_BACKGROUND_IMAGE_ID: u32 = 3;
 pub const UI_PIXEL_IMAGE_ID: u32 = 4;
+pub const SCREEN_PIXEL_IMAGE_ID: u32 = 5;
 
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub struct LogicalViewport {

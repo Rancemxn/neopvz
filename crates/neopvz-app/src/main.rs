@@ -10,8 +10,8 @@ use clap::Parser;
 use neopvz_core::{Game, InputAction, InputFrame, SaveError, SaveProfile, SceneKind};
 use neopvz_data::{AssetLayout, ResourceProvider};
 use neopvz_render::{
-    DAY_BACKGROUND_IMAGE_ID, GpuRenderer, ImageAsset, RenderFrame, SEED_CHOOSER_IMAGE_ID,
-    SpriteCommand, TITLE_IMAGE_ID, UI_PIXEL_IMAGE_ID,
+    DAY_BACKGROUND_IMAGE_ID, GpuRenderer, ImageAsset, RenderFrame, SCREEN_PIXEL_IMAGE_ID,
+    SEED_CHOOSER_IMAGE_ID, SpriteCommand, TITLE_IMAGE_ID, UI_PIXEL_IMAGE_ID,
 };
 use winit::{
     application::ApplicationHandler,
@@ -159,6 +159,10 @@ fn load_assets(resources: &ResourceProvider) -> Result<Vec<ImageAsset>, String> 
         ImageAsset::new(UI_PIXEL_IMAGE_ID, 1, 1, vec![70, 180, 80, 255])
             .map_err(|error| error.to_string())?,
     );
+    assets.push(
+        ImageAsset::new(SCREEN_PIXEL_IMAGE_ID, 1, 1, vec![16, 24, 32, 255])
+            .map_err(|error| error.to_string())?,
+    );
     Ok(assets)
 }
 
@@ -299,14 +303,24 @@ impl App {
                 scale: 1.0,
                 alpha: 1.0,
             }),
-            SceneKind::SeedChooser => frame.sprites.push(SpriteCommand {
-                resource_id: SEED_CHOOSER_IMAGE_ID,
-                x: 0.0,
-                y: 0.0,
-                z: 0,
-                scale: 1.0,
-                alpha: 1.0,
-            }),
+            SceneKind::SeedChooser => {
+                frame.sprites.push(SpriteCommand {
+                    resource_id: SCREEN_PIXEL_IMAGE_ID,
+                    x: 0.0,
+                    y: 0.0,
+                    z: -1,
+                    scale: 800.0,
+                    alpha: 1.0,
+                });
+                frame.sprites.push(SpriteCommand {
+                    resource_id: SEED_CHOOSER_IMAGE_ID,
+                    x: 167.5,
+                    y: 43.5,
+                    z: 0,
+                    scale: 1.0,
+                    alpha: 1.0,
+                });
+            }
             SceneKind::Day => {
                 frame.sprites.push(SpriteCommand {
                     resource_id: DAY_BACKGROUND_IMAGE_ID,
