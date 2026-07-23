@@ -27,7 +27,9 @@
 - Dependencies default to the latest stable versions. They may be changed when implementation evidence requires it.
 - When a direct dependency is confirmed, use the version actually selected by `neopvz`'s manifest and `Cargo.lock` as the source of truth. Clone the upstream repository into the single ignored `third_party-src/` directory at the repository root, then check out that exact tag or commit before consulting it. Do not leave the clone on a different default-branch version or commit `third_party-src/`.
 - Use issues, pull requests, milestones, and Actions to drive development. Do not create tags or releases until the project is stable.
-- Search files with `fd`, `sg`, or `rg`; list directories with `eza`.
+- Search files with `fd`, `sg`, or `rg`; list directories with `eza`. Use `jq`
+  for structured JSON inspection and transformation, including `gh` and API
+  output; do not parse JSON with ad hoc text manipulation.
 - Do not manually convert numeric representations. Use the configured IDA `int_convert` MCP tool for reverse-engineering values and Math MCP for calculations.
 - Use the current Tavily MCP namespace (`mcp__tavily_hikari__*`) as the default
   web search and research path, not Context7. Reserve Context7 for an explicit
