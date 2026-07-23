@@ -19,6 +19,9 @@ const MAX_SUN: u32 = 9_990;
 const MAX_SEED_SLOTS: u8 = 53;
 const SUNSHROOM_GROWTH_TICKS: u32 = 12_000;
 const SMALL_SUN_VALUE: u32 = 15;
+const INSTANT_PLANT_COUNTDOWN: u32 = 100;
+const POTATO_ARM_TICKS: u32 = 1_500;
+const PLANT_SPECIAL_DAMAGE: i32 = 1_800;
 
 pub type Tick = u64;
 pub type EntityId = u32;
@@ -112,6 +115,14 @@ impl PlantType {
 
     fn is_twin_sunflower(self) -> bool {
         self.slot() == 41
+    }
+
+    fn is_cherry_bomb(self) -> bool {
+        self.slot() == 2
+    }
+
+    fn is_potato_mine(self) -> bool {
+        self.slot() == 4
     }
 
     fn is_shooter(self) -> bool {
@@ -708,6 +719,8 @@ pub struct PlantState {
     pub burst_delay: u32,
     pub production_age: u32,
     pub production_stage: u8,
+    pub special_counter: u32,
+    pub special_armed: bool,
     pub blink_counter: u32,
 }
 
@@ -866,6 +879,16 @@ pub enum GameEvent {
     },
     PlantDied {
         entity: EntityId,
+    },
+    PlantSpecialTriggered {
+        entity: EntityId,
+        plant_type: PlantType,
+    },
+    PlantSpecialHit {
+        plant: EntityId,
+        zombie: EntityId,
+        damage: i32,
+        health_remaining: i32,
     },
     SunProduced {
         entity: EntityId,
@@ -1273,6 +1296,13 @@ impl Game {
             self.rng.range_inclusive(0, launch_rate)
         };
         let max_health = plant_type.max_health();
+        let (special_counter, special_armed) = if plant_type.is_cherry_bomb() {
+            (INSTANT_PLANT_COUNTDOWN, false)
+        } else if plant_type.is_potato_mine() {
+            (POTATO_ARM_TICKS, false)
+        } else {
+            (0, false)
+        };
         self.state.board.plants.push(PlantState {
             id,
             plant_type,
@@ -1287,6 +1317,8 @@ impl Game {
             burst_delay: 0,
             production_age: 0,
             production_stage: 0,
+            special_counter,
+            special_armed,
             blink_counter,
         });
         events.push(GameEvent::PlantPlaced {
@@ -1367,12 +1399,32 @@ impl Game {
                     _ => row_distance == 0 && zombie.position_x > plant_attack_start(column),
                 }
             });
+            let potato_trigger = plant_type.is_potato_mine()
+                && self.state.board.zombies.iter().any(|zombie| {
+                    zombie.health > 0
+                        && zombie.row == row
+                        && (zombie.position_x - grid_x(column)).abs() <= 60 * POSITION_SCALE
+                });
 
             let mut fire = false;
             let mut produce_suns = 0;
             let mut produce_value = 25;
+            let mut special = false;
             {
                 let plant = &mut self.state.board.plants[index];
+                if plant_type.is_cherry_bomb() {
+                    plant.special_counter = plant.special_counter.saturating_sub(1);
+                    special = plant.special_counter == 0;
+                } else if plant_type.is_potato_mine() {
+                    if plant.special_armed {
+                        special = potato_trigger;
+                    } else {
+                        plant.special_counter = plant.special_counter.saturating_sub(1);
+                        if plant.special_counter == 0 {
+                            plant.special_armed = true;
+                        }
+                    }
+                }
                 if plant_type.is_sunshroom() {
                     plant.production_age = plant.production_age.saturating_add(1);
                     if plant.production_age >= SUNSHROOM_GROWTH_TICKS {
@@ -1427,6 +1479,10 @@ impl Game {
             if fire {
                 self.fire_projectiles(id, plant_type, row, column, events);
             }
+            if special {
+                self.trigger_plant_special(id, plant_type, row, column, events);
+                continue;
+            }
             for _ in 0..produce_suns {
                 self.spawn_sun_value(
                     SunSource::Plant(id),
@@ -1447,6 +1503,72 @@ impl Game {
                 plant.blink_counter -= 1;
             }
         }
+        self.state.board.plants.retain(|plant| plant.health > 0);
+    }
+
+    fn trigger_plant_special(
+        &mut self,
+        plant_id: EntityId,
+        plant_type: PlantType,
+        row: u8,
+        column: u8,
+        events: &mut Vec<GameEvent>,
+    ) {
+        let (radius, row_radius) = if plant_type.is_potato_mine() {
+            (60 * POSITION_SCALE, 0)
+        } else {
+            (115 * POSITION_SCALE, 1)
+        };
+        let center_x = grid_x(column);
+        events.push(GameEvent::PlantSpecialTriggered {
+            entity: plant_id,
+            plant_type,
+        });
+        let target_ids = self
+            .state
+            .board
+            .zombies
+            .iter()
+            .filter(|zombie| {
+                zombie.health > 0
+                    && zombie.row.abs_diff(row) <= row_radius
+                    && (zombie.position_x - center_x).abs() <= radius
+            })
+            .map(|zombie| zombie.id)
+            .collect::<Vec<_>>();
+        for zombie_id in target_ids {
+            let Some(zombie_index) = self
+                .state
+                .board
+                .zombies
+                .iter()
+                .position(|zombie| zombie.id == zombie_id)
+            else {
+                continue;
+            };
+            self.state.board.zombies[zombie_index].health -= PLANT_SPECIAL_DAMAGE;
+            let health_remaining = self.state.board.zombies[zombie_index].health;
+            events.push(GameEvent::PlantSpecialHit {
+                plant: plant_id,
+                zombie: zombie_id,
+                damage: PLANT_SPECIAL_DAMAGE,
+                health_remaining,
+            });
+            if health_remaining <= 0 {
+                self.state.board.zombies.remove(zombie_index);
+                events.push(GameEvent::ZombieDied { entity: zombie_id });
+            }
+        }
+        if let Some(plant) = self
+            .state
+            .board
+            .plants
+            .iter_mut()
+            .find(|plant| plant.id == plant_id)
+        {
+            plant.health = 0;
+        }
+        events.push(GameEvent::PlantDied { entity: plant_id });
     }
 
     fn update_zombies(&mut self, events: &mut Vec<GameEvent>) {
@@ -2271,6 +2393,66 @@ mod tests {
             2
         );
         assert_eq!(game.state.board.suns.len(), 2);
+    }
+
+    #[test]
+    fn cherry_bomb_explodes_in_its_radius() {
+        let mut game = Game::new(7, SceneKind::Day);
+        game.state.sun = 250;
+        game.advance(InputFrame {
+            actions: vec![
+                InputAction::SelectSeed { slot: 2 },
+                InputAction::Plant { row: 2, column: 2 },
+            ],
+        });
+        game.state.board.plants[0].special_counter = 1;
+        let center = grid_x(2);
+        let mut setup_events = Vec::new();
+        game.spawn_normal_zombie(2, 0, Some(center), &mut setup_events);
+        game.spawn_normal_zombie(3, 0, Some(center), &mut setup_events);
+
+        let events = game.advance(InputFrame::default());
+
+        assert!(events.iter().any(|event| matches!(
+            event,
+            GameEvent::PlantSpecialTriggered {
+                plant_type: PlantType::Other(2),
+                ..
+            }
+        )));
+        assert!(game.state.board.plants.is_empty());
+        assert!(game.state.board.zombies.is_empty());
+    }
+
+    #[test]
+    fn potato_mine_arms_before_triggering() {
+        let mut game = Game::new(7, SceneKind::Day);
+        game.state.sun = 100;
+        game.advance(InputFrame {
+            actions: vec![
+                InputAction::SelectSeed { slot: 4 },
+                InputAction::Plant { row: 2, column: 2 },
+            ],
+        });
+        game.state.board.plants[0].special_counter = 1;
+        let center = grid_x(2);
+        let mut setup_events = Vec::new();
+        game.spawn_normal_zombie(2, 0, Some(center + 50 * POSITION_SCALE), &mut setup_events);
+
+        game.advance(InputFrame::default());
+        assert!(game.state.board.plants[0].special_armed);
+        assert_eq!(game.state.board.zombies.len(), 1);
+
+        let events = game.advance(InputFrame::default());
+        assert!(events.iter().any(|event| matches!(
+            event,
+            GameEvent::PlantSpecialTriggered {
+                plant_type: PlantType::Other(4),
+                ..
+            }
+        )));
+        assert!(game.state.board.plants.is_empty());
+        assert!(game.state.board.zombies.is_empty());
     }
 
     #[test]
