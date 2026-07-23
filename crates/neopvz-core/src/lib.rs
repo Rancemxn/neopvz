@@ -2,6 +2,13 @@ use serde::{Deserialize, Serialize};
 use sha2::{Digest, Sha256};
 use thiserror::Error;
 
+mod save;
+
+pub use save::{
+    GardenPlant, GardenState, ModeCompletion, ModeKind, SaveError, SaveInventory, SaveProfile,
+    SaveSettings, SAVE_FORMAT_VERSION,
+};
+
 pub const LOGICAL_WIDTH: u32 = 800;
 pub const LOGICAL_HEIGHT: u32 = 600;
 pub const SIMULATION_HZ: u32 = 100;
@@ -97,7 +104,7 @@ impl PlantType {
         }
     }
 
-    fn slot(self) -> u8 {
+    pub(crate) fn slot(self) -> u8 {
         match self {
             Self::Peashooter => 0,
             Self::Sunflower => 1,
