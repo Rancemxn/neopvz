@@ -18,6 +18,8 @@ jobs:
   full-gate:
     name: full gate (ubuntu-latest)
     runs-on: ubuntu-latest
+    env:
+      NEOPVZ_BUILD_ID: ${{ github.sha }}
 
     steps:
       - name: Check out source
