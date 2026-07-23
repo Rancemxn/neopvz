@@ -13,7 +13,7 @@ evidence; a reviewer assertion alone is never sufficient.
 Status is `verified`, `partial`, or `missing`. The progress quantity is the sum
 of `total - accepted` across all rows.
 
-Current baseline: **962 accepted / 1802 total; 840 unresolved**.
+Current baseline: **963 accepted / 1802 total; 839 unresolved**.
 
 ## Foundation and Boundaries
 
@@ -80,7 +80,7 @@ player-observable rules and domain-matched evidence are implemented.
 | Obligation | Behavior domain | Accepted | Total | Status | Evidence / owner |
 |---|---|---:|---:|---|---|
 | UI-SCREEN | Loading, title, menu, selector, seed chooser, HUD, pause, options, help, almanac, shop, and result flows | 3 | 12 | partial | PR `#64`, runs `30030645194`/`30030645257` and `30048802223`/`30048802288`, ignored `artifacts/windows-7de9f1d/verification.md`/`artifacts/windows-beb00d3/verification.md`; selector/adventure tutorial route accepted; seed chooser remains partial; Issues `#2`, `#17` |
-| INPUT-ACTION | Mouse, keyboard, hover, click, drag, placement, pause, restart, and command-line resource selection | 6 | 8 | partial | PR `#64`, commits `547f99b`/`514906c`, title mouse start, seed-chooser start and card selection, left-click placement, and Space pause/resume in ignored `artifacts/windows-a6c3f53/verification.md`/`artifacts/windows-aa443d7/verification.md`/`artifacts/windows-23f3f67/verification.md`/`artifacts/windows-514906c/verification.md`; runs `30054043147`/`30054043130`; Issue `#17` |
+| INPUT-ACTION | Mouse, keyboard, hover, click, drag, placement, pause, restart, and command-line resource selection | 7 | 8 | partial | PR `#64`, commits `547f99b`/`514906c`, title mouse start, seed-chooser start/card selection and keyboard selection, left-click placement, and Space pause/resume in ignored `artifacts/windows-a6c3f53/verification.md`/`artifacts/windows-aa443d7/verification.md`/`artifacts/windows-23f3f67/verification.md`/`artifacts/windows-514906c/verification.md`/`artifacts/windows-514906c/verification-keyboard.md`; runs `30054043147`/`30054043130`; Issue `#17` |
 | SAVE-PROGRESSION | Profile, settings, unlocks, awards, inventory, garden, mode completion, and load compatibility | 8 | 8 | verified | PR `#61`, runs `30024232209`/`30024232459`, ignored local record |
 | PLATFORM-CONTRACT | Logical viewport, window/fullscreen behavior, DPI, audio device, and external-path behavior | 4 | 6 | partial | PR `#64`, 800x600 logical viewport, window startup, DPI-aware 1000x750 client capture, and external `--data-dir` launch in ignored `artifacts/windows-7de9f1d/verification.md`; Issue `#17` |
 
