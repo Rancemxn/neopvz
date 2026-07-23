@@ -129,10 +129,21 @@ impl PlantType {
     }
 
     fn burst_count(self) -> u8 {
-        match self.slot() {
-            7 => 2,
-            40 => 4,
+        match self.firing_pattern() {
+            FiringPattern::Burst(count) => count,
             _ => 1,
+        }
+    }
+
+    fn firing_pattern(self) -> FiringPattern {
+        match self.slot() {
+            7 => FiringPattern::Burst(2),
+            18 => FiringPattern::ThreeRow,
+            28 => FiringPattern::Split,
+            29 => FiringPattern::Star,
+            40 => FiringPattern::Burst(4),
+            52 => FiringPattern::Backward,
+            _ => FiringPattern::Single,
         }
     }
 
@@ -574,6 +585,16 @@ struct ProjectileTrajectory {
     position_y: i64,
     velocity_x: i64,
     velocity_y: i64,
+}
+
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+enum FiringPattern {
+    Single,
+    Burst(u8),
+    ThreeRow,
+    Split,
+    Star,
+    Backward,
 }
 
 impl ProjectileType {
@@ -1280,14 +1301,16 @@ impl Game {
                     return false;
                 }
                 let row_distance = zombie.row.abs_diff(row);
-                match plant_type.slot() {
-                    18 | 29 => row_distance <= 2,
-                    28 => {
+                match plant_type.firing_pattern() {
+                    FiringPattern::ThreeRow | FiringPattern::Star => row_distance <= 2,
+                    FiringPattern::Split => {
                         row_distance == 0
                             && (zombie.position_x > plant_attack_start(column)
                                 || zombie.position_x < grid_x(column))
                     }
-                    52 => row_distance == 0 && zombie.position_x < grid_x(column),
+                    FiringPattern::Backward => {
+                        row_distance == 0 && zombie.position_x < grid_x(column)
+                    }
                     _ => row_distance == 0 && zombie.position_x > plant_attack_start(column),
                 }
             });
@@ -1530,8 +1553,8 @@ impl Game {
         let projectile_type = plant_type.projectile_type();
         let position_x = grid_x(column) + 60 * POSITION_SCALE;
         let position_y = grid_y(row);
-        match plant_type.slot() {
-            18 => {
+        match plant_type.firing_pattern() {
+            FiringPattern::ThreeRow => {
                 for target_row in [
                     row.checked_sub(1),
                     Some(row),
@@ -1556,7 +1579,7 @@ impl Game {
                     );
                 }
             }
-            28 => {
+            FiringPattern::Split => {
                 self.fire_projectile(
                     source,
                     projectile_type,
@@ -1584,7 +1607,7 @@ impl Game {
                     events,
                 );
             }
-            29 => {
+            FiringPattern::Star => {
                 for (velocity_x, velocity_y) in [
                     (-3_330_000, 0),
                     (0, 3_330_000),
@@ -1607,7 +1630,7 @@ impl Game {
                     );
                 }
             }
-            52 => self.fire_projectile(
+            FiringPattern::Backward => self.fire_projectile(
                 source,
                 projectile_type,
                 row,
