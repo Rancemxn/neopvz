@@ -18,7 +18,9 @@ use neopvz_render::{
     CRAZY_DAVE_OUTER_FINGER1_IMAGE_ID, CRAZY_DAVE_OUTER_FINGER2_IMAGE_ID,
     CRAZY_DAVE_OUTER_FINGER3_IMAGE_ID, CRAZY_DAVE_OUTER_FINGER4_IMAGE_ID,
     CRAZY_DAVE_OUTER_HAND_IMAGE_ID, CRAZY_DAVE_POT_IMAGE_ID, DAY_BACKGROUND_IMAGE_ID, GpuRenderer,
-    ImageAsset, LogicalViewport, RenderFrame, SCREEN_PIXEL_IMAGE_ID, SEED_CHOOSER_IMAGE_ID,
+    ImageAsset, LogicalViewport, RenderFrame, SCREEN_PIXEL_IMAGE_ID, SEED_CHOOSER_BUTTON_IMAGE_ID,
+    SEED_CHOOSER_IMAGE_ID, SEED_CHOOSER_TITLE_IMAGE_ID, SEED_PACKET_NORMAL_IMAGE_ID,
+    SEED_PACKET_SILHOUETTE_IMAGE_ID, SEED_PEASHOOTER_IMAGE_ID, SEED_SUNFLOWER_IMAGE_ID,
     SELECTOR_ADVENTURE_IMAGE_ID, SELECTOR_ALMANAC_IMAGE_ID, SELECTOR_BASE_IMAGE_ID,
     SELECTOR_CENTER_IMAGE_ID, SELECTOR_CHALLENGES_IMAGE_ID, SELECTOR_HELP_IMAGE_ID,
     SELECTOR_LEAVES_IMAGE_ID, SELECTOR_LEFT_IMAGE_ID, SELECTOR_OPTIONS_IMAGE_ID,
@@ -381,6 +383,42 @@ fn load_assets(resources: &ResourceProvider) -> Result<Vec<ImageAsset>, String> 
             resources,
             SEED_CHOOSER_IMAGE_ID,
             "images/SeedChooser_Background.png",
+        )?,
+        load_cropped_image(
+            resources,
+            SEED_PACKET_NORMAL_IMAGE_ID,
+            "images/seeds.png",
+            100,
+            0,
+            50,
+            70,
+        )?,
+        load_image(
+            resources,
+            SEED_PACKET_SILHOUETTE_IMAGE_ID,
+            "images/SeedPacketSilhouette.png",
+        )?,
+        load_image(
+            resources,
+            SEED_PEASHOOTER_IMAGE_ID,
+            "reanim/PeaShooter_Head.png",
+        )?,
+        load_image(
+            resources,
+            SEED_SUNFLOWER_IMAGE_ID,
+            "reanim/SunFlower_head.png",
+        )?,
+        load_image(
+            resources,
+            SEED_CHOOSER_BUTTON_IMAGE_ID,
+            "images/SeedChooser_Button.png",
+        )?,
+        render_text_image(
+            SEED_CHOOSER_TITLE_IMAGE_ID,
+            "\u{9009}\u{62e9}\u{4f60}\u{7684}\u{690d}\u{7269}",
+            220,
+            32,
+            18,
         )?,
         load_image(resources, DAY_BACKGROUND_IMAGE_ID, "images/background1.jpg")?,
     ];
@@ -864,6 +902,7 @@ impl App {
             && scene != SceneKind::Day
             && scene != SceneKind::AdventureSelect
             && scene != SceneKind::AdventureTutorial
+            && scene != SceneKind::SeedChooser
         {
             return;
         }
@@ -896,6 +935,12 @@ impl App {
         if scene == SceneKind::AdventureTutorial {
             if (285.0..565.0).contains(&x) && (20.0..190.0).contains(&y) {
                 self.advance_tutorial();
+            }
+            return;
+        }
+        if scene == SceneKind::SeedChooser {
+            if (322.0..478.0).contains(&x) && (535.0..577.0).contains(&y) {
+                self.start_scene(SceneKind::Day);
             }
             return;
         }
@@ -1088,6 +1133,47 @@ impl App {
                     x: 167.5,
                     y: 43.5,
                     z: 0,
+                    scale: 1.0,
+                    alpha: 1.0,
+                });
+                frame.sprites.push(SpriteCommand {
+                    resource_id: SEED_CHOOSER_TITLE_IMAGE_ID,
+                    x: 290.0,
+                    y: 94.0,
+                    z: 2,
+                    scale: 1.0,
+                    alpha: 1.0,
+                });
+                for column in 2..8 {
+                    frame.sprites.push(SpriteCommand {
+                        resource_id: SEED_PACKET_SILHOUETTE_IMAGE_ID,
+                        x: 189.5 + column as f32 * 53.0,
+                        y: 171.5,
+                        z: 2,
+                        scale: 1.0,
+                        alpha: 1.0,
+                    });
+                }
+                for (resource_id, x, y, scale) in [
+                    (SEED_PACKET_NORMAL_IMAGE_ID, 189.5, 171.5, 1.0),
+                    (SEED_PEASHOOTER_IMAGE_ID, 196.5, 181.0, 0.5),
+                    (SEED_PACKET_NORMAL_IMAGE_ID, 242.5, 171.5, 1.0),
+                    (SEED_SUNFLOWER_IMAGE_ID, 250.5, 184.0, 0.6),
+                ] {
+                    frame.sprites.push(SpriteCommand {
+                        resource_id,
+                        x,
+                        y,
+                        z: 3,
+                        scale,
+                        alpha: 1.0,
+                    });
+                }
+                frame.sprites.push(SpriteCommand {
+                    resource_id: SEED_CHOOSER_BUTTON_IMAGE_ID,
+                    x: 322.0,
+                    y: 535.0,
+                    z: 3,
                     scale: 1.0,
                     alpha: 1.0,
                 });

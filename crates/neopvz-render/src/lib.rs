@@ -57,6 +57,12 @@ pub const CRAZY_DAVE_OUTER_FINGER4_IMAGE_ID: u32 = 45;
 pub const TUTORIAL_TEXT1_IMAGE_ID: u32 = 46;
 pub const TUTORIAL_TEXT2_IMAGE_ID: u32 = 47;
 pub const TUTORIAL_CONTINUE_IMAGE_ID: u32 = 48;
+pub const SEED_PACKET_NORMAL_IMAGE_ID: u32 = 49;
+pub const SEED_PEASHOOTER_IMAGE_ID: u32 = 50;
+pub const SEED_SUNFLOWER_IMAGE_ID: u32 = 51;
+pub const SEED_CHOOSER_BUTTON_IMAGE_ID: u32 = 52;
+pub const SEED_CHOOSER_TITLE_IMAGE_ID: u32 = 53;
+pub const SEED_PACKET_SILHOUETTE_IMAGE_ID: u32 = 54;
 
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub struct LogicalViewport {
