@@ -9,6 +9,13 @@
   table alone is not evidence that a plant, zombie, projectile, mode, or UI rule
   is implemented. Record an item only after a focused behavioral test, replay,
   or captured runtime observation supports it.
+- Evidence priority is strict: establish facts from same-version local evidence
+  first—the 1.0.0.1051 executable/runtime, cleaned IDB, function table, local
+  headers/resources, or independently authored local observation scripts. Web
+  search and Tavily results are hypothesis leads only; they must not set target
+  constants, retire ledger entries, or serve as acceptance evidence until
+  cross-checked against identifiable same-version local evidence. If provenance
+  or version identity is uncertain, leave the behavior unresolved.
 - Keep reverse-engineered data readable and auditable. Prefer explicit named
   definitions and small helpers over opaque positional tables or copied quirks;
   retain an original detail only when it changes player-visible behavior,
