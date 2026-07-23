@@ -1575,21 +1575,20 @@ impl Game {
             if fire {
                 self.fire_projectiles(id, plant_type, row, column, events);
             }
-            if let Some(zombie_id) = chomper_bite_target {
-                if let Some(zombie_index) = self
+            if let Some(zombie_id) = chomper_bite_target
+                && let Some(zombie_index) = self
                     .state
                     .board
                     .zombies
                     .iter()
                     .position(|zombie| zombie.id == zombie_id && zombie.health > 0)
-                {
-                    self.state.board.zombies.remove(zombie_index);
-                    events.push(GameEvent::PlantSpecialTriggered {
-                        entity: id,
-                        plant_type,
-                    });
-                    events.push(GameEvent::ZombieDied { entity: zombie_id });
-                }
+            {
+                self.state.board.zombies.remove(zombie_index);
+                events.push(GameEvent::PlantSpecialTriggered {
+                    entity: id,
+                    plant_type,
+                });
+                events.push(GameEvent::ZombieDied { entity: zombie_id });
             }
             if special {
                 self.trigger_plant_special(id, plant_type, row, column, events);
