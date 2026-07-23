@@ -142,8 +142,17 @@ impl PlantType {
             28 => FiringPattern::Split,
             29 => FiringPattern::Star,
             40 => FiringPattern::Burst(4),
+            43 => FiringPattern::Homing,
             52 => FiringPattern::Backward,
             _ => FiringPattern::Single,
+        }
+    }
+
+    fn projectile_motion(self) -> ProjectileMotion {
+        if self.firing_pattern() == FiringPattern::Homing {
+            ProjectileMotion::Homing
+        } else {
+            self.projectile_type().motion()
         }
     }
 
@@ -594,6 +603,7 @@ enum FiringPattern {
     ThreeRow,
     Split,
     Star,
+    Homing,
     Backward,
 }
 
@@ -1336,6 +1346,7 @@ impl Game {
                             && (zombie.position_x > plant_attack_start(column)
                                 || zombie.position_x < grid_x(column))
                     }
+                    FiringPattern::Homing => true,
                     FiringPattern::Backward => {
                         row_distance == 0 && zombie.position_x < grid_x(column)
                     }
@@ -1469,6 +1480,9 @@ impl Game {
     fn update_projectiles(&mut self, events: &mut Vec<GameEvent>) {
         let mut projectile_index = 0;
         while projectile_index < self.state.board.projectiles.len() {
+            if self.state.board.projectiles[projectile_index].motion == ProjectileMotion::Homing {
+                self.steer_homing_projectile(projectile_index);
+            }
             {
                 let projectile = &mut self.state.board.projectiles[projectile_index];
                 projectile.age = projectile.age.saturating_add(1);
@@ -1517,6 +1531,34 @@ impl Game {
                 projectile_index += 1;
             }
         }
+    }
+
+    fn steer_homing_projectile(&mut self, projectile_index: usize) {
+        let projectile = &self.state.board.projectiles[projectile_index];
+        let current_row =
+            projectile_row(projectile.position_y, self.state.board.rows).unwrap_or(projectile.row);
+        let target_row = self
+            .state
+            .board
+            .zombies
+            .iter()
+            .filter(|zombie| zombie.health > 0)
+            .min_by_key(|zombie| {
+                (
+                    (zombie.position_x - projectile.position_x).abs(),
+                    zombie.row.abs_diff(current_row),
+                )
+            })
+            .map(|zombie| zombie.row);
+        let Some(target_row) = target_row else {
+            return;
+        };
+        let projectile = &mut self.state.board.projectiles[projectile_index];
+        projectile.velocity_y = match target_row.cmp(&current_row) {
+            std::cmp::Ordering::Less => -3_330_000,
+            std::cmp::Ordering::Equal => 0,
+            std::cmp::Ordering::Greater => 3_330_000,
+        };
     }
 
     fn apply_projectile_chill(
@@ -1759,7 +1801,7 @@ impl Game {
                 projectile_type,
                 row,
                 ProjectileTrajectory {
-                    motion: projectile_type.motion(),
+                    motion: plant_type.projectile_motion(),
                     position_x,
                     position_y,
                     velocity_x: 3_330_000,
@@ -2096,6 +2138,27 @@ mod tests {
 
         assert!(splash);
         assert_eq!(game.state.board.zombies[1].health, 244);
+    }
+
+    #[test]
+    fn cattail_homes_across_rows() {
+        let mut game = Game::new(7, SceneKind::Day);
+        game.state.sun = 500;
+        game.advance(InputFrame {
+            actions: vec![
+                InputAction::SelectSeed { slot: 43 },
+                InputAction::Plant { row: 2, column: 0 },
+            ],
+        });
+        game.state.board.plants[0].launch_counter = 1;
+        let mut setup_events = Vec::new();
+        let zombie = game.spawn_normal_zombie(4, 0, Some(500 * POSITION_SCALE), &mut setup_events);
+
+        let hit = (0..200)
+            .flat_map(|_| game.advance(InputFrame::default()))
+            .any(|event| matches!(event, GameEvent::ProjectileHit { zombie: hit_zombie, .. } if hit_zombie == zombie));
+
+        assert!(hit);
     }
 
     #[test]
