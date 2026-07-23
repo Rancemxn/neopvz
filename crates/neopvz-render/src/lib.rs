@@ -197,8 +197,18 @@ pub struct GpuRenderer {
 
 impl GpuRenderer {
     pub async fn new(window: Arc<Window>) -> Result<Self, RendererError> {
-        let instance =
-            wgpu::Instance::new(wgpu::InstanceDescriptor::new_without_display_handle_from_env());
+        let instance_descriptor = wgpu::InstanceDescriptor::new_without_display_handle_from_env();
+        #[cfg(target_os = "windows")]
+        let instance_descriptor = if std::env::var_os("WGPU_BACKEND").is_none() {
+            // Prefer Windows' native backend; WGPU_BACKEND remains an explicit override.
+            wgpu::InstanceDescriptor {
+                backends: wgpu::Backends::DX12 | wgpu::Backends::GL,
+                ..instance_descriptor
+            }
+        } else {
+            instance_descriptor
+        };
+        let instance = wgpu::Instance::new(instance_descriptor);
         let surface = instance
             .create_surface(window.clone())
             .map_err(|error| RendererError::SurfaceCreation(error.to_string()))?;
