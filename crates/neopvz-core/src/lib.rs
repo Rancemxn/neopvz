@@ -17,6 +17,8 @@ const SUN_COUNTDOWN_RANGE: u32 = 275;
 const SUN_COUNTDOWN_MAX: u32 = 950;
 const MAX_SUN: u32 = 9_990;
 const MAX_SEED_SLOTS: u8 = 53;
+const SUNSHROOM_GROWTH_TICKS: u32 = 12_000;
+const SMALL_SUN_VALUE: u32 = 15;
 
 pub type Tick = u64;
 pub type EntityId = u32;
@@ -102,6 +104,14 @@ impl PlantType {
 
     fn is_producer(self) -> bool {
         matches!(self.slot(), 1 | 9 | 41)
+    }
+
+    fn is_sunshroom(self) -> bool {
+        self.slot() == 9
+    }
+
+    fn is_twin_sunflower(self) -> bool {
+        self.slot() == 41
     }
 
     fn is_shooter(self) -> bool {
@@ -696,6 +706,8 @@ pub struct PlantState {
     pub shooting_counter: u32,
     pub burst_remaining: u8,
     pub burst_delay: u32,
+    pub production_age: u32,
+    pub production_stage: u8,
     pub blink_counter: u32,
 }
 
@@ -1273,6 +1285,8 @@ impl Game {
             shooting_counter: 0,
             burst_remaining: 0,
             burst_delay: 0,
+            production_age: 0,
+            production_stage: 0,
             blink_counter,
         });
         events.push(GameEvent::PlantPlaced {
@@ -1356,8 +1370,15 @@ impl Game {
 
             let mut fire = false;
             let mut produce_suns = 0;
+            let mut produce_value = 25;
             {
                 let plant = &mut self.state.board.plants[index];
+                if plant_type.is_sunshroom() {
+                    plant.production_age = plant.production_age.saturating_add(1);
+                    if plant.production_age >= SUNSHROOM_GROWTH_TICKS {
+                        plant.production_stage = 1;
+                    }
+                }
                 if plant.burst_remaining > 0 {
                     if plant.burst_delay > 0 {
                         plant.burst_delay -= 1;
@@ -1388,7 +1409,10 @@ impl Game {
                         plant.launch_counter = self
                             .rng
                             .range_inclusive(plant.launch_rate - 150, plant.launch_rate);
-                        produce_suns = if plant_type.slot() == 41 { 2 } else { 1 };
+                        produce_suns = if plant_type.is_twin_sunflower() { 2 } else { 1 };
+                        if plant_type.is_sunshroom() && plant.production_stage == 0 {
+                            produce_value = SMALL_SUN_VALUE;
+                        }
                     } else if plant_type.is_shooter() {
                         plant.launch_counter = plant.launch_rate - self.rng.range(15);
                         if has_target {
@@ -1404,7 +1428,13 @@ impl Game {
                 self.fire_projectiles(id, plant_type, row, column, events);
             }
             for _ in 0..produce_suns {
-                self.spawn_sun(SunSource::Plant(id), grid_x(column), grid_y(row), events);
+                self.spawn_sun_value(
+                    SunSource::Plant(id),
+                    produce_value,
+                    grid_x(column),
+                    grid_y(row),
+                    events,
+                );
                 let _vertical_motion = self.rng.next();
                 let _horizontal_motion = self.rng.next();
                 let _ground_offset = self.rng.range(20);
@@ -1848,11 +1878,22 @@ impl Game {
         position_y: i64,
         events: &mut Vec<GameEvent>,
     ) {
+        self.spawn_sun_value(source, 25, position_x, position_y, events);
+    }
+
+    fn spawn_sun_value(
+        &mut self,
+        source: SunSource,
+        value: u32,
+        position_x: i64,
+        position_y: i64,
+        events: &mut Vec<GameEvent>,
+    ) {
         let id = self.state.board.allocate_entity();
         self.state.board.suns.push(SunPickupState {
             id,
             source,
-            value: 25,
+            value,
             position_x,
             position_y,
         });
@@ -2159,6 +2200,76 @@ mod tests {
             .any(|event| matches!(event, GameEvent::ProjectileHit { zombie: hit_zombie, .. } if hit_zombie == zombie));
 
         assert!(hit);
+    }
+
+    #[test]
+    fn sunshroom_starts_with_small_sun() {
+        let mut game = Game::new(7, SceneKind::Day);
+        game.state.sun = 100;
+        game.advance(InputFrame {
+            actions: vec![
+                InputAction::SelectSeed { slot: 9 },
+                InputAction::Plant { row: 2, column: 0 },
+            ],
+        });
+        game.state.board.plants[0].launch_counter = 1;
+
+        let events = game.advance(InputFrame::default());
+
+        assert!(events.iter().any(|event| matches!(
+            event,
+            GameEvent::SunProduced {
+                value: SMALL_SUN_VALUE,
+                ..
+            }
+        )));
+        assert_eq!(game.state.board.suns[0].value, SMALL_SUN_VALUE);
+    }
+
+    #[test]
+    fn sunshroom_grows_to_normal_sun() {
+        let mut game = Game::new(7, SceneKind::Day);
+        game.state.sun = 100;
+        game.advance(InputFrame {
+            actions: vec![
+                InputAction::SelectSeed { slot: 9 },
+                InputAction::Plant { row: 2, column: 0 },
+            ],
+        });
+        game.state.board.plants[0].production_age = SUNSHROOM_GROWTH_TICKS - 1;
+        game.state.board.plants[0].launch_counter = 1;
+
+        let events = game.advance(InputFrame::default());
+
+        assert!(events.iter().any(|event| matches!(
+            event,
+            GameEvent::SunProduced { value: 25, .. }
+        )));
+        assert_eq!(game.state.board.plants[0].production_stage, 1);
+    }
+
+    #[test]
+    fn twin_sunflower_produces_two_suns() {
+        let mut game = Game::new(7, SceneKind::Day);
+        game.state.sun = 250;
+        game.advance(InputFrame {
+            actions: vec![
+                InputAction::SelectSeed { slot: 41 },
+                InputAction::Plant { row: 2, column: 0 },
+            ],
+        });
+        game.state.board.plants[0].launch_counter = 1;
+
+        let events = game.advance(InputFrame::default());
+
+        assert_eq!(
+            events
+                .iter()
+                .filter(|event| matches!(event, GameEvent::SunProduced { .. }))
+                .count(),
+            2
+        );
+        assert_eq!(game.state.board.suns.len(), 2);
     }
 
     #[test]
