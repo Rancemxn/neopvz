@@ -1900,7 +1900,7 @@ impl Game {
         events.push(GameEvent::SunProduced {
             entity: id,
             source,
-            value: 25,
+            value,
         });
     }
 
@@ -2241,10 +2241,11 @@ mod tests {
 
         let events = game.advance(InputFrame::default());
 
-        assert!(events.iter().any(|event| matches!(
-            event,
-            GameEvent::SunProduced { value: 25, .. }
-        )));
+        assert!(
+            events
+                .iter()
+                .any(|event| matches!(event, GameEvent::SunProduced { value: 25, .. }))
+        );
         assert_eq!(game.state.board.plants[0].production_stage, 1);
     }
 
