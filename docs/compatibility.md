@@ -13,7 +13,7 @@ evidence; a reviewer assertion alone is never sufficient.
 Status is `verified`, `partial`, or `missing`. The progress quantity is the sum
 of `total - accepted` across all rows.
 
-Current baseline: **940 accepted / 1802 total; 862 unresolved**.
+Current baseline: **948 accepted / 1802 total; 854 unresolved**.
 
 ## Foundation and Boundaries
 
@@ -81,7 +81,7 @@ player-observable rules and domain-matched evidence are implemented.
 |---|---|---:|---:|---|---|
 | UI-SCREEN | Loading, title, menu, selector, seed chooser, HUD, pause, options, help, almanac, shop, and result flows | 0 | 12 | missing | Issues `#2`, `#17` |
 | INPUT-ACTION | Mouse, keyboard, hover, click, drag, placement, pause, restart, and command-line resource selection | 0 | 8 | missing | Issue `#17` |
-| SAVE-PROGRESSION | Profile, settings, unlocks, awards, inventory, garden, mode completion, and load compatibility | 0 | 8 | missing | Issue `#16` |
+| SAVE-PROGRESSION | Profile, settings, unlocks, awards, inventory, garden, mode completion, and load compatibility | 8 | 8 | verified | PR `#61`, runs `30024232209`/`30024232459`, ignored local record |
 | PLATFORM-CONTRACT | Logical viewport, window/fullscreen behavior, DPI, audio device, and external-path behavior | 0 | 6 | missing | Issue `#17` |
 
 ## Visual and Audio Evidence
