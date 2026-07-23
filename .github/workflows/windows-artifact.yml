@@ -18,6 +18,8 @@ jobs:
   windows-artifact:
     name: test and build (windows-latest)
     runs-on: windows-latest
+    env:
+      NEOPVZ_BUILD_ID: ${{ github.sha }}
 
     steps:
       - name: Check out source

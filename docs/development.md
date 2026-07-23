@@ -27,6 +27,14 @@ and audio checks. This local execution does not permit local Cargo compilation.
 Keep all original resources and resulting evidence under ignored paths such as
 `artifacts/`; never upload them to GitHub or Actions.
 
+## Deterministic replay
+
+Replay records include the format version, build identity, resource version,
+initial-save identity, random seed, input frames, event sequence, final state,
+and final SHA-256 state hash. Actions stamp the build identity with the commit
+SHA. A replay is accepted only when a fresh run reproduces the stored events,
+state, and hash; metadata alone is not gameplay-compatibility evidence.
+
 ## Visual verification
 
 At a declared checkpoint, capture the original and neopvz client areas with the
