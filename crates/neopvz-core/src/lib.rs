@@ -2584,7 +2584,7 @@ mod tests {
                 InputAction::Plant { row: 2, column: 2 },
             ],
         });
-        game.state.board.plants[0].shooting_counter = 1;
+        game.state.board.plants[0].shooting_counter = 2;
         let mut setup_events = Vec::new();
         let forward = game.spawn_normal_zombie(2, 0, Some(250 * POSITION_SCALE), &mut setup_events);
         let backward =
