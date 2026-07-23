@@ -12,10 +12,13 @@ use neopvz_data::{AssetLayout, ResourceProvider};
 use neopvz_render::{
     DAY_BACKGROUND_IMAGE_ID, GpuRenderer, ImageAsset, LogicalViewport, RenderFrame,
     SCREEN_PIXEL_IMAGE_ID, SEED_CHOOSER_IMAGE_ID, SELECTOR_ADVENTURE_IMAGE_ID,
-    SELECTOR_BASE_IMAGE_ID, SELECTOR_CENTER_IMAGE_ID, SELECTOR_CHALLENGES_IMAGE_ID,
-    SELECTOR_LEFT_IMAGE_ID, SELECTOR_RIGHT_IMAGE_ID, SELECTOR_SURVIVAL_IMAGE_ID,
-    SELECTOR_VASEBREAKER_IMAGE_ID, SpriteCommand, TITLE_IMAGE_ID, TITLE_LOGO_IMAGE_ID,
-    UI_PIXEL_IMAGE_ID, logical_position,
+    SELECTOR_ALMANAC_IMAGE_ID, SELECTOR_BASE_IMAGE_ID, SELECTOR_CENTER_IMAGE_ID,
+    SELECTOR_CHALLENGES_IMAGE_ID, SELECTOR_HELP_IMAGE_ID, SELECTOR_LEAVES_IMAGE_ID,
+    SELECTOR_LEFT_IMAGE_ID, SELECTOR_OPTIONS_IMAGE_ID, SELECTOR_QUIT_IMAGE_ID,
+    SELECTOR_RIGHT_IMAGE_ID, SELECTOR_STORE_IMAGE_ID, SELECTOR_SURVIVAL_IMAGE_ID,
+    SELECTOR_TROPHY_IMAGE_ID, SELECTOR_VASEBREAKER_IMAGE_ID, SELECTOR_WOODSIGN1_IMAGE_ID,
+    SELECTOR_WOODSIGN2_IMAGE_ID, SELECTOR_WOODSIGN3_IMAGE_ID, SELECTOR_ZEN_GARDEN_IMAGE_ID,
+    SpriteCommand, TITLE_IMAGE_ID, TITLE_LOGO_IMAGE_ID, UI_PIXEL_IMAGE_ID, logical_position,
 };
 use winit::{
     application::ApplicationHandler,
@@ -198,6 +201,65 @@ fn load_assets(resources: &ResourceProvider) -> Result<Vec<ImageAsset>, String> 
         )?,
         load_image(
             resources,
+            SELECTOR_WOODSIGN1_IMAGE_ID,
+            "reanim/SelectorScreen_WoodSign1.png",
+        )?,
+        load_image(
+            resources,
+            SELECTOR_WOODSIGN2_IMAGE_ID,
+            "reanim/SelectorScreen_WoodSign2.png",
+        )?,
+        load_image(
+            resources,
+            SELECTOR_WOODSIGN3_IMAGE_ID,
+            "reanim/SelectorScreen_WoodSign3.png",
+        )?,
+        load_image(
+            resources,
+            SELECTOR_LEAVES_IMAGE_ID,
+            "reanim/SelectorScreen_Leaves.png",
+        )?,
+        load_image(
+            resources,
+            SELECTOR_ZEN_GARDEN_IMAGE_ID,
+            "images/SelectorScreen_ZenGarden.png",
+        )?,
+        load_image(
+            resources,
+            SELECTOR_ALMANAC_IMAGE_ID,
+            "images/SelectorScreen_Almanac.png",
+        )?,
+        load_image(
+            resources,
+            SELECTOR_STORE_IMAGE_ID,
+            "images/SelectorScreen_Store.png",
+        )?,
+        load_image(
+            resources,
+            SELECTOR_OPTIONS_IMAGE_ID,
+            "images/SelectorScreen_Options1.png",
+        )?,
+        load_image(
+            resources,
+            SELECTOR_HELP_IMAGE_ID,
+            "images/SelectorScreen_Help1.png",
+        )?,
+        load_image(
+            resources,
+            SELECTOR_QUIT_IMAGE_ID,
+            "images/SelectorScreen_Quit1.png",
+        )?,
+        load_cropped_image(
+            resources,
+            SELECTOR_TROPHY_IMAGE_ID,
+            "images/Sunflower_trophy.png",
+            157,
+            0,
+            157,
+            269,
+        )?,
+        load_image(
+            resources,
             SEED_CHOOSER_IMAGE_ID,
             "images/SeedChooser_Background.png",
         )?,
@@ -240,6 +302,37 @@ fn load_masked_image(
     }
     ImageAsset::new(resource_id, color.width, color.height, rgba8)
         .map_err(|error| format!("masked image {color_path}: {error}"))
+}
+
+fn load_cropped_image(
+    resources: &ResourceProvider,
+    resource_id: u32,
+    path: &str,
+    x: u32,
+    y: u32,
+    width: u32,
+    height: u32,
+) -> Result<ImageAsset, String> {
+    let image = load_image(resources, resource_id, path)?;
+    let Some(x_end) = x.checked_add(width) else {
+        return Err(format!("{path}: crop exceeds image dimensions"));
+    };
+    let Some(y_end) = y.checked_add(height) else {
+        return Err(format!("{path}: crop exceeds image dimensions"));
+    };
+    if x_end > image.width || y_end > image.height {
+        return Err(format!("{path}: crop exceeds image dimensions"));
+    }
+    let rgba = image::RgbaImage::from_raw(image.width, image.height, image.rgba8)
+        .ok_or_else(|| format!("{path}: invalid decoded image data"))?;
+    let cropped = image::imageops::crop_imm(&rgba, x, y, width, height).to_image();
+    ImageAsset::new(
+        resource_id,
+        cropped.width(),
+        cropped.height(),
+        cropped.into_raw(),
+    )
+    .map_err(|error| format!("{path}: {error}"))
 }
 
 fn load_image(
@@ -448,7 +541,7 @@ impl App {
                 });
                 frame.sprites.push(SpriteCommand {
                     resource_id: SELECTOR_CENTER_IMAGE_ID,
-                    x: 0.0,
+                    x: 80.0,
                     y: 250.0,
                     z: -2,
                     scale: 1.0,
@@ -465,16 +558,38 @@ impl App {
                 frame.sprites.push(SpriteCommand {
                     resource_id: SELECTOR_RIGHT_IMAGE_ID,
                     x: 70.0,
-                    y: 0.0,
+                    y: 40.0,
                     z: 0,
                     scale: 1.0,
                     alpha: 1.0,
                 });
+                for (resource_id, x, y, z) in [
+                    (SELECTOR_LEAVES_IMAGE_ID, 0.0, 538.0, 1),
+                    (SELECTOR_TROPHY_IMAGE_ID, 10.0, 310.0, 2),
+                    (SELECTOR_ZEN_GARDEN_IMAGE_ID, 171.0, 401.0, 2),
+                    (SELECTOR_ALMANAC_IMAGE_ID, 327.0, 428.0, 2),
+                    (SELECTOR_STORE_IMAGE_ID, 405.0, 482.0, 2),
+                    (SELECTOR_OPTIONS_IMAGE_ID, 564.0, 474.0, 3),
+                    (SELECTOR_HELP_IMAGE_ID, 646.0, 498.0, 3),
+                    (SELECTOR_QUIT_IMAGE_ID, 714.0, 509.0, 3),
+                    (SELECTOR_WOODSIGN1_IMAGE_ID, 20.0, 0.0, 4),
+                    (SELECTOR_WOODSIGN2_IMAGE_ID, 35.0, 125.0, 4),
+                    (SELECTOR_WOODSIGN3_IMAGE_ID, 35.0, 185.0, 4),
+                ] {
+                    frame.sprites.push(SpriteCommand {
+                        resource_id,
+                        x,
+                        y,
+                        z,
+                        scale: 1.0,
+                        alpha: 1.0,
+                    });
+                }
                 for (resource_id, x, y) in [
-                    (SELECTOR_ADVENTURE_IMAGE_ID, 400.0, 55.0),
-                    (SELECTOR_CHALLENGES_IMAGE_ID, 407.0, 180.0),
-                    (SELECTOR_SURVIVAL_IMAGE_ID, 395.0, 300.0),
-                    (SELECTOR_VASEBREAKER_IMAGE_ID, 420.0, 425.0),
+                    (SELECTOR_ADVENTURE_IMAGE_ID, 405.0, 79.0),
+                    (SELECTOR_SURVIVAL_IMAGE_ID, 406.0, 173.0),
+                    (SELECTOR_CHALLENGES_IMAGE_ID, 410.0, 257.0),
+                    (SELECTOR_VASEBREAKER_IMAGE_ID, 413.0, 328.0),
                 ] {
                     frame.sprites.push(SpriteCommand {
                         resource_id,
