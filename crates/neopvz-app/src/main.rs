@@ -10,15 +10,24 @@ use clap::Parser;
 use neopvz_core::{Game, InputAction, InputFrame, SaveError, SaveProfile, SceneKind};
 use neopvz_data::{AssetLayout, ResourceProvider};
 use neopvz_render::{
-    DAY_BACKGROUND_IMAGE_ID, GpuRenderer, ImageAsset, LogicalViewport, RenderFrame,
-    SCREEN_PIXEL_IMAGE_ID, SEED_CHOOSER_IMAGE_ID, SELECTOR_ADVENTURE_IMAGE_ID,
-    SELECTOR_ALMANAC_IMAGE_ID, SELECTOR_BASE_IMAGE_ID, SELECTOR_CENTER_IMAGE_ID,
-    SELECTOR_CHALLENGES_IMAGE_ID, SELECTOR_HELP_IMAGE_ID, SELECTOR_LEAVES_IMAGE_ID,
-    SELECTOR_LEFT_IMAGE_ID, SELECTOR_OPTIONS_IMAGE_ID, SELECTOR_QUIT_IMAGE_ID,
-    SELECTOR_RIGHT_IMAGE_ID, SELECTOR_STORE_IMAGE_ID, SELECTOR_SURVIVAL_IMAGE_ID,
-    SELECTOR_TROPHY_IMAGE_ID, SELECTOR_VASEBREAKER_IMAGE_ID, SELECTOR_WOODSIGN1_IMAGE_ID,
-    SELECTOR_WOODSIGN2_IMAGE_ID, SELECTOR_WOODSIGN3_IMAGE_ID, SELECTOR_ZEN_GARDEN_IMAGE_ID,
-    SpriteCommand, TITLE_IMAGE_ID, TITLE_LOGO_IMAGE_ID, UI_PIXEL_IMAGE_ID, logical_position,
+    CRAZY_DAVE_BEARD_IMAGE_ID, CRAZY_DAVE_BODY_IMAGE_ID, CRAZY_DAVE_EYE_IMAGE_ID,
+    CRAZY_DAVE_EYEBROW_IMAGE_ID, CRAZY_DAVE_HEAD_IMAGE_ID, CRAZY_DAVE_INNER_ARM_IMAGE_ID,
+    CRAZY_DAVE_INNER_FINGER1_IMAGE_ID, CRAZY_DAVE_INNER_FINGER2_IMAGE_ID,
+    CRAZY_DAVE_INNER_FINGER3_IMAGE_ID, CRAZY_DAVE_INNER_FINGER4_IMAGE_ID,
+    CRAZY_DAVE_INNER_HAND_IMAGE_ID, CRAZY_DAVE_MOUTH_IMAGE_ID, CRAZY_DAVE_OUTER_ARM_IMAGE_ID,
+    CRAZY_DAVE_OUTER_FINGER1_IMAGE_ID, CRAZY_DAVE_OUTER_FINGER2_IMAGE_ID,
+    CRAZY_DAVE_OUTER_FINGER3_IMAGE_ID, CRAZY_DAVE_OUTER_FINGER4_IMAGE_ID,
+    CRAZY_DAVE_OUTER_HAND_IMAGE_ID, CRAZY_DAVE_POT_IMAGE_ID, DAY_BACKGROUND_IMAGE_ID, GpuRenderer,
+    ImageAsset, LogicalViewport, RenderFrame, SCREEN_PIXEL_IMAGE_ID, SEED_CHOOSER_IMAGE_ID,
+    SELECTOR_ADVENTURE_IMAGE_ID, SELECTOR_ALMANAC_IMAGE_ID, SELECTOR_BASE_IMAGE_ID,
+    SELECTOR_CENTER_IMAGE_ID, SELECTOR_CHALLENGES_IMAGE_ID, SELECTOR_HELP_IMAGE_ID,
+    SELECTOR_LEAVES_IMAGE_ID, SELECTOR_LEFT_IMAGE_ID, SELECTOR_OPTIONS_IMAGE_ID,
+    SELECTOR_QUIT_IMAGE_ID, SELECTOR_RIGHT_IMAGE_ID, SELECTOR_STORE_IMAGE_ID,
+    SELECTOR_SURVIVAL_IMAGE_ID, SELECTOR_TROPHY_IMAGE_ID, SELECTOR_VASEBREAKER_IMAGE_ID,
+    SELECTOR_WOODSIGN1_IMAGE_ID, SELECTOR_WOODSIGN2_IMAGE_ID, SELECTOR_WOODSIGN3_IMAGE_ID,
+    SELECTOR_ZEN_GARDEN_IMAGE_ID, SpriteCommand, TITLE_IMAGE_ID, TITLE_LOGO_IMAGE_ID,
+    TUTORIAL_BUBBLE_IMAGE_ID, TUTORIAL_CONTINUE_IMAGE_ID, TUTORIAL_TEXT1_IMAGE_ID,
+    TUTORIAL_TEXT2_IMAGE_ID, UI_PIXEL_IMAGE_ID, logical_position,
 };
 use winit::{
     application::ApplicationHandler,
@@ -260,6 +269,116 @@ fn load_assets(resources: &ResourceProvider) -> Result<Vec<ImageAsset>, String> 
         )?,
         load_image(
             resources,
+            TUTORIAL_BUBBLE_IMAGE_ID,
+            "images/Store_SpeechBubble2.png",
+        )?,
+        load_masked_image(
+            resources,
+            CRAZY_DAVE_BODY_IMAGE_ID,
+            "reanim/CrazyDave_body1.jpg",
+            "reanim/CrazyDave_body1_.png",
+        )?,
+        load_image(
+            resources,
+            CRAZY_DAVE_HEAD_IMAGE_ID,
+            "reanim/CrazyDave_head.png",
+        )?,
+        load_image(
+            resources,
+            CRAZY_DAVE_BEARD_IMAGE_ID,
+            "reanim/CrazyDave_beard.png",
+        )?,
+        load_image(
+            resources,
+            CRAZY_DAVE_POT_IMAGE_ID,
+            "reanim/CrazyDave_pot.png",
+        )?,
+        load_image(
+            resources,
+            CRAZY_DAVE_EYE_IMAGE_ID,
+            "reanim/CrazyDave_eye.png",
+        )?,
+        load_image(
+            resources,
+            CRAZY_DAVE_EYEBROW_IMAGE_ID,
+            "reanim/CrazyDave_eyebrow.png",
+        )?,
+        load_image(
+            resources,
+            CRAZY_DAVE_MOUTH_IMAGE_ID,
+            "reanim/CrazyDave_mouth5.png",
+        )?,
+        load_image(
+            resources,
+            CRAZY_DAVE_OUTER_ARM_IMAGE_ID,
+            "reanim/CrazyDave_outerarm.png",
+        )?,
+        load_image(
+            resources,
+            CRAZY_DAVE_OUTER_HAND_IMAGE_ID,
+            "reanim/CrazyDave_outerhand.png",
+        )?,
+        load_image(
+            resources,
+            CRAZY_DAVE_INNER_ARM_IMAGE_ID,
+            "reanim/CrazyDave_innerarm.png",
+        )?,
+        load_image(
+            resources,
+            CRAZY_DAVE_INNER_HAND_IMAGE_ID,
+            "reanim/CrazyDave_innerhand.png",
+        )?,
+        load_image(
+            resources,
+            CRAZY_DAVE_INNER_FINGER1_IMAGE_ID,
+            "reanim/CrazyDave_innerfinger1.png",
+        )?,
+        load_image(
+            resources,
+            CRAZY_DAVE_INNER_FINGER2_IMAGE_ID,
+            "reanim/CrazyDave_innerfinger2.png",
+        )?,
+        load_image(
+            resources,
+            CRAZY_DAVE_INNER_FINGER3_IMAGE_ID,
+            "reanim/CrazyDave_innerfinger3.png",
+        )?,
+        load_image(
+            resources,
+            CRAZY_DAVE_INNER_FINGER4_IMAGE_ID,
+            "reanim/CrazyDave_innerfinger4.png",
+        )?,
+        load_image(
+            resources,
+            CRAZY_DAVE_OUTER_FINGER1_IMAGE_ID,
+            "reanim/CrazyDave_outerfinger1.png",
+        )?,
+        load_image(
+            resources,
+            CRAZY_DAVE_OUTER_FINGER2_IMAGE_ID,
+            "reanim/CrazyDave_outerfinger2.png",
+        )?,
+        load_image(
+            resources,
+            CRAZY_DAVE_OUTER_FINGER3_IMAGE_ID,
+            "reanim/CrazyDave_outerfinger3.png",
+        )?,
+        load_image(
+            resources,
+            CRAZY_DAVE_OUTER_FINGER4_IMAGE_ID,
+            "reanim/CrazyDave_outerfinger4.png",
+        )?,
+        load_dialogue_text(
+            TUTORIAL_TEXT1_IMAGE_ID,
+            "\u{4f19}\u{8ba1}\u{ff0c}\u{90a3}\u{4e9b}\u{50f5}\u{5c38}\u{8fd8}\u{5728}\u{6e90}\u{6e90}\u{4e0d}\u{65ad}\u{7684}\n\u{6765}\u{88ad}\u{554a}\u{ff01}",
+        )?,
+        load_dialogue_text(
+            TUTORIAL_TEXT2_IMAGE_ID,
+            "\u{8fd9}\u{6b21}\u{ff0c}\u{6211}\u{60f3}\u{66ff}\u{4f60}\u{6311}\u{4e9b}\u{690d}\u{7269}\u{ff01}",
+        )?,
+        load_continue_text(TUTORIAL_CONTINUE_IMAGE_ID)?,
+        load_image(
+            resources,
             SEED_CHOOSER_IMAGE_ID,
             "images/SeedChooser_Background.png",
         )?,
@@ -350,6 +469,278 @@ fn load_image(
         .map_err(|error| format!("{path}: {error}"))
 }
 
+fn load_dialogue_text(resource_id: u32, text: &str) -> Result<ImageAsset, String> {
+    render_text_image(resource_id, text, 233, 144, 18)
+}
+
+fn load_continue_text(resource_id: u32) -> Result<ImageAsset, String> {
+    render_text_image(
+        resource_id,
+        "\u{70b9}\u{51fb}\u{4ee5}\u{7ee7}\u{7eed}",
+        120,
+        24,
+        14,
+    )
+}
+
+#[cfg(windows)]
+fn render_text_image(
+    resource_id: u32,
+    text: &str,
+    width: u32,
+    height: u32,
+    font_size: i32,
+) -> Result<ImageAsset, String> {
+    windows_text::render(resource_id, text, width, height, font_size)
+}
+
+#[cfg(not(windows))]
+fn render_text_image(
+    resource_id: u32,
+    _text: &str,
+    width: u32,
+    height: u32,
+    _font_size: i32,
+) -> Result<ImageAsset, String> {
+    ImageAsset::new(
+        resource_id,
+        width,
+        height,
+        vec![0; usize::try_from(width).unwrap() * usize::try_from(height).unwrap() * 4],
+    )
+    .map_err(|error| error.to_string())
+}
+
+#[cfg(windows)]
+mod windows_text {
+    use std::{ffi::c_void, ptr, slice};
+
+    use neopvz_render::ImageAsset;
+
+    type Handle = *mut c_void;
+
+    #[repr(C)]
+    struct BitmapInfoHeader {
+        size: u32,
+        width: i32,
+        height: i32,
+        planes: u16,
+        bit_count: u16,
+        compression: u32,
+        size_image: u32,
+        x_pixels_per_meter: i32,
+        y_pixels_per_meter: i32,
+        colors_used: u32,
+        important_colors: u32,
+    }
+
+    #[repr(C)]
+    struct RgbQuad {
+        blue: u8,
+        green: u8,
+        red: u8,
+        reserved: u8,
+    }
+
+    #[repr(C)]
+    struct BitmapInfo {
+        header: BitmapInfoHeader,
+        colors: [RgbQuad; 1],
+    }
+
+    #[repr(C)]
+    struct Rect {
+        left: i32,
+        top: i32,
+        right: i32,
+        bottom: i32,
+    }
+
+    #[link(name = "gdi32")]
+    unsafe extern "system" {
+        fn CreateCompatibleDC(hdc: Handle) -> Handle;
+        fn CreateDIBSection(
+            hdc: Handle,
+            bitmap_info: *const BitmapInfo,
+            usage: u32,
+            bits: *mut *mut c_void,
+            section: Handle,
+            offset: u32,
+        ) -> Handle;
+        fn CreateFontW(
+            height: i32,
+            width: i32,
+            escapement: i32,
+            orientation: i32,
+            weight: i32,
+            italic: u32,
+            underline: u32,
+            strike_out: u32,
+            charset: u32,
+            output_precision: u32,
+            clip_precision: u32,
+            quality: u32,
+            pitch_and_family: u32,
+            face: *const u16,
+        ) -> Handle;
+        fn SelectObject(device_context: Handle, object: Handle) -> Handle;
+        fn SetBkMode(device_context: Handle, mode: i32) -> i32;
+        fn SetTextColor(device_context: Handle, color: u32) -> u32;
+        fn DrawTextW(
+            device_context: Handle,
+            text: *const u16,
+            length: i32,
+            rect: *mut Rect,
+            format: u32,
+        ) -> i32;
+        fn DeleteObject(object: Handle) -> i32;
+        fn DeleteDC(device_context: Handle) -> i32;
+    }
+
+    const BI_RGB: u32 = 0;
+    const DIB_RGB_COLORS: u32 = 0;
+    const TRANSPARENT: i32 = 1;
+    const FW_NORMAL: i32 = 400;
+    const DEFAULT_CHARSET: u32 = 1;
+    const OUT_DEFAULT_PRECIS: u32 = 0;
+    const CLIP_DEFAULT_PRECIS: u32 = 0;
+    const DEFAULT_QUALITY: u32 = 0;
+    const DEFAULT_PITCH: u32 = 0;
+    const DT_CENTER: u32 = 0x0001;
+    const DT_VCENTER: u32 = 0x0004;
+    const DT_WORDBREAK: u32 = 0x0010;
+    const DT_NOPREFIX: u32 = 0x0800;
+
+    pub(super) fn render(
+        resource_id: u32,
+        text: &str,
+        width: u32,
+        height: u32,
+        font_size: i32,
+    ) -> Result<ImageAsset, String> {
+        let width_i32 = i32::try_from(width).map_err(|_| "text image is too wide".to_owned())?;
+        let height_i32 = i32::try_from(height).map_err(|_| "text image is too high".to_owned())?;
+        let pixel_count = usize::try_from(width)
+            .ok()
+            .and_then(|width| {
+                usize::try_from(height)
+                    .ok()
+                    .and_then(|height| width.checked_mul(height))
+            })
+            .ok_or_else(|| "text image dimensions overflow".to_owned())?;
+        let mut bits = ptr::null_mut();
+        let bitmap_info = BitmapInfo {
+            header: BitmapInfoHeader {
+                size: std::mem::size_of::<BitmapInfoHeader>() as u32,
+                width: width_i32,
+                height: -height_i32,
+                planes: 1,
+                bit_count: 32,
+                compression: BI_RGB,
+                size_image: 0,
+                x_pixels_per_meter: 0,
+                y_pixels_per_meter: 0,
+                colors_used: 0,
+                important_colors: 0,
+            },
+            colors: [RgbQuad {
+                blue: 0,
+                green: 0,
+                red: 0,
+                reserved: 0,
+            }],
+        };
+        let mut face: Vec<u16> = "Microsoft YaHei".encode_utf16().collect();
+        face.push(0);
+        let mut wide_text: Vec<u16> = text.encode_utf16().collect();
+        wide_text.push(0);
+
+        // GDI gives us a system-font rasterization while keeping text out of the
+        // renderer API; the returned image remains an ordinary sprite.
+        let (device_context, bitmap, font) = unsafe {
+            let device_context = CreateCompatibleDC(ptr::null_mut());
+            if device_context.is_null() {
+                return Err("CreateCompatibleDC failed".to_owned());
+            }
+            let bitmap = CreateDIBSection(
+                device_context,
+                &bitmap_info,
+                DIB_RGB_COLORS,
+                &mut bits,
+                ptr::null_mut(),
+                0,
+            );
+            if bitmap.is_null() {
+                DeleteDC(device_context);
+                return Err("CreateDIBSection failed".to_owned());
+            }
+            let font = CreateFontW(
+                -font_size,
+                0,
+                0,
+                0,
+                FW_NORMAL,
+                0,
+                0,
+                0,
+                DEFAULT_CHARSET,
+                OUT_DEFAULT_PRECIS,
+                CLIP_DEFAULT_PRECIS,
+                DEFAULT_QUALITY,
+                DEFAULT_PITCH,
+                face.as_ptr(),
+            );
+            if font.is_null() {
+                DeleteObject(bitmap);
+                DeleteDC(device_context);
+                return Err("CreateFontW failed".to_owned());
+            }
+            (device_context, bitmap, font)
+        };
+
+        unsafe {
+            SelectObject(device_context, bitmap);
+            SelectObject(device_context, font);
+            let buffer = slice::from_raw_parts_mut(bits.cast::<u8>(), pixel_count * 4);
+            buffer.fill(255);
+            SetBkMode(device_context, TRANSPARENT);
+            SetTextColor(device_context, 0);
+            let mut rect = Rect {
+                left: 0,
+                top: 0,
+                right: width_i32,
+                bottom: height_i32,
+            };
+            if DrawTextW(
+                device_context,
+                wide_text.as_ptr(),
+                -1,
+                &mut rect,
+                DT_CENTER | DT_VCENTER | DT_WORDBREAK | DT_NOPREFIX,
+            ) == 0
+            {
+                DeleteObject(font);
+                DeleteObject(bitmap);
+                DeleteDC(device_context);
+                return Err("DrawTextW failed".to_owned());
+            }
+
+            let mut rgba = Vec::with_capacity(pixel_count * 4);
+            for pixel in buffer.chunks_exact(4) {
+                let luminance = (u16::from(pixel[0]) * 29
+                    + u16::from(pixel[1]) * 150
+                    + u16::from(pixel[2]) * 77)
+                    / 256;
+                rgba.extend([0, 0, 0, 255_u16.saturating_sub(luminance) as u8]);
+            }
+            DeleteObject(font);
+            DeleteObject(bitmap);
+            DeleteDC(device_context);
+            ImageAsset::new(resource_id, width, height, rgba).map_err(|error| error.to_string())
+        }
+    }
+}
+
 struct App {
     renderer: Option<GpuRenderer>,
     assets: Vec<ImageAsset>,
@@ -358,6 +749,7 @@ struct App {
     last_update: Option<Instant>,
     simulation_accumulator: Duration,
     cursor_position: Option<PhysicalPosition<f64>>,
+    tutorial_page: u8,
 }
 
 impl App {
@@ -370,6 +762,7 @@ impl App {
             last_update: None,
             simulation_accumulator: Duration::ZERO,
             cursor_position: None,
+            tutorial_page: 0,
         }
     }
 
@@ -422,7 +815,8 @@ impl App {
             KeyCode::Escape => event_loop.exit(),
             KeyCode::Enter => match self.game.state().scene {
                 SceneKind::Title => self.start_scene(SceneKind::AdventureSelect),
-                SceneKind::AdventureSelect => self.start_scene(SceneKind::SeedChooser),
+                SceneKind::AdventureSelect => self.start_scene(SceneKind::AdventureTutorial),
+                SceneKind::AdventureTutorial => self.advance_tutorial(),
                 SceneKind::SeedChooser => self.start_scene(SceneKind::Day),
                 _ => {}
             },
@@ -450,9 +844,18 @@ impl App {
 
     fn start_scene(&mut self, scene: SceneKind) {
         self.game = Game::new(0, scene);
+        self.tutorial_page = 0;
         self.pending_input.clear();
         self.simulation_accumulator = Duration::ZERO;
         self.last_update = Some(Instant::now());
+    }
+
+    fn advance_tutorial(&mut self) {
+        if self.tutorial_page == 0 {
+            self.tutorial_page = 1;
+        } else {
+            self.start_scene(SceneKind::SeedChooser);
+        }
     }
 
     fn handle_mouse_click(&mut self) {
@@ -460,6 +863,7 @@ impl App {
         if scene != SceneKind::Title
             && scene != SceneKind::Day
             && scene != SceneKind::AdventureSelect
+            && scene != SceneKind::AdventureTutorial
         {
             return;
         }
@@ -485,7 +889,13 @@ impl App {
         }
         if scene == SceneKind::AdventureSelect {
             if (400.0..730.0).contains(&x) && (55.0..175.0).contains(&y) {
-                self.start_scene(SceneKind::SeedChooser);
+                self.start_scene(SceneKind::AdventureTutorial);
+            }
+            return;
+        }
+        if scene == SceneKind::AdventureTutorial {
+            if (285.0..565.0).contains(&x) && (20.0..190.0).contains(&y) {
+                self.advance_tutorial();
             }
             return;
         }
@@ -516,6 +926,59 @@ impl App {
             self.game.advance(input);
             self.simulation_accumulator -= SIMULATION_STEP;
         }
+    }
+
+    fn push_tutorial_sprite(frame: &mut RenderFrame, resource_id: u32, x: f32, y: f32, z: i32) {
+        frame.sprites.push(SpriteCommand {
+            resource_id,
+            x,
+            y,
+            z,
+            scale: 1.0,
+            alpha: 1.0,
+        });
+    }
+
+    fn render_tutorial(&self, frame: &mut RenderFrame) {
+        Self::push_tutorial_sprite(frame, DAY_BACKGROUND_IMAGE_ID, 0.0, 0.0, 0);
+
+        for (resource_id, x, y, z) in [
+            (CRAZY_DAVE_BODY_IMAGE_ID, 0.0, 199.0, 1),
+            (CRAZY_DAVE_OUTER_ARM_IMAGE_ID, 0.0, 441.0, 2),
+            (CRAZY_DAVE_INNER_ARM_IMAGE_ID, 218.0, 422.0, 2),
+            (CRAZY_DAVE_OUTER_HAND_IMAGE_ID, 68.0, 392.0, 3),
+            (CRAZY_DAVE_INNER_HAND_IMAGE_ID, 5.0, 430.0, 3),
+            (CRAZY_DAVE_OUTER_FINGER1_IMAGE_ID, 234.0, 378.0, 4),
+            (CRAZY_DAVE_OUTER_FINGER2_IMAGE_ID, 97.0, 399.0, 4),
+            (CRAZY_DAVE_OUTER_FINGER3_IMAGE_ID, 105.0, 424.0, 4),
+            (CRAZY_DAVE_OUTER_FINGER4_IMAGE_ID, 115.0, 422.0, 4),
+            (CRAZY_DAVE_INNER_FINGER1_IMAGE_ID, 94.0, 400.0, 4),
+            (CRAZY_DAVE_INNER_FINGER2_IMAGE_ID, 223.0, 394.0, 4),
+            (CRAZY_DAVE_INNER_FINGER3_IMAGE_ID, 171.0, 450.0, 4),
+            (CRAZY_DAVE_INNER_FINGER4_IMAGE_ID, 226.0, 395.0, 4),
+            (CRAZY_DAVE_HEAD_IMAGE_ID, -4.0, 112.0, 5),
+            (CRAZY_DAVE_EYEBROW_IMAGE_ID, 139.0, 157.0, 6),
+            (CRAZY_DAVE_EYE_IMAGE_ID, 138.0, 170.0, 6),
+            (CRAZY_DAVE_MOUTH_IMAGE_ID, 107.0, 226.0, 6),
+            (CRAZY_DAVE_BEARD_IMAGE_ID, 78.0, 212.0, 7),
+            (CRAZY_DAVE_POT_IMAGE_ID, 2.0, 103.0, 8),
+        ] {
+            Self::push_tutorial_sprite(frame, resource_id, x, y, z);
+        }
+
+        Self::push_tutorial_sprite(frame, TUTORIAL_BUBBLE_IMAGE_ID, 285.0, 20.0, 20);
+        Self::push_tutorial_sprite(
+            frame,
+            if self.tutorial_page == 0 {
+                TUTORIAL_TEXT1_IMAGE_ID
+            } else {
+                TUTORIAL_TEXT2_IMAGE_ID
+            },
+            310.0,
+            26.0,
+            21,
+        );
+        Self::push_tutorial_sprite(frame, TUTORIAL_CONTINUE_IMAGE_ID, 365.0, 151.0, 21);
     }
 
     fn render_frame(&self) -> RenderFrame {
@@ -610,6 +1073,7 @@ impl App {
                     });
                 }
             }
+            SceneKind::AdventureTutorial => self.render_tutorial(&mut frame),
             SceneKind::SeedChooser => {
                 frame.sprites.push(SpriteCommand {
                     resource_id: SCREEN_PIXEL_IMAGE_ID,
