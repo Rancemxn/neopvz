@@ -1279,9 +1279,7 @@ impl Game {
                                 || zombie.position_x < grid_x(column))
                     }
                     52 => row_distance == 0 && zombie.position_x < grid_x(column),
-                    _ => {
-                        row_distance == 0 && zombie.position_x > plant_attack_start(column)
-                    }
+                    _ => row_distance == 0 && zombie.position_x > plant_attack_start(column),
                 }
             });
 
@@ -1528,7 +1526,8 @@ impl Game {
                 for target_row in [
                     row.checked_sub(1),
                     Some(row),
-                    row.checked_add(1).filter(|target_row| *target_row < self.state.board.rows),
+                    row.checked_add(1)
+                        .filter(|target_row| *target_row < self.state.board.rows),
                 ]
                 .into_iter()
                 .flatten()
@@ -1886,12 +1885,13 @@ mod tests {
             5
         );
         assert_eq!(game.state.board.projectiles.len(), 5);
-        assert!(game
-            .state
-            .board
-            .projectiles
-            .iter()
-            .any(|projectile| projectile.velocity_y != 0));
+        assert!(
+            game.state
+                .board
+                .projectiles
+                .iter()
+                .any(|projectile| projectile.velocity_y != 0)
+        );
     }
 
     #[test]
