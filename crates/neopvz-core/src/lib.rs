@@ -1,12 +1,10 @@
-use rand::rngs::ChaCha8Rng;
-use rand::{Rng, SeedableRng};
 use serde::{Deserialize, Serialize};
 use sha2::{Digest, Sha256};
 use thiserror::Error;
 
 pub const LOGICAL_WIDTH: u32 = 800;
 pub const LOGICAL_HEIGHT: u32 = 600;
-pub const SIMULATION_HZ: u32 = 60;
+pub const SIMULATION_HZ: u32 = 100;
 
 pub type Tick = u64;
 
@@ -30,7 +28,7 @@ pub enum SceneKind {
     GameOver,
 }
 
-#[derive(Clone, Debug, Deserialize, Serialize)]
+#[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
 pub enum InputAction {
     Pause,
     Resume,
@@ -40,13 +38,14 @@ pub enum InputAction {
     CollectSun { entity: u32 },
 }
 
-#[derive(Clone, Debug, Default, Deserialize, Serialize)]
+#[derive(Clone, Debug, Default, Deserialize, Eq, PartialEq, Serialize)]
 pub struct InputFrame {
     pub actions: Vec<InputAction>,
 }
 
-#[derive(Clone, Debug, Deserialize, Serialize)]
+#[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
 pub struct GameState {
+    pub seed: u64,
     pub tick: Tick,
     pub scene: SceneKind,
     pub sun: u32,
@@ -54,7 +53,7 @@ pub struct GameState {
     pub paused: bool,
 }
 
-#[derive(Clone, Debug, Deserialize, Serialize)]
+#[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
 pub enum GameEvent {
     Started,
     Paused,
@@ -62,25 +61,55 @@ pub enum GameEvent {
     StateChanged,
 }
 
-#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+#[derive(Clone, Copy, Debug, Deserialize, Eq, PartialEq, Serialize)]
 pub struct StateHash(pub [u8; 32]);
+
+#[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
+pub struct Replay {
+    pub seed: u64,
+    pub scene: SceneKind,
+    pub frames: Vec<InputFrame>,
+}
+
+#[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
+pub struct ReplayOutcome {
+    pub events: Vec<Vec<GameEvent>>,
+    pub final_state: GameState,
+    pub final_hash: StateHash,
+}
+
+impl Replay {
+    pub fn run(&self) -> Result<ReplayOutcome, CoreError> {
+        let mut game = Game::new(self.seed, self.scene);
+        let events = self
+            .frames
+            .iter()
+            .cloned()
+            .map(|frame| game.advance(frame))
+            .collect();
+        Ok(ReplayOutcome {
+            events,
+            final_state: game.state.clone(),
+            final_hash: game.snapshot_hash()?,
+        })
+    }
+}
 
 pub struct Game {
     state: GameState,
-    rng: ChaCha8Rng,
 }
 
 impl Game {
     pub fn new(seed: u64, scene: SceneKind) -> Self {
         Self {
             state: GameState {
+                seed,
                 tick: 0,
                 scene,
                 sun: 50,
                 wave: 0,
                 paused: false,
             },
-            rng: ChaCha8Rng::seed_from_u64(seed),
         }
     }
 
@@ -111,8 +140,6 @@ impl Game {
 
         if !self.state.paused {
             self.state.tick = self.state.tick.saturating_add(1);
-            self.state.wave = (self.state.tick / SIMULATION_HZ as u64) as u32;
-            let _ = self.rng.next_u32();
             events.push(GameEvent::StateChanged);
         }
 
@@ -132,19 +159,55 @@ mod tests {
     use super::*;
 
     #[test]
-    fn same_seed_and_input_are_replayable() {
-        let mut first = Game::new(7, SceneKind::Day);
-        let mut second = Game::new(7, SceneKind::Day);
-        for _ in 0..10 {
-            let input = InputFrame {
-                actions: vec![InputAction::CollectSun { entity: 1 }],
-            };
-            first.advance(input.clone());
-            second.advance(input);
+    fn replay_round_trip_is_deterministic() {
+        let replay = Replay {
+            seed: 7,
+            scene: SceneKind::Day,
+            frames: vec![
+                InputFrame {
+                    actions: vec![InputAction::CollectSun { entity: 1 }],
+                },
+                InputFrame {
+                    actions: vec![InputAction::Pause],
+                },
+                InputFrame {
+                    actions: vec![InputAction::CollectSun { entity: 2 }],
+                },
+                InputFrame {
+                    actions: vec![InputAction::Resume],
+                },
+            ],
+        };
+        let encoded = serde_json::to_vec(&replay).unwrap();
+        let decoded: Replay = serde_json::from_slice(&encoded).unwrap();
+
+        let first = replay.run().unwrap();
+        let second = decoded.run().unwrap();
+        assert_eq!(first, second);
+        assert_eq!(first.final_state.tick, 2);
+        assert_eq!(first.final_state.sun, 100);
+    }
+
+    #[test]
+    fn seed_is_part_of_the_final_state_hash() {
+        let frames = vec![InputFrame {
+            actions: vec![InputAction::CollectSun { entity: 1 }],
+        }];
+        let first = Replay {
+            seed: 7,
+            scene: SceneKind::Day,
+            frames: frames.clone(),
         }
-        assert_eq!(
-            first.snapshot_hash().unwrap(),
-            second.snapshot_hash().unwrap()
-        );
+        .run()
+        .unwrap();
+        let second = Replay {
+            seed: 8,
+            scene: SceneKind::Day,
+            frames,
+        }
+        .run()
+        .unwrap();
+
+        assert_ne!(first.final_hash, second.final_hash);
     }
 }
