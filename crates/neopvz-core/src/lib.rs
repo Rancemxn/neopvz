@@ -32,6 +32,8 @@ const DOOM_SHROOM_ROW_RADIUS: u8 = 3;
 const DOOM_CRATER_TICKS: u32 = 18_000;
 // Zombie_EatPlant in the target build subtracts four health per ordinary bite.
 const ZOMBIE_BITE_DAMAGE: i32 = 4;
+const CHOMPER_BITE_WINDUP_TICKS: u32 = 70;
+const CHOMPER_CHEW_TICKS: u32 = 4_000;
 
 pub type Tick = u64;
 pub type EntityId = u32;
@@ -133,6 +135,10 @@ impl PlantType {
 
     fn is_potato_mine(self) -> bool {
         self.slot() == 4
+    }
+
+    fn is_chomper(self) -> bool {
+        self.slot() == 6
     }
 
     fn is_jalapeno(self) -> bool {
@@ -744,6 +750,7 @@ pub struct PlantState {
     pub production_stage: u8,
     pub special_counter: u32,
     pub special_armed: bool,
+    pub special_target: Option<EntityId>,
     pub blink_counter: u32,
 }
 
@@ -1382,6 +1389,7 @@ impl Game {
             production_stage: 0,
             special_counter,
             special_armed,
+            special_target: None,
             blink_counter,
         });
         events.push(GameEvent::PlantPlaced {
@@ -1462,6 +1470,11 @@ impl Game {
                     _ => row_distance == 0 && zombie.position_x > plant_attack_start(column),
                 }
             });
+            let chomper_target = if plant_type.is_chomper() {
+                self.find_chomper_target(row, column)
+            } else {
+                None
+            };
             let potato_trigger = plant_type.is_potato_mine()
                 && self.state.board.zombies.iter().any(|zombie| {
                     zombie.health > 0
@@ -1473,9 +1486,25 @@ impl Game {
             let mut produce_suns = 0;
             let mut produce_value = 25;
             let mut special = false;
+            let mut chomper_bite_target = None;
             {
                 let plant = &mut self.state.board.plants[index];
-                if plant_type.is_cherry_bomb()
+                if plant_type.is_chomper() {
+                    if plant.special_armed {
+                        plant.special_counter = plant.special_counter.saturating_sub(1);
+                        if plant.special_counter == 0 {
+                            chomper_bite_target = plant.special_target.take();
+                            plant.special_armed = false;
+                            plant.special_counter = CHOMPER_CHEW_TICKS;
+                        }
+                    } else if plant.special_counter > 0 {
+                        plant.special_counter -= 1;
+                    } else if let Some(target) = chomper_target {
+                        plant.special_armed = true;
+                        plant.special_target = Some(target);
+                        plant.special_counter = CHOMPER_BITE_WINDUP_TICKS;
+                    }
+                } else if plant_type.is_cherry_bomb()
                     || plant_type.is_jalapeno()
                     || plant_type.is_ice_shroom()
                     || plant_type.is_doom_shroom()
@@ -1545,6 +1574,21 @@ impl Game {
 
             if fire {
                 self.fire_projectiles(id, plant_type, row, column, events);
+            }
+            if let Some(zombie_id) = chomper_bite_target
+                && let Some(zombie_index) = self
+                    .state
+                    .board
+                    .zombies
+                    .iter()
+                    .position(|zombie| zombie.id == zombie_id && zombie.health > 0)
+            {
+                self.state.board.zombies.remove(zombie_index);
+                events.push(GameEvent::PlantSpecialTriggered {
+                    entity: id,
+                    plant_type,
+                });
+                events.push(GameEvent::ZombieDied { entity: zombie_id });
             }
             if special {
                 self.trigger_plant_special(id, plant_type, row, column, events);
@@ -2064,6 +2108,23 @@ impl Game {
             })
             .max_by_key(|(_, plant)| plant.column)
             .map(|(index, _)| index)
+    }
+
+    fn find_chomper_target(&self, row: u8, column: u8) -> Option<EntityId> {
+        let center_x = grid_x(column);
+        self.state
+            .board
+            .zombies
+            .iter()
+            .filter(|zombie| {
+                zombie.health > 0
+                    && zombie.row == row
+                    && matches!(zombie.zombie_type, ZombieType::Normal)
+                    && zombie.position_x >= center_x - 20 * POSITION_SCALE
+                    && zombie.position_x <= center_x + 80 * POSITION_SCALE
+            })
+            .min_by_key(|zombie| zombie.position_x.abs_diff(center_x))
+            .map(|zombie| zombie.id)
     }
 
     fn fire_projectiles(
@@ -2948,6 +3009,49 @@ mod tests {
             );
             assert!(game.state.board.plants.is_empty());
         }
+    }
+
+    #[test]
+    fn chomper_swallow_winds_up_then_removes_a_normal_zombie() {
+        let mut game = Game::new(7, SceneKind::Day);
+        game.state.sun = 200;
+        game.advance(InputFrame {
+            actions: vec![
+                InputAction::SelectSeed { slot: 6 },
+                InputAction::Plant { row: 2, column: 0 },
+            ],
+        });
+        let chomper = game.state.board.plants[0].id;
+        let mut setup_events = Vec::new();
+        let zombie = game.spawn_normal_zombie(
+            2,
+            0,
+            Some(grid_x(0) + 10 * POSITION_SCALE),
+            &mut setup_events,
+        );
+
+        let events = (0..=CHOMPER_BITE_WINDUP_TICKS)
+            .flat_map(|_| game.advance(InputFrame::default()))
+            .collect::<Vec<_>>();
+
+        assert!(events.iter().any(|event| matches!(
+            event,
+            GameEvent::PlantSpecialTriggered {
+                entity,
+                plant_type: PlantType::Other(6),
+            } if *entity == chomper
+        )));
+        assert!(
+            events.iter().any(
+                |event| matches!(event, GameEvent::ZombieDied { entity } if *entity == zombie)
+            )
+        );
+        assert!(game.state.board.zombies.is_empty());
+        assert_eq!(
+            game.state.board.plants[0].special_counter,
+            CHOMPER_CHEW_TICKS
+        );
+        assert!(!game.state.board.plants[0].special_armed);
     }
 
     #[test]
