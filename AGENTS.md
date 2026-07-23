@@ -22,10 +22,10 @@
   deterministic state, resource compatibility, or replay results.
 - Do not add copyrighted game assets, binaries, IDA databases, function tables, or reverse-engineering reference repositories to this repository.
 - Resources are external inputs. Auto-detect a resource directory, `main.pak`/PAK archive, or use an explicit `--data-dir`/`--pak` path.
-- Local compilation and tests are forbidden because the local machine lacks the required resources. Use GitHub Actions for formatting, linting, tests, and builds.
-- Keep the complete gate on Ubuntu. Build a resource-free Windows release artifact in Actions, download it for local GUI, screenshot, and audio validation, and keep macOS disabled until the Ubuntu and Windows paths are stable.
+- Local compilation and tests are forbidden because the local machine lacks the required resources. Use GitHub Actions for formatting, linting, tests, and builds when the change needs them; documentation-only and instruction-only changes do not need to wait for the complete gate.
+- Keep the complete gate on Ubuntu for code, dependency, workflow, and test changes that need compilation. Build and download the resource-free Windows release artifact only for changes requiring Windows, GUI, screenshot, audio, or release-artifact validation; do not block docs, `AGENTS.md`, issue/ledger, or other text-only changes on it. Keep macOS disabled until the Ubuntu and Windows paths are stable.
 - Dependencies default to the latest stable versions. They may be changed when implementation evidence requires it.
-- When a direct dependency is confirmed, clone its upstream source at the exact version used by Cargo into the ignored `third_party-src/` directory for reference. Do not commit that directory.
+- When a direct dependency is confirmed, use the version actually selected by `neopvz`'s manifest and `Cargo.lock` as the source of truth. Clone the upstream repository into the single ignored `third_party-src/` directory at the repository root, then check out that exact tag or commit before consulting it. Do not leave the clone on a different default-branch version or commit `third_party-src/`.
 - Use issues, pull requests, milestones, and Actions to drive development. Do not create tags or releases until the project is stable.
 - Search files with `fd`, `sg`, or `rg`; list directories with `eza`.
 - Do not manually convert numeric representations. Use the configured IDA `int_convert` MCP tool for reverse-engineering values and Math MCP for calculations.
@@ -45,7 +45,10 @@
   independent review; pixel metrics and SSIM are diagnostic only. Original-game
   client capture must be DPI-aware and checked for blank or incorrect crops.
 - Every non-trivial compatibility slice must leave a focused check behind and
-  pass the remote formatting/full gate before merge. Do not claim a local Cargo
-  check or test passed; report the relevant Actions run instead.
+  pass the relevant remote formatting/full gate before merge. Do not claim a
+  local Cargo check or test passed; report the relevant Actions run instead.
+  Documentation, `AGENTS.md`, issue/ledger, and other text-only changes are
+  exempt from waiting for the full gate when they do not alter build inputs;
+  apply only the lightweight checks relevant to the diff.
 - Follow `loop.md` for the compatibility goal, completion evidence, termination
   bounds, approval gates, residual routing, and bounded subagent contracts.
