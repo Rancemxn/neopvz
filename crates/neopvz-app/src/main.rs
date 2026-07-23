@@ -11,8 +11,11 @@ use neopvz_core::{Game, InputAction, InputFrame, SaveError, SaveProfile, SceneKi
 use neopvz_data::{AssetLayout, ResourceProvider};
 use neopvz_render::{
     DAY_BACKGROUND_IMAGE_ID, GpuRenderer, ImageAsset, LogicalViewport, RenderFrame,
-    SCREEN_PIXEL_IMAGE_ID, SEED_CHOOSER_IMAGE_ID, SpriteCommand, TITLE_IMAGE_ID,
-    TITLE_LOGO_IMAGE_ID, UI_PIXEL_IMAGE_ID, logical_position,
+    SCREEN_PIXEL_IMAGE_ID, SEED_CHOOSER_IMAGE_ID, SELECTOR_ADVENTURE_IMAGE_ID,
+    SELECTOR_BASE_IMAGE_ID, SELECTOR_CENTER_IMAGE_ID, SELECTOR_CHALLENGES_IMAGE_ID,
+    SELECTOR_LEFT_IMAGE_ID, SELECTOR_RIGHT_IMAGE_ID, SELECTOR_SURVIVAL_IMAGE_ID,
+    SELECTOR_VASEBREAKER_IMAGE_ID, SpriteCommand, TITLE_IMAGE_ID, TITLE_LOGO_IMAGE_ID,
+    UI_PIXEL_IMAGE_ID, logical_position,
 };
 use winit::{
     application::ApplicationHandler,
@@ -152,6 +155,49 @@ fn load_assets(resources: &ResourceProvider) -> Result<Vec<ImageAsset>, String> 
         load_title_logo(resources)?,
         load_image(
             resources,
+            SELECTOR_BASE_IMAGE_ID,
+            "reanim/SelectorScreen_BG.jpg",
+        )?,
+        load_masked_image(
+            resources,
+            SELECTOR_LEFT_IMAGE_ID,
+            "reanim/SelectorScreen_BG_Left.jpg",
+            "reanim/SelectorScreen_BG_Left_.png",
+        )?,
+        load_masked_image(
+            resources,
+            SELECTOR_CENTER_IMAGE_ID,
+            "reanim/SelectorScreen_BG_Center.jpg",
+            "reanim/SelectorScreen_BG_Center_.png",
+        )?,
+        load_masked_image(
+            resources,
+            SELECTOR_RIGHT_IMAGE_ID,
+            "reanim/SelectorScreen_BG_Right.jpg",
+            "reanim/SelectorScreen_BG_Right_.png",
+        )?,
+        load_image(
+            resources,
+            SELECTOR_ADVENTURE_IMAGE_ID,
+            "reanim/SelectorScreen_Adventure_button.png",
+        )?,
+        load_image(
+            resources,
+            SELECTOR_CHALLENGES_IMAGE_ID,
+            "reanim/SelectorScreen_Challenges_button.png",
+        )?,
+        load_image(
+            resources,
+            SELECTOR_SURVIVAL_IMAGE_ID,
+            "reanim/SelectorScreen_Survival_button.png",
+        )?,
+        load_image(
+            resources,
+            SELECTOR_VASEBREAKER_IMAGE_ID,
+            "reanim/SelectorScreen_Vasebreaker_button.png",
+        )?,
+        load_image(
+            resources,
             SEED_CHOOSER_IMAGE_ID,
             "images/SeedChooser_Background.png",
         )?,
@@ -169,17 +215,31 @@ fn load_assets(resources: &ResourceProvider) -> Result<Vec<ImageAsset>, String> 
 }
 
 fn load_title_logo(resources: &ResourceProvider) -> Result<ImageAsset, String> {
-    let color = load_image(resources, TITLE_LOGO_IMAGE_ID, "images/PvZ_Logo.jpg")?;
-    let mask = load_image(resources, TITLE_LOGO_IMAGE_ID, "images/PvZ_Logo_.png")?;
+    load_masked_image(
+        resources,
+        TITLE_LOGO_IMAGE_ID,
+        "images/PvZ_Logo.jpg",
+        "images/PvZ_Logo_.png",
+    )
+}
+
+fn load_masked_image(
+    resources: &ResourceProvider,
+    resource_id: u32,
+    color_path: &str,
+    mask_path: &str,
+) -> Result<ImageAsset, String> {
+    let color = load_image(resources, resource_id, color_path)?;
+    let mask = load_image(resources, resource_id, mask_path)?;
     if color.width != mask.width || color.height != mask.height {
-        return Err("images/PvZ_Logo.jpg and images/PvZ_Logo_.png dimensions differ".to_owned());
+        return Err(format!("{color_path} and {mask_path} dimensions differ"));
     }
     let mut rgba8 = color.rgba8;
     for (color_pixel, mask_pixel) in rgba8.chunks_exact_mut(4).zip(mask.rgba8.chunks_exact(4)) {
         color_pixel[3] = mask_pixel[0];
     }
-    ImageAsset::new(TITLE_LOGO_IMAGE_ID, color.width, color.height, rgba8)
-        .map_err(|error| format!("title logo: {error}"))
+    ImageAsset::new(resource_id, color.width, color.height, rgba8)
+        .map_err(|error| format!("masked image {color_path}: {error}"))
 }
 
 fn load_image(
@@ -268,7 +328,8 @@ impl App {
         match key {
             KeyCode::Escape => event_loop.exit(),
             KeyCode::Enter => match self.game.state().scene {
-                SceneKind::Title => self.start_scene(SceneKind::SeedChooser),
+                SceneKind::Title => self.start_scene(SceneKind::AdventureSelect),
+                SceneKind::AdventureSelect => self.start_scene(SceneKind::SeedChooser),
                 SceneKind::SeedChooser => self.start_scene(SceneKind::Day),
                 _ => {}
             },
@@ -302,7 +363,8 @@ impl App {
     }
 
     fn handle_mouse_click(&mut self) {
-        if self.game.state().scene != SceneKind::Day {
+        let scene = self.game.state().scene;
+        if scene != SceneKind::Day && scene != SceneKind::AdventureSelect {
             return;
         }
         let Some(position) = self.cursor_position else {
@@ -319,6 +381,12 @@ impl App {
         }) else {
             return;
         };
+        if scene == SceneKind::AdventureSelect {
+            if (400.0..730.0).contains(&x) && (55.0..175.0).contains(&y) {
+                self.start_scene(SceneKind::SeedChooser);
+            }
+            return;
+        }
         if !(80.0..800.0).contains(&x) || !(120.0..570.0).contains(&y) {
             return;
         }
@@ -368,6 +436,55 @@ impl App {
                     scale: 1.0,
                     alpha: 1.0,
                 });
+            }
+            SceneKind::AdventureSelect => {
+                frame.sprites.push(SpriteCommand {
+                    resource_id: SELECTOR_BASE_IMAGE_ID,
+                    x: 0.0,
+                    y: 0.0,
+                    z: -3,
+                    scale: 8.0,
+                    alpha: 1.0,
+                });
+                frame.sprites.push(SpriteCommand {
+                    resource_id: SELECTOR_CENTER_IMAGE_ID,
+                    x: 0.0,
+                    y: 250.0,
+                    z: -2,
+                    scale: 1.0,
+                    alpha: 1.0,
+                });
+                frame.sprites.push(SpriteCommand {
+                    resource_id: SELECTOR_LEFT_IMAGE_ID,
+                    x: 0.0,
+                    y: 0.0,
+                    z: -1,
+                    scale: 1.0,
+                    alpha: 1.0,
+                });
+                frame.sprites.push(SpriteCommand {
+                    resource_id: SELECTOR_RIGHT_IMAGE_ID,
+                    x: 70.0,
+                    y: 0.0,
+                    z: 0,
+                    scale: 1.0,
+                    alpha: 1.0,
+                });
+                for (resource_id, x, y) in [
+                    (SELECTOR_ADVENTURE_IMAGE_ID, 400.0, 55.0),
+                    (SELECTOR_CHALLENGES_IMAGE_ID, 407.0, 180.0),
+                    (SELECTOR_SURVIVAL_IMAGE_ID, 395.0, 300.0),
+                    (SELECTOR_VASEBREAKER_IMAGE_ID, 420.0, 425.0),
+                ] {
+                    frame.sprites.push(SpriteCommand {
+                        resource_id,
+                        x,
+                        y,
+                        z: 5,
+                        scale: 1.0,
+                        alpha: 1.0,
+                    });
+                }
             }
             SceneKind::SeedChooser => {
                 frame.sprites.push(SpriteCommand {

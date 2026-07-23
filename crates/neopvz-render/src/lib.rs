@@ -15,6 +15,14 @@ pub const DAY_BACKGROUND_IMAGE_ID: u32 = 3;
 pub const UI_PIXEL_IMAGE_ID: u32 = 4;
 pub const SCREEN_PIXEL_IMAGE_ID: u32 = 5;
 pub const TITLE_LOGO_IMAGE_ID: u32 = 6;
+pub const SELECTOR_BASE_IMAGE_ID: u32 = 7;
+pub const SELECTOR_LEFT_IMAGE_ID: u32 = 8;
+pub const SELECTOR_CENTER_IMAGE_ID: u32 = 9;
+pub const SELECTOR_RIGHT_IMAGE_ID: u32 = 10;
+pub const SELECTOR_ADVENTURE_IMAGE_ID: u32 = 11;
+pub const SELECTOR_CHALLENGES_IMAGE_ID: u32 = 12;
+pub const SELECTOR_SURVIVAL_IMAGE_ID: u32 = 13;
+pub const SELECTOR_VASEBREAKER_IMAGE_ID: u32 = 14;
 
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub struct LogicalViewport {
