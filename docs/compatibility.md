@@ -13,15 +13,15 @@ evidence; a reviewer assertion alone is never sufficient.
 Status is `verified`, `partial`, or `missing`. The progress quantity is the sum
 of `total - accepted` across all rows.
 
-Current baseline: **948 accepted / 1802 total; 854 unresolved**.
+Current baseline: **955 accepted / 1802 total; 847 unresolved**.
 
 ## Foundation and Boundaries
 
 | Obligation | Domain | Accepted | Total | Status | Evidence / owner |
 |---|---|---:|---:|---|---|
 | FND-001 | AGPL implementation boundary and repository exclusion | 1 | 1 | verified | `7bfb9ed`, repository scan |
-| FND-002 | Ubuntu format, lint, test, and release gate | 1 | 1 | verified | Action run `29939544390` |
-| FND-003 | Windows resource-free release artifact and local launch | 1 | 1 | verified | PR `#11`, run `29939544535`, ignored local record |
+| FND-002 | Ubuntu format, lint, test, and release gate | 1 | 1 | verified | Action runs `29939544390`, `30030645194` |
+| FND-003 | Windows resource-free release artifact and local launch | 1 | 1 | verified | PR `#11`, run `29939544535`, PR `#64`, run `30030645257`, ignored local record |
 | FND-004 | Directory, explicit path, and directory-embedded PAK discovery | 3 | 3 | verified | Issue `#4`; synthetic discovery tests and Actions |
 | FND-005 | Standalone PAK parsing and resource access | 1 | 1 | verified | PR `#23`, run `29944500864`, ignored local record |
 | FND-006 | Version identity and external-resource safety checks | 1 | 1 | verified | PR `#25`, runs `29947497509`/`29947497544`, ignored local record |
@@ -79,10 +79,10 @@ player-observable rules and domain-matched evidence are implemented.
 
 | Obligation | Behavior domain | Accepted | Total | Status | Evidence / owner |
 |---|---|---:|---:|---|---|
-| UI-SCREEN | Loading, title, menu, selector, seed chooser, HUD, pause, options, help, almanac, shop, and result flows | 0 | 12 | missing | Issues `#2`, `#17` |
-| INPUT-ACTION | Mouse, keyboard, hover, click, drag, placement, pause, restart, and command-line resource selection | 0 | 8 | missing | Issue `#17` |
+| UI-SCREEN | Loading, title, menu, selector, seed chooser, HUD, pause, options, help, almanac, shop, and result flows | 2 | 12 | partial | PR `#64`, runs `30030645194`/`30030645257`, ignored `artifacts/windows-7de9f1d/verification.md`; Issues `#2`, `#17` |
+| INPUT-ACTION | Mouse, keyboard, hover, click, drag, placement, pause, restart, and command-line resource selection | 1 | 8 | partial | PR `#64`, Enter -> Enter keyboard sequence in ignored `artifacts/windows-7de9f1d/verification.md`; Issue `#17` |
 | SAVE-PROGRESSION | Profile, settings, unlocks, awards, inventory, garden, mode completion, and load compatibility | 8 | 8 | verified | PR `#61`, runs `30024232209`/`30024232459`, ignored local record |
-| PLATFORM-CONTRACT | Logical viewport, window/fullscreen behavior, DPI, audio device, and external-path behavior | 0 | 6 | missing | Issue `#17` |
+| PLATFORM-CONTRACT | Logical viewport, window/fullscreen behavior, DPI, audio device, and external-path behavior | 4 | 6 | partial | PR `#64`, 800x600 logical viewport, window startup, DPI-aware 1000x750 client capture, and external `--data-dir` launch in ignored `artifacts/windows-7de9f1d/verification.md`; Issue `#17` |
 
 ## Visual and Audio Evidence
 
