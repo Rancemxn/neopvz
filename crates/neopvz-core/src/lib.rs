@@ -30,6 +30,8 @@ const BOARD_ICE_TICKS: u32 = 300;
 const DOOM_SHROOM_RADIUS: i64 = 250;
 const DOOM_SHROOM_ROW_RADIUS: u8 = 3;
 const DOOM_CRATER_TICKS: u32 = 18_000;
+// Zombie_EatPlant in the target build subtracts four health per ordinary bite.
+const ZOMBIE_BITE_DAMAGE: i32 = 4;
 
 pub type Tick = u64;
 pub type EntityId = u32;
@@ -1814,11 +1816,11 @@ impl Game {
                 self.state.board.zombies[zombie_index].eating = target.is_some();
                 if let Some(plant_index) = target {
                     let plant_id = self.state.board.plants[plant_index].id;
-                    self.state.board.plants[plant_index].health -= 4;
+                    self.state.board.plants[plant_index].health -= ZOMBIE_BITE_DAMAGE;
                     let health_remaining = self.state.board.plants[plant_index].health;
                     events.push(GameEvent::PlantDamaged {
                         entity: plant_id,
-                        damage: 4,
+                        damage: ZOMBIE_BITE_DAMAGE,
                         health_remaining,
                     });
                     if health_remaining <= 0 {
@@ -2893,6 +2895,59 @@ mod tests {
         assert_eq!(game.state.board.zombies.len(), 1);
         assert_eq!(game.state.board.zombies[0].id, other_row);
         assert!(![far_left, far_right].contains(&other_row));
+    }
+
+    #[test]
+    fn wallnut_and_tallnut_keep_their_target_health_and_block_bites_until_zero() {
+        for (slot, expected_health) in [(3, 4_000), (23, 8_000)] {
+            let mut game = Game::new(7, SceneKind::Day);
+            game.state.sun = expected_health as u32;
+            game.advance(InputFrame {
+                actions: vec![
+                    InputAction::SelectSeed { slot },
+                    InputAction::Plant { row: 2, column: 0 },
+                ],
+            });
+
+            assert_eq!(game.state.board.plants.len(), 1);
+            assert_eq!(game.state.board.plants[0].health, expected_health);
+            assert_eq!(game.state.board.plants[0].max_health, expected_health);
+
+            // Keep this focused check short while still exercising both the
+            // non-terminal and terminal ordinary-bite paths.
+            game.state.board.plants[0].health = ZOMBIE_BITE_DAMAGE * 2;
+            let mut setup_events = Vec::new();
+            game.spawn_normal_zombie(
+                2,
+                0,
+                Some(grid_x(0) + 10 * POSITION_SCALE),
+                &mut setup_events,
+            );
+
+            for _ in 0..4 {
+                game.advance(InputFrame::default());
+            }
+            assert_eq!(game.state.board.plants[0].health, ZOMBIE_BITE_DAMAGE);
+            assert!(game.state.board.plants[0].health > 0);
+
+            let events = (0..4)
+                .flat_map(|_| game.advance(InputFrame::default()))
+                .collect::<Vec<_>>();
+            assert!(events.iter().any(|event| matches!(
+                event,
+                GameEvent::PlantDamaged {
+                    damage: ZOMBIE_BITE_DAMAGE,
+                    health_remaining: 0,
+                    ..
+                }
+            )));
+            assert!(
+                events
+                    .iter()
+                    .any(|event| matches!(event, GameEvent::PlantDied { .. }))
+            );
+            assert!(game.state.board.plants.is_empty());
+        }
     }
 
     #[test]
