@@ -11,8 +11,8 @@ use neopvz_core::{Game, InputAction, InputFrame, SaveError, SaveProfile, SceneKi
 use neopvz_data::{AssetLayout, ResourceProvider};
 use neopvz_render::{
     DAY_BACKGROUND_IMAGE_ID, GpuRenderer, ImageAsset, LogicalViewport, RenderFrame,
-    SCREEN_PIXEL_IMAGE_ID, SEED_CHOOSER_IMAGE_ID, SpriteCommand, TITLE_IMAGE_ID, UI_PIXEL_IMAGE_ID,
-    TITLE_LOGO_IMAGE_ID, logical_position,
+    SCREEN_PIXEL_IMAGE_ID, SEED_CHOOSER_IMAGE_ID, SpriteCommand, TITLE_IMAGE_ID,
+    TITLE_LOGO_IMAGE_ID, UI_PIXEL_IMAGE_ID, logical_position,
 };
 use winit::{
     application::ApplicationHandler,
