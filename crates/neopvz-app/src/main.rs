@@ -12,7 +12,7 @@ use neopvz_data::{AssetLayout, ResourceProvider};
 use neopvz_render::{
     DAY_BACKGROUND_IMAGE_ID, GpuRenderer, ImageAsset, LogicalViewport, RenderFrame,
     SCREEN_PIXEL_IMAGE_ID, SEED_CHOOSER_IMAGE_ID, SpriteCommand, TITLE_IMAGE_ID, UI_PIXEL_IMAGE_ID,
-    logical_position,
+    TITLE_LOGO_IMAGE_ID, logical_position,
 };
 use winit::{
     application::ApplicationHandler,
@@ -149,6 +149,7 @@ fn load_profile(path: &Path) -> Result<SaveProfile, SaveError> {
 fn load_assets(resources: &ResourceProvider) -> Result<Vec<ImageAsset>, String> {
     let mut assets = vec![
         load_image(resources, TITLE_IMAGE_ID, "images/titlescreen.jpg")?,
+        load_title_logo(resources)?,
         load_image(
             resources,
             SEED_CHOOSER_IMAGE_ID,
@@ -165,6 +166,20 @@ fn load_assets(resources: &ResourceProvider) -> Result<Vec<ImageAsset>, String> 
             .map_err(|error| error.to_string())?,
     );
     Ok(assets)
+}
+
+fn load_title_logo(resources: &ResourceProvider) -> Result<ImageAsset, String> {
+    let color = load_image(resources, TITLE_LOGO_IMAGE_ID, "images/PvZ_Logo.jpg")?;
+    let mask = load_image(resources, TITLE_LOGO_IMAGE_ID, "images/PvZ_Logo_.png")?;
+    if color.width != mask.width || color.height != mask.height {
+        return Err("images/PvZ_Logo.jpg and images/PvZ_Logo_.png dimensions differ".to_owned());
+    }
+    let mut rgba8 = color.rgba8;
+    for (color_pixel, mask_pixel) in rgba8.chunks_exact_mut(4).zip(mask.rgba8.chunks_exact(4)) {
+        color_pixel[3] = mask_pixel[0];
+    }
+    ImageAsset::new(TITLE_LOGO_IMAGE_ID, color.width, color.height, rgba8)
+        .map_err(|error| format!("title logo: {error}"))
 }
 
 fn load_image(
@@ -336,14 +351,24 @@ impl App {
     fn render_frame(&self) -> RenderFrame {
         let mut frame = RenderFrame::default();
         match self.game.state().scene {
-            SceneKind::Title => frame.sprites.push(SpriteCommand {
-                resource_id: TITLE_IMAGE_ID,
-                x: 0.0,
-                y: 0.0,
-                z: 0,
-                scale: 1.0,
-                alpha: 1.0,
-            }),
+            SceneKind::Title => {
+                frame.sprites.push(SpriteCommand {
+                    resource_id: TITLE_IMAGE_ID,
+                    x: 0.0,
+                    y: 0.0,
+                    z: 0,
+                    scale: 1.0,
+                    alpha: 1.0,
+                });
+                frame.sprites.push(SpriteCommand {
+                    resource_id: TITLE_LOGO_IMAGE_ID,
+                    x: 50.0,
+                    y: 0.0,
+                    z: 1,
+                    scale: 1.0,
+                    alpha: 1.0,
+                });
+            }
             SceneKind::SeedChooser => {
                 frame.sprites.push(SpriteCommand {
                     resource_id: SCREEN_PIXEL_IMAGE_ID,
