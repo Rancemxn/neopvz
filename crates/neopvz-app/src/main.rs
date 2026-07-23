@@ -470,7 +470,7 @@ fn load_image(
 }
 
 fn load_dialogue_text(resource_id: u32, text: &str) -> Result<ImageAsset, String> {
-    render_text_image(resource_id, text, 233, 144, 18)
+    render_text_image(resource_id, text, 233, 144, 16)
 }
 
 fn load_continue_text(resource_id: u32) -> Result<ImageAsset, String> {
