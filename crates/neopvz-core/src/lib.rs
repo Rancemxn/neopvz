@@ -27,6 +27,9 @@ const ICE_SHROOM_REFRESH_FREEZE_TICKS: u32 = 300;
 const ICE_SHROOM_CHILL_TICKS: u32 = 2_000;
 const ICE_SHROOM_DAMAGE: i32 = 20;
 const BOARD_ICE_TICKS: u32 = 300;
+const DOOM_SHROOM_RADIUS: i64 = 250;
+const DOOM_SHROOM_ROW_RADIUS: u8 = 3;
+const DOOM_CRATER_TICKS: u32 = 18_000;
 
 pub type Tick = u64;
 pub type EntityId = u32;
@@ -136,6 +139,10 @@ impl PlantType {
 
     fn is_ice_shroom(self) -> bool {
         self.slot() == 14
+    }
+
+    fn is_doom_shroom(self) -> bool {
+        self.slot() == 15
     }
 
     fn is_shooter(self) -> bool {
@@ -691,6 +698,7 @@ pub enum InputRejectReason {
     NoSeedSelected,
     OutsideBoard,
     Occupied,
+    Crater,
     NotEnoughSun,
     MissingEntity,
 }
@@ -778,6 +786,13 @@ pub struct SunPickupState {
 }
 
 #[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
+pub struct CraterState {
+    pub row: u8,
+    pub column: u8,
+    pub remaining: u32,
+}
+
+#[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
 pub struct WaveState {
     pub current: u32,
     pub total: u32,
@@ -796,6 +811,7 @@ pub struct BoardState {
     pub zombies: Vec<ZombieState>,
     pub projectiles: Vec<ProjectileState>,
     pub suns: Vec<SunPickupState>,
+    pub craters: Vec<CraterState>,
     pub wave: WaveState,
     pub sun_countdown: u32,
     pub suns_fallen: u32,
@@ -828,6 +844,7 @@ impl BoardState {
             zombies: Vec::new(),
             projectiles: Vec::new(),
             suns: Vec::new(),
+            craters: Vec::new(),
             wave: WaveState {
                 current: 0,
                 total: 1,
@@ -895,6 +912,11 @@ pub enum GameEvent {
     },
     PlantDied {
         entity: EntityId,
+    },
+    CraterCreated {
+        row: u8,
+        column: u8,
+        duration: u32,
     },
     PlantSpecialTriggered {
         entity: EntityId,
@@ -1175,6 +1197,7 @@ impl Game {
             self.update_sun_spawning(&mut events);
             self.update_wave_spawning(&mut events);
             self.state.board.ice_counter = self.state.board.ice_counter.saturating_sub(1);
+            self.update_craters();
             self.state.tick = self.state.tick.saturating_add(1);
             self.state.wave = self.state.board.wave.current;
             events.push(GameEvent::StateChanged);
@@ -1278,6 +1301,19 @@ impl Game {
             });
             return;
         }
+        if self
+            .state
+            .board
+            .craters
+            .iter()
+            .any(|crater| crater.row == row && crater.column == column)
+        {
+            events.push(GameEvent::InputRejected {
+                action,
+                reason: InputRejectReason::Crater,
+            });
+            return;
+        }
 
         let packet_index = self
             .state
@@ -1320,6 +1356,7 @@ impl Game {
         let (special_counter, special_armed) = if plant_type.is_cherry_bomb()
             || plant_type.is_jalapeno()
             || plant_type.is_ice_shroom()
+            || plant_type.is_doom_shroom()
         {
             (INSTANT_PLANT_COUNTDOWN, false)
         } else if plant_type.is_potato_mine() {
@@ -1439,6 +1476,7 @@ impl Game {
                 if plant_type.is_cherry_bomb()
                     || plant_type.is_jalapeno()
                     || plant_type.is_ice_shroom()
+                    || plant_type.is_doom_shroom()
                 {
                     plant.special_counter = plant.special_counter.saturating_sub(1);
                     special = plant.special_counter == 0;
@@ -1545,6 +1583,69 @@ impl Game {
             entity: plant_id,
             plant_type,
         });
+
+        if plant_type.is_doom_shroom() {
+            let center_x = grid_x(column);
+            let radius = DOOM_SHROOM_RADIUS * POSITION_SCALE;
+            let target_ids = self
+                .state
+                .board
+                .zombies
+                .iter()
+                .filter(|zombie| {
+                    zombie.health > 0
+                        && zombie.row.abs_diff(row) <= DOOM_SHROOM_ROW_RADIUS
+                        && (zombie.position_x - center_x).abs() <= radius
+                })
+                .map(|zombie| zombie.id)
+                .collect::<Vec<_>>();
+
+            for zombie_id in target_ids {
+                let Some(zombie_index) = self
+                    .state
+                    .board
+                    .zombies
+                    .iter()
+                    .position(|zombie| zombie.id == zombie_id)
+                else {
+                    continue;
+                };
+                self.state.board.zombies[zombie_index].health -= PLANT_SPECIAL_DAMAGE;
+                let health_remaining = self.state.board.zombies[zombie_index].health;
+                events.push(GameEvent::PlantSpecialHit {
+                    plant: plant_id,
+                    zombie: zombie_id,
+                    damage: PLANT_SPECIAL_DAMAGE,
+                    health_remaining,
+                });
+                if health_remaining <= 0 {
+                    self.state.board.zombies.remove(zombie_index);
+                    events.push(GameEvent::ZombieDied { entity: zombie_id });
+                }
+            }
+
+            self.state.board.craters.push(CraterState {
+                row,
+                column,
+                remaining: DOOM_CRATER_TICKS,
+            });
+            events.push(GameEvent::CraterCreated {
+                row,
+                column,
+                duration: DOOM_CRATER_TICKS,
+            });
+            if let Some(plant) = self
+                .state
+                .board
+                .plants
+                .iter_mut()
+                .find(|plant| plant.id == plant_id)
+            {
+                plant.health = 0;
+            }
+            events.push(GameEvent::PlantDied { entity: plant_id });
+            return;
+        }
 
         if plant_type.is_ice_shroom() {
             self.state.board.ice_counter = BOARD_ICE_TICKS;
@@ -1902,6 +2003,16 @@ impl Game {
         for packet in &mut self.state.board.seed_packets {
             packet.refresh_remaining = packet.refresh_remaining.saturating_sub(1);
         }
+    }
+
+    fn update_craters(&mut self) {
+        for crater in &mut self.state.board.craters {
+            crater.remaining = crater.remaining.saturating_sub(1);
+        }
+        self.state
+            .board
+            .craters
+            .retain(|crater| crater.remaining != 0);
     }
 
     fn update_sun_spawning(&mut self, events: &mut Vec<GameEvent>) {
@@ -2502,6 +2613,59 @@ mod tests {
         assert_eq!(frozen.position_x, before);
         assert!(!frozen.eating);
         assert!(frozen.frozen_counter > 0);
+    }
+
+    #[test]
+    fn doom_shroom_removes_targets_and_leaves_a_replant_blocking_crater() {
+        let mut game = Game::new(7, SceneKind::Day);
+        game.state.sun = 300;
+        game.advance(InputFrame {
+            actions: vec![
+                InputAction::SelectSeed { slot: 15 },
+                InputAction::Plant { row: 2, column: 2 },
+            ],
+        });
+        game.state.board.plants[0].special_counter = 1;
+        let center = grid_x(2);
+        let mut setup_events = Vec::new();
+        game.spawn_normal_zombie(2, 0, Some(center + 100 * POSITION_SCALE), &mut setup_events);
+        game.spawn_normal_zombie(0, 0, Some(center + 100 * POSITION_SCALE), &mut setup_events);
+        let survivor =
+            game.spawn_normal_zombie(2, 0, Some(center + 300 * POSITION_SCALE), &mut setup_events);
+
+        let events = game.advance(InputFrame::default());
+
+        assert!(events.iter().any(|event| matches!(
+            event,
+            GameEvent::CraterCreated {
+                row: 2,
+                column: 2,
+                duration: DOOM_CRATER_TICKS,
+            }
+        )));
+        assert!(events.iter().any(|event| matches!(
+            event,
+            GameEvent::ZombieDied { entity } if *entity != survivor
+        )));
+        assert_eq!(game.state.board.zombies.len(), 1);
+        assert_eq!(game.state.board.zombies[0].id, survivor);
+        assert_eq!(game.state.board.craters.len(), 1);
+        assert_eq!(game.state.board.craters[0].remaining, DOOM_CRATER_TICKS - 1);
+        assert!(game.state.board.plants.is_empty());
+
+        let rejected = game.advance(InputFrame {
+            actions: vec![
+                InputAction::SelectSeed { slot: 0 },
+                InputAction::Plant { row: 2, column: 2 },
+            ],
+        });
+        assert!(rejected.iter().any(|event| matches!(
+            event,
+            GameEvent::InputRejected {
+                reason: InputRejectReason::Crater,
+                ..
+            }
+        )));
     }
 
     #[test]
