@@ -815,6 +815,7 @@ struct App {
     simulation_accumulator: Duration,
     cursor_position: Option<PhysicalPosition<f64>>,
     tutorial_page: u8,
+    seed_chooser_selection: [bool; 2],
 }
 
 impl App {
@@ -828,6 +829,7 @@ impl App {
             simulation_accumulator: Duration::ZERO,
             cursor_position: None,
             tutorial_page: 0,
+            seed_chooser_selection: [false; 2],
         }
     }
 
@@ -882,9 +884,19 @@ impl App {
                 SceneKind::Title => self.start_scene(SceneKind::AdventureSelect),
                 SceneKind::AdventureSelect => self.start_scene(SceneKind::AdventureTutorial),
                 SceneKind::AdventureTutorial => self.advance_tutorial(),
-                SceneKind::SeedChooser => self.start_scene(SceneKind::Day),
+                SceneKind::SeedChooser
+                    if self.seed_chooser_selection.iter().all(|selected| *selected) =>
+                {
+                    self.start_scene(SceneKind::Day)
+                }
                 _ => {}
             },
+            KeyCode::Digit1 if self.game.state().scene == SceneKind::SeedChooser => {
+                self.seed_chooser_selection[0] = !self.seed_chooser_selection[0];
+            }
+            KeyCode::Digit2 if self.game.state().scene == SceneKind::SeedChooser => {
+                self.seed_chooser_selection[1] = !self.seed_chooser_selection[1];
+            }
             KeyCode::Digit1 if self.game.state().scene == SceneKind::Day => {
                 self.pending_input.push(InputAction::SelectSeed { slot: 0 });
             }
@@ -913,6 +925,7 @@ impl App {
         self.pending_input.clear();
         self.simulation_accumulator = Duration::ZERO;
         self.last_update = Some(Instant::now());
+        self.seed_chooser_selection = [false; 2];
     }
 
     fn advance_tutorial(&mut self) {
@@ -966,8 +979,22 @@ impl App {
             return;
         }
         if scene == SceneKind::SeedChooser {
+            if ((189.5..239.5).contains(&x) && (171.5..241.5).contains(&y))
+                || ((288.0..338.0).contains(&x) && (445.0..515.0).contains(&y))
+            {
+                self.seed_chooser_selection[0] = !self.seed_chooser_selection[0];
+                return;
+            }
+            if ((242.5..292.5).contains(&x) && (171.5..241.5).contains(&y))
+                || ((341.0..391.0).contains(&x) && (445.0..515.0).contains(&y))
+            {
+                self.seed_chooser_selection[1] = !self.seed_chooser_selection[1];
+                return;
+            }
             if (322.0..478.0).contains(&x) && (535.0..577.0).contains(&y) {
-                self.start_scene(SceneKind::Day);
+                if self.seed_chooser_selection.iter().all(|selected| *selected) {
+                    self.start_scene(SceneKind::Day);
+                }
             }
             return;
         }
@@ -1181,17 +1208,45 @@ impl App {
                         alpha: 1.0,
                     });
                 }
-                for (resource_id, x, y, scale) in [
-                    (SEED_PACKET_NORMAL_IMAGE_ID, 189.5, 171.5, 1.0),
-                    (SEED_PEASHOOTER_IMAGE_ID, 196.5, 181.0, 0.5),
-                    (SEED_PACKET_NORMAL_IMAGE_ID, 242.5, 171.5, 1.0),
-                    (SEED_SUNFLOWER_IMAGE_ID, 250.5, 184.0, 0.6),
+                let packet_positions = [(189.5, 171.5), (242.5, 171.5)];
+                let bank_positions = [(288.0, 445.0), (341.0, 445.0)];
+                for (
+                    slot,
+                    (packet_x, packet_y),
+                    (bank_x, bank_y),
+                    (resource_id, icon_x, icon_y, scale),
+                ) in [
+                    (
+                        0,
+                        packet_positions[0],
+                        bank_positions[0],
+                        (SEED_PEASHOOTER_IMAGE_ID, 7.0, 9.5, 0.5),
+                    ),
+                    (
+                        1,
+                        packet_positions[1],
+                        bank_positions[1],
+                        (SEED_SUNFLOWER_IMAGE_ID, 8.0, 12.0, 0.6),
+                    ),
                 ] {
+                    let (x, y) = if self.seed_chooser_selection[slot] {
+                        (bank_x, bank_y)
+                    } else {
+                        (packet_x, packet_y)
+                    };
                     frame.sprites.push(SpriteCommand {
-                        resource_id,
+                        resource_id: SEED_PACKET_NORMAL_IMAGE_ID,
                         x,
                         y,
                         z: 3,
+                        scale: 1.0,
+                        alpha: 1.0,
+                    });
+                    frame.sprites.push(SpriteCommand {
+                        resource_id,
+                        x: x + icon_x,
+                        y: y + icon_y,
+                        z: 4,
                         scale,
                         alpha: 1.0,
                     });
@@ -1202,7 +1257,11 @@ impl App {
                     y: 535.0,
                     z: 3,
                     scale: 1.0,
-                    alpha: 1.0,
+                    alpha: if self.seed_chooser_selection.iter().all(|selected| *selected) {
+                        1.0
+                    } else {
+                        0.55
+                    },
                 });
             }
             SceneKind::Day => {
