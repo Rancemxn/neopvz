@@ -1,8 +1,26 @@
-use std::{io::ErrorKind, path::PathBuf, process::ExitCode};
+use std::{
+    io::ErrorKind,
+    path::{Path, PathBuf},
+    process::ExitCode,
+    sync::Arc,
+    time::{Duration, Instant},
+};
 
 use clap::Parser;
-use neopvz_core::{Game, SaveError, SaveProfile, SceneKind};
+use neopvz_core::{Game, InputAction, InputFrame, SaveError, SaveProfile, SceneKind};
 use neopvz_data::{AssetLayout, ResourceProvider};
+use neopvz_render::{
+    DAY_BACKGROUND_IMAGE_ID, GpuRenderer, ImageAsset, RenderFrame, SEED_CHOOSER_IMAGE_ID,
+    SpriteCommand, TITLE_IMAGE_ID, UI_PIXEL_IMAGE_ID,
+};
+use winit::{
+    application::ApplicationHandler,
+    dpi::LogicalSize,
+    event::{ElementState, WindowEvent},
+    event_loop::{ActiveEventLoop, ControlFlow, EventLoop},
+    keyboard::{KeyCode, PhysicalKey},
+    window::{Window, WindowId},
+};
 
 #[derive(Debug, Parser)]
 #[command(name = "neopvz", version, about = "Rust PvZ reimplementation")]
@@ -14,6 +32,8 @@ struct Cli {
     #[arg(long, value_name = "PATH")]
     profile: Option<PathBuf>,
 }
+
+const SIMULATION_STEP: Duration = Duration::from_millis(10);
 
 fn main() -> ExitCode {
     tracing_subscriber::fmt::init();
@@ -30,58 +50,79 @@ fn main() -> ExitCode {
         },
         None => None,
     };
+
     let explicit = cli.data_dir.as_deref().or(cli.pak.as_deref());
-    match AssetLayout::discover(explicit) {
-        Ok(layout) => {
-            tracing::info!(source = ?layout.source, "resource source selected");
-            match ResourceProvider::open(&layout.source) {
-                Ok(resources) => match resources.inventory() {
-                    Ok(inventory) => {
-                        let Some(version) = inventory.version() else {
-                            tracing::error!(
-                                groups = inventory.groups,
-                                entries = inventory.entries,
-                                images = inventory.images,
-                                fonts = inventory.fonts,
-                                sounds = inventory.sounds,
-                                compiled_animations = inventory.compiled_animations,
-                                music = inventory.music,
-                                "unsupported resource inventory"
-                            );
-                            return ExitCode::FAILURE;
-                        };
-                        tracing::info!(
-                            version,
-                            groups = inventory.groups,
-                            entries = inventory.entries,
-                            images = inventory.images,
-                            fonts = inventory.fonts,
-                            sounds = inventory.sounds,
-                            compiled_animations = inventory.compiled_animations,
-                            music = inventory.music,
-                            "resource inventory verified"
-                        );
-                    }
-                    Err(error) => {
-                        tracing::error!(%error, "resource inventory failed");
-                        return ExitCode::FAILURE;
-                    }
-                },
-                Err(error) => {
-                    tracing::error!(%error, "resource source opening failed");
-                    return ExitCode::FAILURE;
-                }
-            }
-        }
+    let layout = match AssetLayout::discover(explicit) {
+        Ok(layout) => layout,
         Err(error) => {
             tracing::error!(%error, "resource discovery failed");
             return ExitCode::FAILURE;
         }
-    }
+    };
+    tracing::info!(source = ?layout.source, "resource source selected");
 
-    let mut game = Game::new(0, SceneKind::Title);
-    game.advance(Default::default());
-    tracing::info!(tick = game.state().tick, "simulation advanced");
+    let resources = match ResourceProvider::open(&layout.source) {
+        Ok(resources) => resources,
+        Err(error) => {
+            tracing::error!(%error, "resource source opening failed");
+            return ExitCode::FAILURE;
+        }
+    };
+    let inventory = match resources.inventory() {
+        Ok(inventory) => inventory,
+        Err(error) => {
+            tracing::error!(%error, "resource inventory failed");
+            return ExitCode::FAILURE;
+        }
+    };
+    let Some(version) = inventory.version() else {
+        tracing::error!(
+            groups = inventory.groups,
+            entries = inventory.entries,
+            images = inventory.images,
+            fonts = inventory.fonts,
+            sounds = inventory.sounds,
+            compiled_animations = inventory.compiled_animations,
+            music = inventory.music,
+            "unsupported resource inventory"
+        );
+        return ExitCode::FAILURE;
+    };
+    tracing::info!(
+        version,
+        groups = inventory.groups,
+        entries = inventory.entries,
+        images = inventory.images,
+        fonts = inventory.fonts,
+        sounds = inventory.sounds,
+        compiled_animations = inventory.compiled_animations,
+        music = inventory.music,
+        "resource inventory verified"
+    );
+
+    let assets = match load_assets(&resources) {
+        Ok(assets) => assets,
+        Err(error) => {
+            tracing::error!(%error, "required display resources failed to load");
+            return ExitCode::FAILURE;
+        }
+    };
+
+    let event_loop = match EventLoop::new() {
+        Ok(event_loop) => event_loop,
+        Err(error) => {
+            tracing::error!(%error, "event loop creation failed");
+            return ExitCode::FAILURE;
+        }
+    };
+    event_loop.set_control_flow(ControlFlow::Poll);
+    let mut app = App::new(assets);
+    let run_result = event_loop.run_app(&mut app);
+
+    if let Err(error) = run_result {
+        tracing::error!(%error, "event loop failed");
+        return ExitCode::FAILURE;
+    }
 
     if let (Some(path), Some(profile)) = (profile_path, profile.take()) {
         if let Err(error) = profile.write_atomic(&path) {
@@ -94,12 +135,242 @@ fn main() -> ExitCode {
     ExitCode::SUCCESS
 }
 
-fn load_profile(path: &std::path::Path) -> Result<SaveProfile, SaveError> {
+fn load_profile(path: &Path) -> Result<SaveProfile, SaveError> {
     match SaveProfile::read(path) {
         Ok(profile) => Ok(profile),
         Err(SaveError::Io(error)) if error.kind() == ErrorKind::NotFound => {
             Ok(SaveProfile::new("default"))
         }
         Err(error) => Err(error),
+    }
+}
+
+fn load_assets(resources: &ResourceProvider) -> Result<Vec<ImageAsset>, String> {
+    let mut assets = vec![
+        load_image(resources, TITLE_IMAGE_ID, "images/titlescreen.jpg")?,
+        load_image(
+            resources,
+            SEED_CHOOSER_IMAGE_ID,
+            "images/SeedChooser_Background.png",
+        )?,
+        load_image(resources, DAY_BACKGROUND_IMAGE_ID, "images/background1.jpg")?,
+    ];
+    assets.push(
+        ImageAsset::new(UI_PIXEL_IMAGE_ID, 1, 1, vec![70, 180, 80, 255])
+            .map_err(|error| error.to_string())?,
+    );
+    Ok(assets)
+}
+
+fn load_image(
+    resources: &ResourceProvider,
+    resource_id: u32,
+    path: &str,
+) -> Result<ImageAsset, String> {
+    let bytes = resources
+        .read(path)
+        .map_err(|error| format!("{path}: {error}"))?;
+    let image = image::load_from_memory(&bytes)
+        .map_err(|error| format!("{path}: image decode failed: {error}"))?
+        .to_rgba8();
+    ImageAsset::new(resource_id, image.width(), image.height(), image.into_raw())
+        .map_err(|error| format!("{path}: {error}"))
+}
+
+struct App {
+    renderer: Option<GpuRenderer>,
+    assets: Vec<ImageAsset>,
+    game: Game,
+    pending_input: Vec<InputAction>,
+    last_update: Option<Instant>,
+    simulation_accumulator: Duration,
+}
+
+impl App {
+    fn new(assets: Vec<ImageAsset>) -> Self {
+        Self {
+            renderer: None,
+            assets,
+            game: Game::new(0, SceneKind::Title),
+            pending_input: Vec::new(),
+            last_update: None,
+            simulation_accumulator: Duration::ZERO,
+        }
+    }
+
+    fn initialize(&mut self, event_loop: &ActiveEventLoop) {
+        if self.renderer.is_some() {
+            if let Some(renderer) = &self.renderer {
+                renderer.window().request_redraw();
+            }
+            return;
+        }
+
+        let window = match event_loop.create_window(
+            Window::default_attributes()
+                .with_title("neopvz")
+                .with_inner_size(LogicalSize::new(800.0, 600.0)),
+        ) {
+            Ok(window) => Arc::new(window),
+            Err(error) => {
+                tracing::error!(%error, "window creation failed");
+                event_loop.exit();
+                return;
+            }
+        };
+        let mut renderer = match pollster::block_on(GpuRenderer::new(window)) {
+            Ok(renderer) => renderer,
+            Err(error) => {
+                tracing::error!(%error, "GPU initialization failed");
+                event_loop.exit();
+                return;
+            }
+        };
+        for asset in self.assets.drain(..) {
+            if let Err(error) = renderer.add_image(asset) {
+                tracing::error!(%error, "GPU image upload failed");
+                event_loop.exit();
+                return;
+            }
+        }
+        renderer.window().request_redraw();
+        self.renderer = Some(renderer);
+        self.last_update = Some(Instant::now());
+    }
+
+    fn handle_key(&mut self, event_loop: &ActiveEventLoop, key: PhysicalKey) {
+        let PhysicalKey::Code(key) = key else {
+            return;
+        };
+
+        match key {
+            KeyCode::Escape => event_loop.exit(),
+            KeyCode::Enter => match self.game.state().scene {
+                SceneKind::Title => self.start_scene(SceneKind::SeedChooser),
+                SceneKind::SeedChooser => self.start_scene(SceneKind::Day),
+                _ => {}
+            },
+            KeyCode::Digit1 if self.game.state().scene == SceneKind::Day => {
+                self.pending_input.push(InputAction::SelectSeed { slot: 0 });
+            }
+            KeyCode::KeyP if self.game.state().scene == SceneKind::Day => {
+                self.pending_input
+                    .push(InputAction::Plant { row: 2, column: 2 });
+            }
+            _ => {}
+        }
+    }
+
+    fn start_scene(&mut self, scene: SceneKind) {
+        self.game = Game::new(0, scene);
+        self.pending_input.clear();
+        self.simulation_accumulator = Duration::ZERO;
+        self.last_update = Some(Instant::now());
+    }
+
+    fn advance_simulation(&mut self) {
+        let Some(last_update) = self.last_update else {
+            self.last_update = Some(Instant::now());
+            return;
+        };
+        let now = Instant::now();
+        self.last_update = Some(now);
+        self.simulation_accumulator += now
+            .saturating_duration_since(last_update)
+            .min(Duration::from_millis(250));
+
+        while self.simulation_accumulator >= SIMULATION_STEP {
+            let input = InputFrame {
+                actions: std::mem::take(&mut self.pending_input),
+            };
+            self.game.advance(input);
+            self.simulation_accumulator -= SIMULATION_STEP;
+        }
+    }
+
+    fn render_frame(&self) -> RenderFrame {
+        let mut frame = RenderFrame::default();
+        match self.game.state().scene {
+            SceneKind::Title => frame.sprites.push(SpriteCommand {
+                resource_id: TITLE_IMAGE_ID,
+                x: 0.0,
+                y: 0.0,
+                z: 0,
+                scale: 1.0,
+                alpha: 1.0,
+            }),
+            SceneKind::SeedChooser => frame.sprites.push(SpriteCommand {
+                resource_id: SEED_CHOOSER_IMAGE_ID,
+                x: 0.0,
+                y: 0.0,
+                z: 0,
+                scale: 1.0,
+                alpha: 1.0,
+            }),
+            SceneKind::Day => {
+                frame.sprites.push(SpriteCommand {
+                    resource_id: DAY_BACKGROUND_IMAGE_ID,
+                    x: 0.0,
+                    y: 0.0,
+                    z: 0,
+                    scale: 1.0,
+                    alpha: 1.0,
+                });
+                for plant in &self.game.state().board.plants {
+                    frame.sprites.push(SpriteCommand {
+                        resource_id: UI_PIXEL_IMAGE_ID,
+                        x: 80.0 + f32::from(plant.column) * 80.0,
+                        y: 120.0 + f32::from(plant.row) * 90.0,
+                        z: 10,
+                        scale: 36.0,
+                        alpha: 1.0,
+                    });
+                }
+            }
+            _ => {}
+        }
+        frame
+    }
+}
+
+impl ApplicationHandler for App {
+    fn resumed(&mut self, event_loop: &ActiveEventLoop) {
+        self.initialize(event_loop);
+    }
+
+    fn window_event(&mut self, event_loop: &ActiveEventLoop, _id: WindowId, event: WindowEvent) {
+        match event {
+            WindowEvent::CloseRequested => event_loop.exit(),
+            WindowEvent::Resized(size) => {
+                if let Some(renderer) = &mut self.renderer {
+                    renderer.resize(size);
+                }
+            }
+            WindowEvent::KeyboardInput { event, .. }
+                if event.state == ElementState::Pressed && !event.repeat =>
+            {
+                self.handle_key(event_loop, event.physical_key);
+                if let Some(renderer) = &self.renderer {
+                    renderer.window().request_redraw();
+                }
+            }
+            WindowEvent::RedrawRequested => {
+                self.advance_simulation();
+                let frame = self.render_frame();
+                let render_result = self
+                    .renderer
+                    .as_mut()
+                    .map(|renderer| renderer.render(&frame));
+                if let Some(Err(error)) = render_result {
+                    tracing::error!(%error, "rendering failed");
+                    event_loop.exit();
+                    return;
+                }
+                if let Some(renderer) = &self.renderer {
+                    renderer.window().request_redraw();
+                }
+            }
+            _ => {}
+        }
     }
 }
