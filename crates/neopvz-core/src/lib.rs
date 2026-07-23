@@ -33,8 +33,11 @@ pub enum CoreError {
 }
 
 pub fn build_identity() -> &'static str {
-    option_env!("NEOPVZ_BUILD_ID")
-        .unwrap_or(concat!(env!("CARGO_PKG_NAME"), "@", env!("CARGO_PKG_VERSION")))
+    option_env!("NEOPVZ_BUILD_ID").unwrap_or(concat!(
+        env!("CARGO_PKG_NAME"),
+        "@",
+        env!("CARGO_PKG_VERSION")
+    ))
 }
 
 #[derive(Clone, Copy, Debug, Default, Deserialize, Eq, PartialEq, Serialize)]
@@ -486,11 +489,7 @@ impl Mt19937 {
     }
 
     fn range(&mut self, range: u32) -> u32 {
-        if range == 0 {
-            0
-        } else {
-            self.next() % range
-        }
+        if range == 0 { 0 } else { self.next() % range }
     }
 
     fn range_inclusive(&mut self, minimum: u32, maximum: u32) -> u32 {
@@ -796,12 +795,7 @@ impl Game {
                 self.fire_pea(id, row, column, events);
             }
             if produce_sun {
-                self.spawn_sun(
-                    SunSource::Plant(id),
-                    grid_x(column),
-                    grid_y(row),
-                    events,
-                );
+                self.spawn_sun(SunSource::Plant(id), grid_x(column), grid_y(row), events);
                 let _vertical_motion = self.rng.next();
                 let _horizontal_motion = self.rng.next();
                 let _ground_offset = self.rng.range(20);
@@ -930,12 +924,7 @@ impl Game {
         .min(SUN_COUNTDOWN_MAX)
             + self.rng.range(SUN_COUNTDOWN_RANGE);
         let position_x = i64::from(self.rng.range_inclusive(100, 649)) * POSITION_SCALE;
-        self.spawn_sun(
-            SunSource::Sky,
-            position_x,
-            60 * POSITION_SCALE,
-            events,
-        );
+        self.spawn_sun(SunSource::Sky, position_x, 60 * POSITION_SCALE, events);
         let _ground_y = self.rng.range(250);
     }
 
@@ -972,13 +961,7 @@ impl Game {
             .map(|(index, _)| index)
     }
 
-    fn fire_pea(
-        &mut self,
-        source: EntityId,
-        row: u8,
-        column: u8,
-        events: &mut Vec<GameEvent>,
-    ) {
+    fn fire_pea(&mut self, source: EntityId, row: u8, column: u8, events: &mut Vec<GameEvent>) {
         let id = self.state.board.allocate_entity();
         self.state.board.projectiles.push(ProjectileState {
             id,
@@ -1030,9 +1013,7 @@ impl Game {
         let position_x = position_override
             .unwrap_or_else(|| i64::from(780 + self.rng.range(40)) * POSITION_SCALE);
         let groan_counter = self.rng.range_inclusive(300, 400) as i32;
-        let speed = self
-            .rng
-            .fixed_range(230_000, 320_000);
+        let speed = self.rng.fixed_range(230_000, 320_000);
         self.state.board.zombies.push(ZombieState {
             id,
             zombie_type: ZombieType::Normal,
@@ -1132,12 +1113,7 @@ mod tests {
         });
         game.state.board.plants[0].launch_counter = 1;
         let mut setup_events = Vec::new();
-        game.spawn_normal_zombie(
-            2,
-            0,
-            Some(500 * POSITION_SCALE),
-            &mut setup_events,
-        );
+        game.spawn_normal_zombie(2, 0, Some(500 * POSITION_SCALE), &mut setup_events);
 
         let mut hit = false;
         for _ in 0..200 {
@@ -1162,9 +1138,11 @@ mod tests {
         assert_eq!(game.state.tick, u64::from(FIRST_WAVE_COUNTDOWN));
         assert_eq!(game.state.wave, 1);
         assert_eq!(game.state.board.zombies.len(), 1);
-        assert!(last_events
-            .iter()
-            .any(|event| matches!(event, GameEvent::WaveStarted { wave: 0 })));
+        assert!(
+            last_events
+                .iter()
+                .any(|event| matches!(event, GameEvent::WaveStarted { wave: 0 }))
+        );
     }
 
     #[test]
