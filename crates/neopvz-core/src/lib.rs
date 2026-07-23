@@ -2575,6 +2575,66 @@ mod tests {
     }
 
     #[test]
+    fn splitpea_fires_forward_and_backward_projectiles() {
+        let mut game = Game::new(7, SceneKind::Day);
+        game.state.sun = 250;
+        game.advance(InputFrame {
+            actions: vec![
+                InputAction::SelectSeed { slot: 28 },
+                InputAction::Plant { row: 2, column: 2 },
+            ],
+        });
+        game.state.board.plants[0].shooting_counter = 2;
+        let mut setup_events = Vec::new();
+        let forward = game.spawn_normal_zombie(2, 0, Some(250 * POSITION_SCALE), &mut setup_events);
+        let backward =
+            game.spawn_normal_zombie(2, 0, Some(150 * POSITION_SCALE), &mut setup_events);
+
+        let events = game.advance(InputFrame::default());
+
+        assert_eq!(
+            events
+                .iter()
+                .filter(|event| matches!(event, GameEvent::ProjectileFired { .. }))
+                .count(),
+            2
+        );
+        assert_eq!(
+            events
+                .iter()
+                .filter(|event| matches!(event, GameEvent::ProjectileHit { .. }))
+                .count(),
+            2
+        );
+        assert!(events.iter().any(|event| matches!(
+            event,
+            GameEvent::ProjectileHit {
+                zombie,
+                damage: 20,
+                ..
+            } if *zombie == forward
+        )));
+        assert!(events.iter().any(|event| matches!(
+            event,
+            GameEvent::ProjectileHit {
+                zombie,
+                damage: 20,
+                ..
+            } if *zombie == backward
+        )));
+        assert!(game.state.board.projectiles.is_empty());
+        assert_eq!(
+            game.state
+                .board
+                .zombies
+                .iter()
+                .map(|zombie| (zombie.id, zombie.health))
+                .collect::<Vec<_>>(),
+            vec![(forward, 250), (backward, 250)]
+        );
+    }
+
+    #[test]
     fn torchwood_turns_pea_shots_into_fireballs() {
         let mut game = Game::new(7, SceneKind::Day);
         game.state.sun = 300;
