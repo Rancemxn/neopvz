@@ -1,6 +1,10 @@
 # neopvz Project Instructions
 
 - The repository is `neopvz`, licensed under AGPL-3.0-or-later.
+- Reproduce the target's observable behavior, not awkward original implementation
+  details. Prefer idiomatic Rust with named structs, enums, and fields when they
+  make version-specific data easier to audit; preserve the original ordering and
+  values where those are player-observable or affect deterministic replay.
 - Do not add copyrighted game assets, binaries, IDA databases, function tables, or reverse-engineering reference repositories to this repository.
 - Resources are external inputs. Auto-detect a resource directory, `main.pak`/PAK archive, or use an explicit `--data-dir`/`--pak` path.
 - Local compilation and tests are forbidden because the local machine lacks the required resources. Use GitHub Actions for formatting, linting, tests, and builds.
