@@ -611,8 +611,26 @@ impl ProjectileType {
     fn motion(self) -> ProjectileMotion {
         match self {
             Self::Star => ProjectileMotion::Star,
+            Self::Cabbage | Self::Melon | Self::WinterMelon | Self::Kernel | Self::Butter => {
+                ProjectileMotion::Lobbed
+            }
             _ => ProjectileMotion::Straight,
         }
+    }
+
+    fn chill_duration(self) -> u32 {
+        match self {
+            Self::SnowPea | Self::WinterMelon => 1_000,
+            _ => 0,
+        }
+    }
+
+    fn is_splash(self) -> bool {
+        matches!(self, Self::Melon | Self::WinterMelon | Self::Fireball)
+    }
+
+    fn splash_damage(self) -> i32 {
+        (self.damage() / 3).max(1)
     }
 }
 
@@ -857,6 +875,16 @@ pub enum GameEvent {
         zombie: EntityId,
         damage: i32,
         health_remaining: i32,
+    },
+    ProjectileSplashHit {
+        projectile: EntityId,
+        zombie: EntityId,
+        damage: i32,
+        health_remaining: i32,
+    },
+    ZombieChilled {
+        entity: EntityId,
+        duration: u32,
     },
     ZombieDied {
         entity: EntityId,
@@ -1470,12 +1498,16 @@ impl Game {
                     damage: projectile.damage,
                     health_remaining,
                 });
-                self.state.board.projectiles.remove(projectile_index);
+                self.apply_projectile_chill(zombie_id, projectile.projectile_type, events);
                 if health_remaining <= 0 {
                     // ponytail: remove terminal entities now; add death phases when rendering consumes them.
                     self.state.board.zombies.remove(zombie_index);
                     events.push(GameEvent::ZombieDied { entity: zombie_id });
                 }
+                if projectile.projectile_type.is_splash() {
+                    self.apply_splash_damage(&projectile, zombie_id, events);
+                }
+                self.state.board.projectiles.remove(projectile_index);
             } else if projectile.position_x > i64::from(LOGICAL_WIDTH) * POSITION_SCALE
                 || projectile.position_x < -100 * POSITION_SCALE
                 || projectile_row.is_none()
@@ -1483,6 +1515,82 @@ impl Game {
                 self.state.board.projectiles.remove(projectile_index);
             } else {
                 projectile_index += 1;
+            }
+        }
+    }
+
+    fn apply_projectile_chill(
+        &mut self,
+        zombie_id: EntityId,
+        projectile_type: ProjectileType,
+        events: &mut Vec<GameEvent>,
+    ) {
+        let duration = projectile_type.chill_duration();
+        if duration == 0 {
+            return;
+        }
+        let Some(zombie) = self
+            .state
+            .board
+            .zombies
+            .iter_mut()
+            .find(|zombie| zombie.id == zombie_id)
+        else {
+            return;
+        };
+        zombie.chilled_counter = zombie.chilled_counter.max(duration);
+        events.push(GameEvent::ZombieChilled {
+            entity: zombie_id,
+            duration,
+        });
+    }
+
+    fn apply_splash_damage(
+        &mut self,
+        projectile: &ProjectileState,
+        primary_zombie: EntityId,
+        events: &mut Vec<GameEvent>,
+    ) {
+        let Some(row) = projectile_row(projectile.position_y, self.state.board.rows) else {
+            return;
+        };
+        let splash_damage = projectile.projectile_type.splash_damage();
+        let target_ids = self
+            .state
+            .board
+            .zombies
+            .iter()
+            .filter(|zombie| {
+                zombie.id != primary_zombie
+                    && zombie.health > 0
+                    && zombie.row.abs_diff(row) <= 1
+                    && projectile_hits(projectile.position_x, zombie.position_x)
+            })
+            .map(|zombie| zombie.id)
+            .collect::<Vec<_>>();
+
+        for zombie_id in target_ids {
+            let Some(zombie_index) = self
+                .state
+                .board
+                .zombies
+                .iter()
+                .position(|zombie| zombie.id == zombie_id)
+            else {
+                continue;
+            };
+            self.state.board.zombies[zombie_index].health -= splash_damage;
+            let health_remaining = self.state.board.zombies[zombie_index].health;
+            events.push(GameEvent::ProjectileSplashHit {
+                projectile: projectile.id,
+                zombie: zombie_id,
+                damage: splash_damage,
+                health_remaining,
+            });
+            self.apply_projectile_chill(zombie_id, projectile.projectile_type, events);
+            if health_remaining <= 0 {
+                self.state.board.zombies.remove(zombie_index);
+                events.push(GameEvent::ZombieDied { entity: zombie_id });
             }
         }
     }
@@ -1550,7 +1658,10 @@ impl Game {
         column: u8,
         events: &mut Vec<GameEvent>,
     ) {
-        let projectile_type = plant_type.projectile_type();
+        let projectile_type = match plant_type.projectile_type() {
+            ProjectileType::Kernel if self.rng.range(4) == 0 => ProjectileType::Butter,
+            projectile_type => projectile_type,
+        };
         let position_x = grid_x(column) + 60 * POSITION_SCALE;
         let position_y = grid_y(row);
         match plant_type.firing_pattern() {
@@ -1932,6 +2043,67 @@ mod tests {
                 .iter()
                 .any(|projectile| projectile.velocity_y != 0)
         );
+    }
+
+    #[test]
+    fn snowpea_chills_a_zombie_after_impact() {
+        let mut game = Game::new(7, SceneKind::Day);
+        game.state.sun = 250;
+        game.advance(InputFrame {
+            actions: vec![
+                InputAction::SelectSeed { slot: 5 },
+                InputAction::Plant { row: 2, column: 0 },
+            ],
+        });
+        game.state.board.plants[0].launch_counter = 1;
+        let mut setup_events = Vec::new();
+        let zombie = game.spawn_normal_zombie(2, 0, Some(500 * POSITION_SCALE), &mut setup_events);
+
+        let chilled = (0..200)
+            .flat_map(|_| game.advance(InputFrame::default()))
+            .any(|event| {
+                matches!(
+                    event,
+                    GameEvent::ZombieChilled {
+                        entity,
+                        duration: 1_000
+                    } if entity == zombie
+                )
+            });
+
+        assert!(chilled);
+        assert!(game.state.board.zombies[0].chilled_counter > 0);
+    }
+
+    #[test]
+    fn melon_splash_damages_an_adjacent_row() {
+        let mut game = Game::new(7, SceneKind::Day);
+        game.state.sun = 500;
+        game.advance(InputFrame {
+            actions: vec![
+                InputAction::SelectSeed { slot: 39 },
+                InputAction::Plant { row: 2, column: 0 },
+            ],
+        });
+        game.state.board.plants[0].launch_counter = 1;
+        let mut setup_events = Vec::new();
+        game.spawn_normal_zombie(2, 0, Some(500 * POSITION_SCALE), &mut setup_events);
+        game.spawn_normal_zombie(3, 0, Some(500 * POSITION_SCALE), &mut setup_events);
+
+        let splash = (0..200)
+            .flat_map(|_| game.advance(InputFrame::default()))
+            .any(|event| {
+                matches!(
+                    event,
+                    GameEvent::ProjectileSplashHit {
+                        damage: 26,
+                        ..
+                    }
+                )
+            });
+
+        assert!(splash);
+        assert_eq!(game.state.board.zombies[1].health, 244);
     }
 
     #[test]
