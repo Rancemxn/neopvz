@@ -6,7 +6,7 @@ use std::{
     time::{Duration, Instant},
 };
 
-use clap::Parser;
+use clap::{Parser, ValueEnum};
 use neopvz_core::{Game, InputAction, InputFrame, SaveError, SaveProfile, SceneKind};
 use neopvz_data::{AssetLayout, ResourceProvider};
 use neopvz_render::{
@@ -49,6 +49,29 @@ struct Cli {
     pak: Option<PathBuf>,
     #[arg(long, value_name = "PATH")]
     profile: Option<PathBuf>,
+    #[arg(long, hide = true, value_name = "SCENE")]
+    checkpoint: Option<Checkpoint>,
+}
+
+#[derive(Clone, Copy, Debug, ValueEnum)]
+enum Checkpoint {
+    Title,
+    AdventureSelect,
+    AdventureTutorial,
+    SeedChooser,
+    Day,
+}
+
+impl From<Checkpoint> for SceneKind {
+    fn from(checkpoint: Checkpoint) -> Self {
+        match checkpoint {
+            Checkpoint::Title => Self::Title,
+            Checkpoint::AdventureSelect => Self::AdventureSelect,
+            Checkpoint::AdventureTutorial => Self::AdventureTutorial,
+            Checkpoint::SeedChooser => Self::SeedChooser,
+            Checkpoint::Day => Self::Day,
+        }
+    }
 }
 
 const SIMULATION_STEP: Duration = Duration::from_millis(10);
@@ -118,6 +141,10 @@ fn main() -> ExitCode {
         "resource inventory verified"
     );
 
+    let initial_scene = cli
+        .checkpoint
+        .map(SceneKind::from)
+        .unwrap_or(SceneKind::Title);
     let assets = match load_assets(&resources) {
         Ok(assets) => assets,
         Err(error) => {
@@ -134,7 +161,7 @@ fn main() -> ExitCode {
         }
     };
     event_loop.set_control_flow(ControlFlow::Poll);
-    let mut app = App::new(assets);
+    let mut app = App::new(assets, initial_scene);
     let run_result = event_loop.run_app(&mut app);
 
     if let Err(error) = run_result {
@@ -791,11 +818,11 @@ struct App {
 }
 
 impl App {
-    fn new(assets: Vec<ImageAsset>) -> Self {
+    fn new(assets: Vec<ImageAsset>, initial_scene: SceneKind) -> Self {
         Self {
             renderer: None,
             assets,
-            game: Game::new(0, SceneKind::Title),
+            game: Game::new(0, initial_scene),
             pending_input: Vec::new(),
             last_update: None,
             simulation_accumulator: Duration::ZERO,
