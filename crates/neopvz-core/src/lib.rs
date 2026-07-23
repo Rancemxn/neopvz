@@ -5,8 +5,8 @@ use thiserror::Error;
 mod save;
 
 pub use save::{
-    GardenPlant, GardenState, ModeCompletion, ModeKind, SaveError, SaveInventory, SaveProfile,
-    SaveSettings, SAVE_FORMAT_VERSION,
+    GardenPlant, GardenState, ModeCompletion, ModeKind, SAVE_FORMAT_VERSION, SaveError,
+    SaveInventory, SaveProfile, SaveSettings,
 };
 
 pub const LOGICAL_WIDTH: u32 = 800;

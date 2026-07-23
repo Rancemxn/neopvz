@@ -138,9 +138,7 @@ impl SaveProfile {
 
         validate_unique_plants("unlocked_plants", &self.unlocked_plants)?;
         if self.unlocked_plants.len() > MAX_UNLOCKED_PLANTS {
-            return Err(SaveError::Invalid(
-                "too many unlocked plants".to_owned(),
-            ));
+            return Err(SaveError::Invalid("too many unlocked plants".to_owned()));
         }
         validate_unique_plants("inventory.seed_packets", &self.inventory.seed_packets)?;
         validate_unique_text("awards", &self.awards, MAX_AWARD_ID_BYTES)?;
@@ -209,11 +207,7 @@ fn validate_text(field: &str, value: &str, max_bytes: usize) -> Result<(), SaveE
     Ok(())
 }
 
-fn validate_unique_text(
-    field: &str,
-    values: &[String],
-    max_bytes: usize,
-) -> Result<(), SaveError> {
+fn validate_unique_text(field: &str, values: &[String], max_bytes: usize) -> Result<(), SaveError> {
     let mut seen = BTreeSet::new();
     for value in values {
         validate_text(field, value, max_bytes)?;
@@ -229,7 +223,9 @@ fn validate_unique_plants(field: &str, values: &[PlantType]) -> Result<(), SaveE
     for plant in values {
         let slot = plant.slot();
         if slot >= 53 {
-            return Err(SaveError::Invalid(format!("{field} contains an unknown plant")));
+            return Err(SaveError::Invalid(format!(
+                "{field} contains an unknown plant"
+            )));
         }
         if !seen.insert(slot) {
             return Err(SaveError::Invalid(format!("{field} contains duplicates")));
