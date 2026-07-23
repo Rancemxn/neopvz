@@ -1403,8 +1403,7 @@ impl Game {
                 && self.state.board.zombies.iter().any(|zombie| {
                     zombie.health > 0
                         && zombie.row == row
-                        && (zombie.position_x - grid_x(column)).abs()
-                            <= 60 * POSITION_SCALE
+                        && (zombie.position_x - grid_x(column)).abs() <= 60 * POSITION_SCALE
                 });
 
             let mut fire = false;

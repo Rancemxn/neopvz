@@ -5,6 +5,14 @@
   details. Prefer idiomatic Rust with named structs, enums, and fields when they
   make version-specific data easier to audit; preserve the original ordering and
   values where those are player-observable or affect deterministic replay.
+- Treat compatibility as an observable-behavior claim: a constant or definition
+  table alone is not evidence that a plant, zombie, projectile, mode, or UI rule
+  is implemented. Record an item only after a focused behavioral test, replay,
+  or captured runtime observation supports it.
+- Keep reverse-engineered data readable and auditable. Prefer explicit named
+  definitions and small helpers over opaque positional tables or copied quirks;
+  retain an original detail only when it changes player-visible behavior,
+  deterministic state, resource compatibility, or replay results.
 - Do not add copyrighted game assets, binaries, IDA databases, function tables, or reverse-engineering reference repositories to this repository.
 - Resources are external inputs. Auto-detect a resource directory, `main.pak`/PAK archive, or use an explicit `--data-dir`/`--pak` path.
 - Local compilation and tests are forbidden because the local machine lacks the required resources. Use GitHub Actions for formatting, linting, tests, and builds.
@@ -27,5 +35,8 @@
   in ignored local storage. Visual verification is capture, comparison, then
   independent review; pixel metrics and SSIM are diagnostic only. Original-game
   client capture must be DPI-aware and checked for blank or incorrect crops.
+- Every non-trivial compatibility slice must leave a focused check behind and
+  pass the remote formatting/full gate before merge. Do not claim a local Cargo
+  check or test passed; report the relevant Actions run instead.
 - Follow `loop.md` for the compatibility goal, completion evidence, termination
   bounds, approval gates, residual routing, and bounded subagent contracts.
