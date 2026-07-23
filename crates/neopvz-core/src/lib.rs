@@ -567,6 +567,15 @@ pub enum ProjectileMotion {
     Star,
 }
 
+#[derive(Clone, Copy, Debug)]
+struct ProjectileTrajectory {
+    motion: ProjectileMotion,
+    position_x: i64,
+    position_y: i64,
+    velocity_x: i64,
+    velocity_y: i64,
+}
+
 impl ProjectileType {
     fn damage(self) -> i32 {
         match self {
@@ -1535,12 +1544,14 @@ impl Game {
                     self.fire_projectile(
                         source,
                         projectile_type,
-                        ProjectileMotion::Straight,
                         target_row,
-                        position_x,
-                        grid_y(target_row),
-                        3_330_000,
-                        0,
+                        ProjectileTrajectory {
+                            motion: ProjectileMotion::Straight,
+                            position_x,
+                            position_y: grid_y(target_row),
+                            velocity_x: 3_330_000,
+                            velocity_y: 0,
+                        },
                         events,
                     );
                 }
@@ -1549,23 +1560,27 @@ impl Game {
                 self.fire_projectile(
                     source,
                     projectile_type,
-                    ProjectileMotion::Straight,
                     row,
-                    position_x,
-                    position_y,
-                    3_330_000,
-                    0,
+                    ProjectileTrajectory {
+                        motion: ProjectileMotion::Straight,
+                        position_x,
+                        position_y,
+                        velocity_x: 3_330_000,
+                        velocity_y: 0,
+                    },
                     events,
                 );
                 self.fire_projectile(
                     source,
                     projectile_type,
-                    ProjectileMotion::Backwards,
                     row,
-                    grid_x(column) + 20 * POSITION_SCALE,
-                    position_y,
-                    -3_330_000,
-                    0,
+                    ProjectileTrajectory {
+                        motion: ProjectileMotion::Backwards,
+                        position_x: grid_x(column) + 20 * POSITION_SCALE,
+                        position_y,
+                        velocity_x: -3_330_000,
+                        velocity_y: 0,
+                    },
                     events,
                 );
             }
@@ -1580,12 +1595,14 @@ impl Game {
                     self.fire_projectile(
                         source,
                         projectile_type,
-                        ProjectileMotion::Star,
                         row,
-                        position_x,
-                        position_y,
-                        velocity_x,
-                        velocity_y,
+                        ProjectileTrajectory {
+                            motion: ProjectileMotion::Star,
+                            position_x,
+                            position_y,
+                            velocity_x,
+                            velocity_y,
+                        },
                         events,
                     );
                 }
@@ -1593,23 +1610,27 @@ impl Game {
             52 => self.fire_projectile(
                 source,
                 projectile_type,
-                ProjectileMotion::Backwards,
                 row,
-                grid_x(column) + 20 * POSITION_SCALE,
-                position_y,
-                -3_330_000,
-                0,
+                ProjectileTrajectory {
+                    motion: ProjectileMotion::Backwards,
+                    position_x: grid_x(column) + 20 * POSITION_SCALE,
+                    position_y,
+                    velocity_x: -3_330_000,
+                    velocity_y: 0,
+                },
                 events,
             ),
             _ => self.fire_projectile(
                 source,
                 projectile_type,
-                projectile_type.motion(),
                 row,
-                position_x,
-                position_y,
-                3_330_000,
-                0,
+                ProjectileTrajectory {
+                    motion: projectile_type.motion(),
+                    position_x,
+                    position_y,
+                    velocity_x: 3_330_000,
+                    velocity_y: 0,
+                },
                 events,
             ),
         }
@@ -1619,24 +1640,20 @@ impl Game {
         &mut self,
         source: EntityId,
         projectile_type: ProjectileType,
-        motion: ProjectileMotion,
         row: u8,
-        position_x: i64,
-        position_y: i64,
-        velocity_x: i64,
-        velocity_y: i64,
+        trajectory: ProjectileTrajectory,
         events: &mut Vec<GameEvent>,
     ) {
         let id = self.state.board.allocate_entity();
         self.state.board.projectiles.push(ProjectileState {
             id,
             projectile_type,
-            motion,
+            motion: trajectory.motion,
             row,
-            position_x,
-            position_y,
-            velocity_x,
-            velocity_y,
+            position_x: trajectory.position_x,
+            position_y: trajectory.position_y,
+            velocity_x: trajectory.velocity_x,
+            velocity_y: trajectory.velocity_y,
             damage: projectile_type.damage(),
             age: 0,
         });
