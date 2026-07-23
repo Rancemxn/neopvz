@@ -52,5 +52,13 @@
   Documentation, `AGENTS.md`, issue/ledger, and other text-only changes are
   exempt from waiting for the full gate when they do not alter build inputs;
   apply only the lightweight checks relevant to the diff.
+- For repeated GUI tuning, use a hidden checkpoint/debug entry point such as
+  `--checkpoint <scene>` to start at the target screen instead of replaying
+  earlier scenes. A local preview against external resources may tune static
+  positions and scales, but it is diagnostic only. Batch related code changes,
+  use one Windows artifact for the GUI/resource check, and reserve full-gate
+  and release acceptance for the coherent batch. After stabilization, capture
+  original and `neopvz` checkpoints and complete the comparison and independent
+  review described in `docs/development.md`.
 - Follow `loop.md` for the compatibility goal, completion evidence, termination
   bounds, approval gates, residual routing, and bounded subagent contracts.

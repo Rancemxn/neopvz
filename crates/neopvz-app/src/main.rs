@@ -991,10 +991,11 @@ impl App {
                 self.seed_chooser_selection[1] = !self.seed_chooser_selection[1];
                 return;
             }
-            if (322.0..478.0).contains(&x) && (535.0..577.0).contains(&y) {
-                if self.seed_chooser_selection.iter().all(|selected| *selected) {
-                    self.start_scene(SceneKind::Day);
-                }
+            if (322.0..478.0).contains(&x)
+                && (535.0..577.0).contains(&y)
+                && self.seed_chooser_selection.iter().all(|selected| *selected)
+            {
+                self.start_scene(SceneKind::Day);
             }
             return;
         }
