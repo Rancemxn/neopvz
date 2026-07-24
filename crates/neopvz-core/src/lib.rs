@@ -49,6 +49,11 @@ const DOOM_CRATER_TICKS: u32 = 18_000;
 const ZOMBIE_BITE_DAMAGE: i32 = 4;
 const CHOMPER_BITE_WINDUP_TICKS: u32 = 70;
 const CHOMPER_CHEW_TICKS: u32 = 4_000;
+// Plant_UpdateSpike / Plant_SpikesSetAnimAttack in 1.0.0.1051: attack
+// state lasts 100 ticks and deals 20 damage when the countdown reaches 75.
+const SPIKEWEED_ATTACK_TICKS: u32 = 100;
+const SPIKEWEED_DAMAGE_COUNTDOWN: u32 = 75;
+const SPIKEWEED_DAMAGE: i32 = 20;
 
 pub type Tick = u64;
 pub type EntityId = u32;
@@ -174,6 +179,10 @@ impl PlantType {
 
     fn is_torchwood(self) -> bool {
         self.slot() == 22
+    }
+
+    fn is_spikeweed(self) -> bool {
+        self.slot() == 21
     }
 
     fn is_shooter(self) -> bool {
@@ -1509,11 +1518,19 @@ impl Game {
                         && zombie.row == row
                         && (zombie.position_x - grid_x(column)).abs() <= 60 * POSITION_SCALE
                 });
+            let spikeweed_target = plant_type.is_spikeweed()
+                && self.state.board.zombies.iter().any(|zombie| {
+                    zombie.health > 0
+                        && zombie.row == row
+                        && spikeweed_hits(zombie.position_x, column)
+                });
 
             let mut fire = false;
             let mut produce_suns = 0;
             let mut produce_value = 25;
             let mut special = false;
+            let mut spikeweed_hit = false;
+            let mut spikeweed_started = false;
             let mut chomper_bite_target = None;
             let mut squash_hit_target = None;
             {
@@ -1565,6 +1582,19 @@ impl Game {
                     } else if let Some(target) = squash_target {
                         plant.special_target = Some(target);
                         plant.special_counter = SQUASH_LOOK_TICKS;
+                    }
+                } else if plant_type.is_spikeweed() {
+                    if plant.special_armed {
+                        plant.special_counter = plant.special_counter.saturating_sub(1);
+                        if plant.special_counter == SPIKEWEED_DAMAGE_COUNTDOWN {
+                            spikeweed_hit = true;
+                        } else if plant.special_counter == 0 {
+                            plant.special_armed = false;
+                        }
+                    } else if spikeweed_target {
+                        plant.special_armed = true;
+                        plant.special_counter = SPIKEWEED_ATTACK_TICKS;
+                        spikeweed_started = true;
                     }
                 }
                 if plant_type.is_sunshroom() {
@@ -1663,6 +1693,15 @@ impl Game {
                 }
                 events.push(GameEvent::PlantDied { entity: id });
                 continue;
+            }
+            if spikeweed_started {
+                events.push(GameEvent::PlantSpecialTriggered {
+                    entity: id,
+                    plant_type,
+                });
+            }
+            if spikeweed_hit {
+                self.apply_spikeweed_damage(id, row, column, events);
             }
             if special {
                 self.trigger_plant_special(id, plant_type, row, column, events);
@@ -2204,6 +2243,41 @@ impl Game {
         self.state.board.wave.countdown_start = 0;
     }
 
+    fn apply_spikeweed_damage(
+        &mut self,
+        plant_id: EntityId,
+        row: u8,
+        column: u8,
+        events: &mut Vec<GameEvent>,
+    ) {
+        let mut zombie_index = 0;
+        while zombie_index < self.state.board.zombies.len() {
+            let zombie = &self.state.board.zombies[zombie_index];
+            if zombie.health <= 0
+                || zombie.row != row
+                || !spikeweed_hits(zombie.position_x, column)
+            {
+                zombie_index += 1;
+                continue;
+            }
+            let zombie_id = zombie.id;
+            self.state.board.zombies[zombie_index].health -= SPIKEWEED_DAMAGE;
+            let health_remaining = self.state.board.zombies[zombie_index].health;
+            events.push(GameEvent::PlantSpecialHit {
+                plant: plant_id,
+                zombie: zombie_id,
+                damage: SPIKEWEED_DAMAGE,
+                health_remaining,
+            });
+            if health_remaining <= 0 {
+                self.state.board.zombies.remove(zombie_index);
+                events.push(GameEvent::ZombieDied { entity: zombie_id });
+            } else {
+                zombie_index += 1;
+            }
+        }
+    }
+
     fn find_plant_for_zombie(&self, row: u8, zombie_x: i64) -> Option<usize> {
         self.state
             .board
@@ -2211,6 +2285,8 @@ impl Game {
             .iter()
             .enumerate()
             .filter(|(_, plant)| plant.row == row && plant.health > 0)
+            // Spikeweed is walked over; zombies do not bite it.
+            .filter(|(_, plant)| !plant.plant_type.is_spikeweed())
             .filter(|(_, plant)| {
                 let plant_x = grid_x(plant.column);
                 zombie_x + 70 * POSITION_SCALE > plant_x
@@ -2475,6 +2551,16 @@ impl Game {
         });
         id
     }
+}
+
+fn spikeweed_hits(zombie_x: i64, column: u8) -> bool {
+    // Attack rect from Plant::GetPlantAttackRect for SEED_SPIKEWEED:
+    // [mX + 20, mX + mWidth - 30]. The board uses an 80-unit cell width.
+    let attack_left = grid_x(column) + 20 * POSITION_SCALE;
+    let attack_right = grid_x(column) + 50 * POSITION_SCALE;
+    let zombie_left = zombie_x;
+    let zombie_right = zombie_x + 70 * POSITION_SCALE;
+    zombie_right > attack_left && zombie_left < attack_right
 }
 
 fn grid_x(column: u8) -> i64 {
@@ -3281,6 +3367,57 @@ mod tests {
         assert_eq!(game.state.board.zombies.len(), 1);
         assert_eq!(game.state.board.zombies[0].id, other_row);
         assert!(![far_left, far_right].contains(&other_row));
+    }
+
+    #[test]
+    fn spikeweed_attacks_on_contact_and_is_not_eaten() {
+        let mut game = Game::new(7, SceneKind::Day);
+        game.state.sun = 200;
+        game.advance(InputFrame {
+            actions: vec![
+                InputAction::SelectSeed { slot: 21 },
+                InputAction::Plant { row: 2, column: 0 },
+            ],
+        });
+        let spikeweed = game.state.board.plants[0].id;
+        let mut setup_events = Vec::new();
+        let zombie = game.spawn_normal_zombie(
+            2,
+            0,
+            Some(grid_x(0) + 10 * POSITION_SCALE),
+            &mut setup_events,
+        );
+        let starting_health = game.state.board.zombies[0].health;
+
+        let events = (0..=(SPIKEWEED_ATTACK_TICKS - SPIKEWEED_DAMAGE_COUNTDOWN))
+            .flat_map(|_| game.advance(InputFrame::default()))
+            .collect::<Vec<_>>();
+
+        assert!(events.iter().any(|event| matches!(
+            event,
+            GameEvent::PlantSpecialTriggered {
+                entity,
+                plant_type: PlantType::Other(21),
+            } if *entity == spikeweed
+        )));
+        assert!(events.iter().any(|event| matches!(
+            event,
+            GameEvent::PlantSpecialHit {
+                plant,
+                zombie: hit_zombie,
+                damage: SPIKEWEED_DAMAGE,
+                health_remaining,
+            } if *plant == spikeweed
+                && *hit_zombie == zombie
+                && *health_remaining == starting_health - SPIKEWEED_DAMAGE
+        )));
+        assert_eq!(
+            game.state.board.zombies[0].health,
+            starting_health - SPIKEWEED_DAMAGE
+        );
+        // Zombies walk over spikeweed instead of chewing it.
+        assert_eq!(game.state.board.plants[0].health, game.state.board.plants[0].max_health);
+        assert!(!game.state.board.zombies[0].eating);
     }
 
     #[test]
