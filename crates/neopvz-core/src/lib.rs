@@ -49,6 +49,15 @@ const DOOM_CRATER_TICKS: u32 = 18_000;
 const ZOMBIE_BITE_DAMAGE: i32 = 4;
 const CHOMPER_BITE_WINDUP_TICKS: u32 = 70;
 const CHOMPER_CHEW_TICKS: u32 = 4_000;
+// Plant_UpdateSpike / Plant_SpikesSetAnimAttack in 1.0.0.1051: attack
+// state lasts 100 ticks and deals 20 damage when the countdown reaches 75.
+const SPIKEWEED_ATTACK_TICKS: u32 = 100;
+const SPIKEWEED_DAMAGE_COUNTDOWN: u32 = 75;
+const SPIKEWEED_DAMAGE: i32 = 20;
+// Projectile::CheckForCollision MOTION_PUFF: die when mProjectileAge >= 75.
+const PUFF_PROJECTILE_MAX_AGE: u32 = 75;
+// Plant::GetPlantAttackRect SEED_PUFFSHROOM/SEASHROOM width 230 from mX+60.
+const PUFF_ATTACK_RANGE: i64 = 230;
 
 pub type Tick = u64;
 pub type EntityId = u32;
@@ -177,6 +186,15 @@ impl PlantType {
         self.slot() == 22
     }
 
+    fn is_spikeweed(self) -> bool {
+        self.slot() == 21
+    }
+
+    fn is_puff_range_shooter(self) -> bool {
+        // PuffShroom and SeaShroom use MOTION_PUFF short-range shots.
+        matches!(self.slot(), 8 | 24)
+    }
+
     fn is_shooter(self) -> bool {
         matches!(
             self.slot(),
@@ -224,6 +242,8 @@ impl PlantType {
     fn projectile_motion(self) -> ProjectileMotion {
         if self.firing_pattern() == FiringPattern::Homing {
             ProjectileMotion::Homing
+        } else if self.is_puff_range_shooter() {
+            ProjectileMotion::Puff
         } else {
             self.projectile_type().motion()
         }
@@ -658,6 +678,7 @@ pub enum ProjectileMotion {
     Lobbed,
     Homing,
     Star,
+    Puff,
 }
 
 #[derive(Clone, Copy, Debug)]
@@ -1491,6 +1512,12 @@ impl Game {
                     FiringPattern::Backward => {
                         row_distance == 0 && zombie.position_x < grid_x(column)
                     }
+                    _ if plant_type.is_puff_range_shooter() => {
+                        row_distance == 0
+                            && zombie.position_x > plant_attack_start(column)
+                            && zombie.position_x
+                                < plant_attack_start(column) + PUFF_ATTACK_RANGE * POSITION_SCALE
+                    }
                     _ => row_distance == 0 && zombie.position_x > plant_attack_start(column),
                 }
             });
@@ -1510,11 +1537,19 @@ impl Game {
                         && zombie.row == row
                         && (zombie.position_x - grid_x(column)).abs() <= 60 * POSITION_SCALE
                 });
+            let spikeweed_target = plant_type.is_spikeweed()
+                && self.state.board.zombies.iter().any(|zombie| {
+                    zombie.health > 0
+                        && zombie.row == row
+                        && spikeweed_hits(zombie.position_x, column)
+                });
 
             let mut fire = false;
             let mut produce_suns = 0;
             let mut produce_value = 25;
             let mut special = false;
+            let mut spikeweed_hit = false;
+            let mut spikeweed_started = false;
             let mut chomper_bite_target = None;
             let mut squash_hit_target = None;
             {
@@ -1566,6 +1601,19 @@ impl Game {
                     } else if let Some(target) = squash_target {
                         plant.special_target = Some(target);
                         plant.special_counter = SQUASH_LOOK_TICKS;
+                    }
+                } else if plant_type.is_spikeweed() {
+                    if plant.special_armed {
+                        plant.special_counter = plant.special_counter.saturating_sub(1);
+                        if plant.special_counter == SPIKEWEED_DAMAGE_COUNTDOWN {
+                            spikeweed_hit = true;
+                        } else if plant.special_counter == 0 {
+                            plant.special_armed = false;
+                        }
+                    } else if spikeweed_target {
+                        plant.special_armed = true;
+                        plant.special_counter = SPIKEWEED_ATTACK_TICKS;
+                        spikeweed_started = true;
                     }
                 }
                 if plant_type.is_sunshroom() {
@@ -1664,6 +1712,15 @@ impl Game {
                 }
                 events.push(GameEvent::PlantDied { entity: id });
                 continue;
+            }
+            if spikeweed_started {
+                events.push(GameEvent::PlantSpecialTriggered {
+                    entity: id,
+                    plant_type,
+                });
+            }
+            if spikeweed_hit {
+                self.apply_spikeweed_damage(id, row, column, events);
             }
             if special {
                 self.trigger_plant_special(id, plant_type, row, column, events);
@@ -1972,6 +2029,12 @@ impl Game {
                 projectile.position_x += projectile.velocity_x;
                 projectile.position_y += projectile.velocity_y;
             }
+            if self.state.board.projectiles[projectile_index].motion == ProjectileMotion::Puff
+                && self.state.board.projectiles[projectile_index].age >= PUFF_PROJECTILE_MAX_AGE
+            {
+                self.state.board.projectiles.remove(projectile_index);
+                continue;
+            }
             self.apply_torchwood(projectile_index);
             let projectile = self.state.board.projectiles[projectile_index].clone();
             let projectile_row = projectile_row(projectile.position_y, self.state.board.rows);
@@ -2205,6 +2268,39 @@ impl Game {
         self.state.board.wave.countdown_start = 0;
     }
 
+    fn apply_spikeweed_damage(
+        &mut self,
+        plant_id: EntityId,
+        row: u8,
+        column: u8,
+        events: &mut Vec<GameEvent>,
+    ) {
+        let mut zombie_index = 0;
+        while zombie_index < self.state.board.zombies.len() {
+            let zombie = &self.state.board.zombies[zombie_index];
+            if zombie.health <= 0 || zombie.row != row || !spikeweed_hits(zombie.position_x, column)
+            {
+                zombie_index += 1;
+                continue;
+            }
+            let zombie_id = zombie.id;
+            self.state.board.zombies[zombie_index].health -= SPIKEWEED_DAMAGE;
+            let health_remaining = self.state.board.zombies[zombie_index].health;
+            events.push(GameEvent::PlantSpecialHit {
+                plant: plant_id,
+                zombie: zombie_id,
+                damage: SPIKEWEED_DAMAGE,
+                health_remaining,
+            });
+            if health_remaining <= 0 {
+                self.state.board.zombies.remove(zombie_index);
+                events.push(GameEvent::ZombieDied { entity: zombie_id });
+            } else {
+                zombie_index += 1;
+            }
+        }
+    }
+
     fn find_plant_for_zombie(&self, row: u8, zombie_x: i64) -> Option<usize> {
         self.state
             .board
@@ -2212,6 +2308,8 @@ impl Game {
             .iter()
             .enumerate()
             .filter(|(_, plant)| plant.row == row && plant.health > 0)
+            // Spikeweed is walked over; zombies do not bite it.
+            .filter(|(_, plant)| !plant.plant_type.is_spikeweed())
             .filter(|(_, plant)| {
                 let plant_x = grid_x(plant.column);
                 zombie_x + 70 * POSITION_SCALE > plant_x
@@ -2478,6 +2576,16 @@ impl Game {
     }
 }
 
+fn spikeweed_hits(zombie_x: i64, column: u8) -> bool {
+    // Attack rect from Plant::GetPlantAttackRect for SEED_SPIKEWEED:
+    // [mX + 20, mX + mWidth - 30]. The board uses an 80-unit cell width.
+    let attack_left = grid_x(column) + 20 * POSITION_SCALE;
+    let attack_right = grid_x(column) + 50 * POSITION_SCALE;
+    let zombie_left = zombie_x;
+    let zombie_right = zombie_x + 70 * POSITION_SCALE;
+    zombie_right > attack_left && zombie_left < attack_right
+}
+
 fn grid_x(column: u8) -> i64 {
     i64::from(column) * 80 * POSITION_SCALE + 40 * POSITION_SCALE
 }
@@ -2554,6 +2662,122 @@ mod tests {
                 ..
             }
         )));
+    }
+
+    #[test]
+    fn puffshroom_hits_nearby_and_expires_before_far_targets() {
+        let mut game = Game::new(7, SceneKind::Day);
+        game.state.sun = 50;
+        game.advance(InputFrame {
+            actions: vec![
+                InputAction::SelectSeed { slot: 8 },
+                InputAction::Plant { row: 2, column: 0 },
+            ],
+        });
+        assert_eq!(game.state.board.plants[0].plant_type.slot(), 8);
+        game.state.board.plants[0].launch_counter = 1;
+        let mut setup_events = Vec::new();
+        // Near target inside the 230-unit puff attack rect.
+        let near = game.spawn_normal_zombie(
+            2,
+            0,
+            Some(plant_attack_start(0) + 100 * POSITION_SCALE),
+            &mut setup_events,
+        );
+        let near_health = game
+            .state
+            .board
+            .zombies
+            .iter()
+            .find(|zombie| zombie.id == near)
+            .unwrap()
+            .health;
+
+        let events = (0..80)
+            .flat_map(|_| game.advance(InputFrame::default()))
+            .collect::<Vec<_>>();
+        assert!(events.iter().any(|event| matches!(
+            event,
+            GameEvent::ProjectileFired {
+                projectile_type: ProjectileType::Puff,
+                ..
+            }
+        )));
+        assert!(events.iter().any(|event| matches!(
+            event,
+            GameEvent::ProjectileHit {
+                zombie,
+                damage: 20,
+                ..
+            } if *zombie == near
+        )));
+        assert_eq!(
+            game.state
+                .board
+                .zombies
+                .iter()
+                .find(|zombie| zombie.id == near)
+                .unwrap()
+                .health,
+            near_health - 20
+        );
+
+        // Far target beyond puff range: plant should not arm a shot for it alone.
+        let mut far_game = Game::new(7, SceneKind::Day);
+        far_game.state.sun = 50;
+        far_game.advance(InputFrame {
+            actions: vec![
+                InputAction::SelectSeed { slot: 8 },
+                InputAction::Plant { row: 2, column: 0 },
+            ],
+        });
+        far_game.state.board.plants[0].launch_counter = 1;
+        far_game.state.board.plants[0].shooting_counter = 0;
+        let mut far_setup = Vec::new();
+        far_game.spawn_normal_zombie(
+            2,
+            0,
+            Some(plant_attack_start(0) + 400 * POSITION_SCALE),
+            &mut far_setup,
+        );
+        let far_events = (0..40)
+            .flat_map(|_| far_game.advance(InputFrame::default()))
+            .collect::<Vec<_>>();
+        assert!(
+            !far_events
+                .iter()
+                .any(|event| matches!(event, GameEvent::ProjectileFired { .. }))
+        );
+
+        // Forced puff projectile expires at age 75 without a hit.
+        let mut expire_game = Game::new(7, SceneKind::Day);
+        expire_game.state.sun = 50;
+        expire_game.advance(InputFrame {
+            actions: vec![
+                InputAction::SelectSeed { slot: 8 },
+                InputAction::Plant { row: 2, column: 0 },
+            ],
+        });
+        let plant_id = expire_game.state.board.plants[0].id;
+        let mut expire_events = Vec::new();
+        expire_game.fire_projectile(
+            plant_id,
+            ProjectileType::Puff,
+            2,
+            ProjectileTrajectory {
+                motion: ProjectileMotion::Puff,
+                position_x: plant_attack_start(0),
+                position_y: grid_y(2),
+                velocity_x: 3_330_000,
+                velocity_y: 0,
+            },
+            &mut expire_events,
+        );
+        assert_eq!(expire_game.state.board.projectiles.len(), 1);
+        for _ in 0..PUFF_PROJECTILE_MAX_AGE {
+            expire_game.advance(InputFrame::default());
+        }
+        assert!(expire_game.state.board.projectiles.is_empty());
     }
 
     #[test]
@@ -3282,6 +3506,60 @@ mod tests {
         assert_eq!(game.state.board.zombies.len(), 1);
         assert_eq!(game.state.board.zombies[0].id, other_row);
         assert!(![far_left, far_right].contains(&other_row));
+    }
+
+    #[test]
+    fn spikeweed_attacks_on_contact_and_is_not_eaten() {
+        let mut game = Game::new(7, SceneKind::Day);
+        game.state.sun = 200;
+        game.advance(InputFrame {
+            actions: vec![
+                InputAction::SelectSeed { slot: 21 },
+                InputAction::Plant { row: 2, column: 0 },
+            ],
+        });
+        let spikeweed = game.state.board.plants[0].id;
+        let mut setup_events = Vec::new();
+        let zombie = game.spawn_normal_zombie(
+            2,
+            0,
+            Some(grid_x(0) + 10 * POSITION_SCALE),
+            &mut setup_events,
+        );
+        let starting_health = game.state.board.zombies[0].health;
+
+        let events = (0..=(SPIKEWEED_ATTACK_TICKS - SPIKEWEED_DAMAGE_COUNTDOWN))
+            .flat_map(|_| game.advance(InputFrame::default()))
+            .collect::<Vec<_>>();
+
+        assert!(events.iter().any(|event| matches!(
+            event,
+            GameEvent::PlantSpecialTriggered {
+                entity,
+                plant_type: PlantType::Other(21),
+            } if *entity == spikeweed
+        )));
+        assert!(events.iter().any(|event| matches!(
+            event,
+            GameEvent::PlantSpecialHit {
+                plant,
+                zombie: hit_zombie,
+                damage: SPIKEWEED_DAMAGE,
+                health_remaining,
+            } if *plant == spikeweed
+                && *hit_zombie == zombie
+                && *health_remaining == starting_health - SPIKEWEED_DAMAGE
+        )));
+        assert_eq!(
+            game.state.board.zombies[0].health,
+            starting_health - SPIKEWEED_DAMAGE
+        );
+        // Zombies walk over spikeweed instead of chewing it.
+        assert_eq!(
+            game.state.board.plants[0].health,
+            game.state.board.plants[0].max_health
+        );
+        assert!(!game.state.board.zombies[0].eating);
     }
 
     #[test]
