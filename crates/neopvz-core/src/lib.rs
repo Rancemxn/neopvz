@@ -3218,6 +3218,151 @@ mod tests {
     }
 
     #[test]
+    fn cabbagepult_fires_a_lobbed_cabbage_for_target_damage() {
+        let mut game = Game::new(7, SceneKind::Day);
+        game.state.sun = 200;
+        game.advance(InputFrame {
+            actions: vec![
+                InputAction::SelectSeed { slot: 32 },
+                InputAction::Plant { row: 2, column: 0 },
+            ],
+        });
+        game.state.board.plants[0].launch_counter = 1;
+        let mut setup_events = Vec::new();
+        let zombie = game.spawn_normal_zombie(2, 0, Some(500 * POSITION_SCALE), &mut setup_events);
+
+        let mut fired = false;
+        let mut hit = false;
+        for _ in 0..200 {
+            for event in game.advance(InputFrame::default()) {
+                fired |= matches!(
+                    event,
+                    GameEvent::ProjectileFired {
+                        projectile_type: ProjectileType::Cabbage,
+                        row: 2,
+                        ..
+                    }
+                );
+                hit |= matches!(
+                    event,
+                    GameEvent::ProjectileHit {
+                        zombie: hit_zombie,
+                        damage: 40,
+                        ..
+                    } if hit_zombie == zombie
+                );
+            }
+            if hit {
+                break;
+            }
+        }
+
+        assert!(fired);
+        assert!(hit);
+        assert_eq!(
+            game.state
+                .board
+                .zombies
+                .iter()
+                .find(|candidate| candidate.id == zombie)
+                .unwrap()
+                .health,
+            230
+        );
+    }
+
+    #[test]
+    fn kernelpult_fires_lobbed_kernel_or_butter_shots() {
+        let mut game = Game::new(7, SceneKind::Day);
+        let mut events = Vec::new();
+        for _ in 0..128 {
+            game.fire_projectiles(1, PlantType::Other(34), 2, 0, &mut events);
+        }
+
+        let fired = events
+            .iter()
+            .filter_map(|event| match event {
+                GameEvent::ProjectileFired {
+                    projectile_type, ..
+                } => Some(*projectile_type),
+                _ => None,
+            })
+            .collect::<Vec<_>>();
+        assert_eq!(fired.len(), 128);
+        assert!(fired.contains(&ProjectileType::Kernel));
+        assert!(fired.contains(&ProjectileType::Butter));
+        assert!(
+            game.state
+                .board
+                .projectiles
+                .iter()
+                .all(|projectile| projectile.motion == ProjectileMotion::Lobbed)
+        );
+    }
+
+    #[test]
+    fn wintermelon_splash_chills_the_primary_and_adjacent_targets() {
+        let mut game = Game::new(7, SceneKind::Day);
+        game.state.sun = 300;
+        game.advance(InputFrame {
+            actions: vec![
+                InputAction::SelectSeed { slot: 44 },
+                InputAction::Plant { row: 2, column: 0 },
+            ],
+        });
+        game.state.board.plants[0].launch_counter = 1;
+        let mut setup_events = Vec::new();
+        let primary = game.spawn_normal_zombie(2, 0, Some(500 * POSITION_SCALE), &mut setup_events);
+        let adjacent =
+            game.spawn_normal_zombie(3, 0, Some(500 * POSITION_SCALE), &mut setup_events);
+
+        let mut primary_hit = false;
+        let mut adjacent_hit = false;
+        let mut adjacent_chilled = false;
+        for _ in 0..200 {
+            for event in game.advance(InputFrame::default()) {
+                primary_hit |= matches!(
+                    event,
+                    GameEvent::ProjectileHit {
+                        zombie,
+                        damage: 80,
+                        ..
+                    } if zombie == primary
+                );
+                adjacent_hit |= matches!(
+                    event,
+                    GameEvent::ProjectileSplashHit {
+                        zombie,
+                        damage: 26,
+                        ..
+                    } if zombie == adjacent
+                );
+                adjacent_chilled |= matches!(
+                    event,
+                    GameEvent::ZombieChilled {
+                        entity,
+                        duration: 1_000,
+                    } if entity == adjacent
+                );
+            }
+            if primary_hit && adjacent_hit && adjacent_chilled {
+                break;
+            }
+        }
+
+        assert!(primary_hit);
+        assert!(adjacent_hit);
+        assert!(adjacent_chilled);
+        assert!(
+            game.state
+                .board
+                .zombies
+                .iter()
+                .any(|zombie| zombie.id == adjacent && zombie.chilled_counter > 0)
+        );
+    }
+
+    #[test]
     fn cattail_homes_across_rows() {
         let mut game = Game::new(7, SceneKind::Day);
         game.state.sun = 500;
