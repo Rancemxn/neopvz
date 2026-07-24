@@ -54,6 +54,10 @@ const CHOMPER_CHEW_TICKS: u32 = 4_000;
 const SPIKEWEED_ATTACK_TICKS: u32 = 100;
 const SPIKEWEED_DAMAGE_COUNTDOWN: u32 = 75;
 const SPIKEWEED_DAMAGE: i32 = 20;
+// Projectile::CheckForCollision MOTION_PUFF: die when mProjectileAge >= 75.
+const PUFF_PROJECTILE_MAX_AGE: u32 = 75;
+// Plant::GetPlantAttackRect SEED_PUFFSHROOM/SEASHROOM width 230 from mX+60.
+const PUFF_ATTACK_RANGE: i64 = 230;
 
 pub type Tick = u64;
 pub type EntityId = u32;
@@ -185,6 +189,11 @@ impl PlantType {
         self.slot() == 21
     }
 
+    fn is_puff_range_shooter(self) -> bool {
+        // PuffShroom and SeaShroom use MOTION_PUFF short-range shots.
+        matches!(self.slot(), 8 | 24)
+    }
+
     fn is_shooter(self) -> bool {
         matches!(
             self.slot(),
@@ -232,6 +241,8 @@ impl PlantType {
     fn projectile_motion(self) -> ProjectileMotion {
         if self.firing_pattern() == FiringPattern::Homing {
             ProjectileMotion::Homing
+        } else if self.is_puff_range_shooter() {
+            ProjectileMotion::Puff
         } else {
             self.projectile_type().motion()
         }
@@ -666,6 +677,7 @@ pub enum ProjectileMotion {
     Lobbed,
     Homing,
     Star,
+    Puff,
 }
 
 #[derive(Clone, Copy, Debug)]
@@ -1499,6 +1511,12 @@ impl Game {
                     FiringPattern::Backward => {
                         row_distance == 0 && zombie.position_x < grid_x(column)
                     }
+                    _ if plant_type.is_puff_range_shooter() => {
+                        row_distance == 0
+                            && zombie.position_x > plant_attack_start(column)
+                            && zombie.position_x
+                                < plant_attack_start(column) + PUFF_ATTACK_RANGE * POSITION_SCALE
+                    }
                     _ => row_distance == 0 && zombie.position_x > plant_attack_start(column),
                 }
             });
@@ -2009,6 +2027,12 @@ impl Game {
                 projectile.age = projectile.age.saturating_add(1);
                 projectile.position_x += projectile.velocity_x;
                 projectile.position_y += projectile.velocity_y;
+            }
+            if self.state.board.projectiles[projectile_index].motion == ProjectileMotion::Puff
+                && self.state.board.projectiles[projectile_index].age >= PUFF_PROJECTILE_MAX_AGE
+            {
+                self.state.board.projectiles.remove(projectile_index);
+                continue;
             }
             self.apply_torchwood(projectile_index);
             let projectile = self.state.board.projectiles[projectile_index].clone();
@@ -2637,6 +2661,122 @@ mod tests {
                 ..
             }
         )));
+    }
+
+    #[test]
+    fn puffshroom_hits_nearby_and_expires_before_far_targets() {
+        let mut game = Game::new(7, SceneKind::Day);
+        game.state.sun = 50;
+        game.advance(InputFrame {
+            actions: vec![
+                InputAction::SelectSeed { slot: 8 },
+                InputAction::Plant { row: 2, column: 0 },
+            ],
+        });
+        assert_eq!(game.state.board.plants[0].plant_type.slot(), 8);
+        game.state.board.plants[0].launch_counter = 1;
+        let mut setup_events = Vec::new();
+        // Near target inside the 230-unit puff attack rect.
+        let near = game.spawn_normal_zombie(
+            2,
+            0,
+            Some(plant_attack_start(0) + 100 * POSITION_SCALE),
+            &mut setup_events,
+        );
+        let near_health = game
+            .state
+            .board
+            .zombies
+            .iter()
+            .find(|zombie| zombie.id == near)
+            .unwrap()
+            .health;
+
+        let events = (0..80)
+            .flat_map(|_| game.advance(InputFrame::default()))
+            .collect::<Vec<_>>();
+        assert!(events.iter().any(|event| matches!(
+            event,
+            GameEvent::ProjectileFired {
+                projectile_type: ProjectileType::Puff,
+                ..
+            }
+        )));
+        assert!(events.iter().any(|event| matches!(
+            event,
+            GameEvent::ProjectileHit {
+                zombie,
+                damage: 20,
+                ..
+            } if *zombie == near
+        )));
+        assert_eq!(
+            game.state
+                .board
+                .zombies
+                .iter()
+                .find(|zombie| zombie.id == near)
+                .unwrap()
+                .health,
+            near_health - 20
+        );
+
+        // Far target beyond puff range: plant should not arm a shot for it alone.
+        let mut far_game = Game::new(7, SceneKind::Day);
+        far_game.state.sun = 50;
+        far_game.advance(InputFrame {
+            actions: vec![
+                InputAction::SelectSeed { slot: 8 },
+                InputAction::Plant { row: 2, column: 0 },
+            ],
+        });
+        far_game.state.board.plants[0].launch_counter = 1;
+        far_game.state.board.plants[0].shooting_counter = 0;
+        let mut far_setup = Vec::new();
+        far_game.spawn_normal_zombie(
+            2,
+            0,
+            Some(plant_attack_start(0) + 400 * POSITION_SCALE),
+            &mut far_setup,
+        );
+        let far_events = (0..40)
+            .flat_map(|_| far_game.advance(InputFrame::default()))
+            .collect::<Vec<_>>();
+        assert!(
+            !far_events
+                .iter()
+                .any(|event| matches!(event, GameEvent::ProjectileFired { .. }))
+        );
+
+        // Forced puff projectile expires at age 75 without a hit.
+        let mut expire_game = Game::new(7, SceneKind::Day);
+        expire_game.state.sun = 50;
+        expire_game.advance(InputFrame {
+            actions: vec![
+                InputAction::SelectSeed { slot: 8 },
+                InputAction::Plant { row: 2, column: 0 },
+            ],
+        });
+        let plant_id = expire_game.state.board.plants[0].id;
+        let mut expire_events = Vec::new();
+        expire_game.fire_projectile(
+            plant_id,
+            ProjectileType::Puff,
+            2,
+            ProjectileTrajectory {
+                motion: ProjectileMotion::Puff,
+                position_x: plant_attack_start(0),
+                position_y: grid_y(2),
+                velocity_x: 3_330_000,
+                velocity_y: 0,
+            },
+            &mut expire_events,
+        );
+        assert_eq!(expire_game.state.board.projectiles.len(), 1);
+        for _ in 0..PUFF_PROJECTILE_MAX_AGE {
+            expire_game.advance(InputFrame::default());
+        }
+        assert!(expire_game.state.board.projectiles.is_empty());
     }
 
     #[test]
