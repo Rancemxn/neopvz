@@ -63,6 +63,8 @@ const FUME_ATTACK_RANGE: i64 = 340;
 // Plant::GetPlantAttackRect SEED_GLOOMSHROOM returns a 240x240 area.
 const GLOOM_ATTACK_RANGE: i64 = 240;
 const GLOOM_ROW_RADIUS: u8 = 1;
+// ScaredyShroom's same-version threat check uses a 120-unit radius.
+const SCAREDY_THREAT_RADIUS: i64 = 120;
 
 pub type Tick = u64;
 pub type EntityId = u32;
@@ -201,6 +203,10 @@ impl PlantType {
 
     fn is_gloom_shroom(self) -> bool {
         self.slot() == 42
+    }
+
+    fn is_scaredy_shroom(self) -> bool {
+        self.slot() == 13
     }
 
     fn is_puff_range_shooter(self) -> bool {
@@ -1531,6 +1537,12 @@ impl Game {
                     FiringPattern::Homing => true,
                     FiringPattern::Backward => {
                         row_distance == 0 && zombie.position_x < grid_x(column)
+                    }
+                    _ if plant_type.is_scaredy_shroom() => {
+                        row_distance == 0
+                            && zombie.position_x > plant_attack_start(column)
+                            && (zombie.position_x - grid_x(column)).abs()
+                                > SCAREDY_THREAT_RADIUS * POSITION_SCALE
                     }
                     _ if plant_type.is_gloom_shroom() => {
                         row_distance <= GLOOM_ROW_RADIUS
@@ -2913,6 +2925,61 @@ mod tests {
             expire_game.advance(InputFrame::default());
         }
         assert!(expire_game.state.board.projectiles.is_empty());
+    }
+
+    #[test]
+    fn scaredy_shroom_stops_shooting_at_a_nearby_zombie() {
+        let mut close_game = Game::new(7, SceneKind::Day);
+        close_game.state.sun = 100;
+        close_game.advance(InputFrame {
+            actions: vec![
+                InputAction::SelectSeed { slot: 13 },
+                InputAction::Plant { row: 2, column: 0 },
+            ],
+        });
+        close_game.state.board.plants[0].launch_counter = 1;
+        let mut close_setup = Vec::new();
+        close_game.spawn_normal_zombie(
+            2,
+            0,
+            Some(grid_x(0) + 80 * POSITION_SCALE),
+            &mut close_setup,
+        );
+        let close_events = (0..60)
+            .flat_map(|_| close_game.advance(InputFrame::default()))
+            .collect::<Vec<_>>();
+        assert!(
+            !close_events
+                .iter()
+                .any(|event| matches!(event, GameEvent::ProjectileFired { .. }))
+        );
+
+        let mut far_game = Game::new(7, SceneKind::Day);
+        far_game.state.sun = 100;
+        far_game.advance(InputFrame {
+            actions: vec![
+                InputAction::SelectSeed { slot: 13 },
+                InputAction::Plant { row: 2, column: 0 },
+            ],
+        });
+        far_game.state.board.plants[0].launch_counter = 1;
+        let mut far_setup = Vec::new();
+        far_game.spawn_normal_zombie(
+            2,
+            0,
+            Some(plant_attack_start(0) + 300 * POSITION_SCALE),
+            &mut far_setup,
+        );
+        let far_events = (0..60)
+            .flat_map(|_| far_game.advance(InputFrame::default()))
+            .collect::<Vec<_>>();
+        assert!(far_events.iter().any(|event| matches!(
+            event,
+            GameEvent::ProjectileFired {
+                projectile_type: ProjectileType::Puff,
+                ..
+            }
+        )));
     }
 
     #[test]
