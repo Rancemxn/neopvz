@@ -87,6 +87,7 @@ pub enum SceneKind {
     #[default]
     Title,
     AdventureSelect,
+    AdventureTutorial,
     SeedChooser,
     Day,
     Night,

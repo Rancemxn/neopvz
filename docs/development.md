@@ -27,6 +27,22 @@ and audio checks. This local execution does not permit local Cargo compilation.
 Keep all original resources and resulting evidence under ignored paths such as
 `artifacts/`; never upload them to GitHub or Actions.
 
+### Fast GUI iteration
+
+For repeated visual tuning, use a checkpoint/debug entry point (for example a
+hidden `--checkpoint <scene>` option) that starts directly at the target screen.
+Do not replay the preceding title and tutorial path for every coordinate change.
+
+Preview static layouts against the external resource PNGs with a small native
+PowerShell/System.Drawing compositor before rebuilding. Use the preview only to
+tune positions and scales; it is not GPU or compatibility evidence.
+
+Batch related UI changes. Use an interim Windows smoke artifact for quick checks,
+then reserve the Ubuntu full gate and Windows release artifact for a coherent
+code batch and acceptance. After the layout stabilizes, run one complete route,
+capture the original and neopvz checkpoints, generate comparisons, and complete
+independent review. Never accept a preview or smoke result as final evidence.
+
 ## Deterministic replay
 
 Replay records include the format version, build identity, resource version,

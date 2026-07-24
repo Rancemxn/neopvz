@@ -6,7 +6,11 @@ license.workspace = true
 
 [dependencies]
 clap.workspace = true
+image.workspace = true
 neopvz-core = { path = "../neopvz-core" }
 neopvz-data = { path = "../neopvz-data" }
+neopvz-render = { path = "../neopvz-render" }
+pollster.workspace = true
 tracing.workspace = true
 tracing-subscriber.workspace = true
+winit.workspace = true
