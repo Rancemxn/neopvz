@@ -13,21 +13,21 @@ evidence; a reviewer assertion alone is never sufficient.
 Status is `verified`, `partial`, or `missing`. The progress quantity is the sum
 of `total - accepted` across all rows.
 
-Current baseline: **948 accepted / 1802 total; 854 unresolved**.
+Current baseline: **964 accepted / 1802 total; 838 unresolved**.
 
 ## Foundation and Boundaries
 
 | Obligation | Domain | Accepted | Total | Status | Evidence / owner |
 |---|---|---:|---:|---|---|
 | FND-001 | AGPL implementation boundary and repository exclusion | 1 | 1 | verified | `7bfb9ed`, repository scan |
-| FND-002 | Ubuntu format, lint, test, and release gate | 1 | 1 | verified | Action run `29939544390` |
-| FND-003 | Windows resource-free release artifact and local launch | 1 | 1 | verified | PR `#11`, run `29939544535`, ignored local record |
+| FND-002 | Ubuntu format, lint, test, and release gate | 1 | 1 | verified | Action runs `29939544390`, `30030645194` |
+| FND-003 | Windows resource-free release artifact and local launch | 1 | 1 | verified | PR `#11`, run `29939544535`, PR `#64`, run `30030645257`, ignored local record |
 | FND-004 | Directory, explicit path, and directory-embedded PAK discovery | 3 | 3 | verified | Issue `#4`; synthetic discovery tests and Actions |
 | FND-005 | Standalone PAK parsing and resource access | 1 | 1 | verified | PR `#23`, run `29944500864`, ignored local record |
 | FND-006 | Version identity and external-resource safety checks | 1 | 1 | verified | PR `#25`, runs `29947497509`/`29947497544`, ignored local record |
 | FND-007 | Deterministic replay and state-hash harness | 1 | 1 | verified | PR `#27`, runs `29969592800`/`29969592830` |
-| FND-008 | Screenshot, semantic comparison, and independent review pipeline | 0 | 1 | missing | Issue `#14` |
-| FND-009 | Original-process instrumentation provenance and cross-checks | 0 | 1 | missing | Issue `#15` |
+| FND-008 | Screenshot, semantic comparison, and independent review pipeline | 1 | 1 | verified | Ignored `artifacts/visual-issue14/independent-review.md`, Issue `#14`; title checkpoint crop/diff/review artifacts |
+| FND-009 | Original-process instrumentation provenance and cross-checks | 1 | 1 | verified | Ignored `artifacts/original-observation/verification.md`; independent `ReadProcessMemory` observation cross-checked against the 1.0.0.1051 lawn capture; Issue `#15` |
 
 ## External Resource Inventory
 
@@ -79,10 +79,10 @@ player-observable rules and domain-matched evidence are implemented.
 
 | Obligation | Behavior domain | Accepted | Total | Status | Evidence / owner |
 |---|---|---:|---:|---|---|
-| UI-SCREEN | Loading, title, menu, selector, seed chooser, HUD, pause, options, help, almanac, shop, and result flows | 0 | 12 | missing | Issues `#2`, `#17` |
-| INPUT-ACTION | Mouse, keyboard, hover, click, drag, placement, pause, restart, and command-line resource selection | 0 | 8 | missing | Issue `#17` |
+| UI-SCREEN | Loading, title, menu, selector, seed chooser, HUD, pause, options, help, almanac, shop, and result flows | 3 | 12 | partial | PR `#64`, runs `30030645194`/`30030645257` and `30048802223`/`30048802288`, ignored `artifacts/windows-7de9f1d/verification.md`/`artifacts/windows-beb00d3/verification.md`; selector/adventure tutorial route accepted; seed chooser remains partial; Issues `#2`, `#17` |
+| INPUT-ACTION | Mouse, keyboard, hover, click, drag, placement, pause, restart, and command-line resource selection | 7 | 8 | partial | PR `#64`, commits `547f99b`/`514906c`, title mouse start, seed-chooser start/card selection and keyboard selection, left-click placement, and Space pause/resume in ignored `artifacts/windows-a6c3f53/verification.md`/`artifacts/windows-aa443d7/verification.md`/`artifacts/windows-23f3f67/verification.md`/`artifacts/windows-514906c/verification.md`/`artifacts/windows-514906c/verification-keyboard.md`; runs `30054043147`/`30054043130`; Issue `#17` |
 | SAVE-PROGRESSION | Profile, settings, unlocks, awards, inventory, garden, mode completion, and load compatibility | 8 | 8 | verified | PR `#61`, runs `30024232209`/`30024232459`, ignored local record |
-| PLATFORM-CONTRACT | Logical viewport, window/fullscreen behavior, DPI, audio device, and external-path behavior | 0 | 6 | missing | Issue `#17` |
+| PLATFORM-CONTRACT | Logical viewport, window/fullscreen behavior, DPI, audio device, and external-path behavior | 4 | 6 | partial | PR `#64`, 800x600 logical viewport, window startup, DPI-aware 1000x750 client capture, and external `--data-dir` launch in ignored `artifacts/windows-7de9f1d/verification.md`; Issue `#17` |
 
 ## Visual and Audio Evidence
 

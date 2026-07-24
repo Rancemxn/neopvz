@@ -7,9 +7,12 @@ the ignored `third_party-src/` directory and are never committed.
 
 | Crate | Stable line | Purpose | Upstream source | Reference tag |
 | --- | --- | --- | --- | --- |
+| bytemuck | 1.25 | POD vertex data for the sprite batch | https://github.com/Lokathor/bytemuck | v1.25.2 (`f363643e951a7ac9e4b9921de982f2b0918902e`) |
 | clap | 4 | Command-line resource overrides | https://github.com/clap-rs/clap | v4.6.4 |
 | flate2 | 1.1 | Bounded zlib decoding for compiled definitions | https://github.com/rust-lang/flate2-rs | 1.1.9 |
+| image | 0.25 | JPEG/PNG decoding for external game resources | https://github.com/image-rs/image | v0.25.10 (`76e57184f22772dad1138e96954e57945406b15c`) |
 | kira (`cpal`, `ogg`, `vorbis`) | 0.12 | OGG decoding, game mixer, music/effect tracks | https://github.com/tesselode/kira | v0.12.2 |
+| pollster | 1.0 | Synchronous startup for GPU initialization | https://github.com/rust-cli/pollster | untagged `abe44386b7339283226583dacc46bf5dd37370d2` (Cargo version 1.0.1) |
 | quick-xml | 0.41 | Streaming resource-manifest XML parsing | https://github.com/tafia/quick-xml | v0.41.0 |
 | rand (`chacha`) | 0.10 | Deterministic simulation RNG | https://github.com/rust-random/rand | 0.10.2 |
 | serde | 1.0 | State and resource metadata types | https://github.com/serde-rs/serde | v1.0.229 |
@@ -19,11 +22,11 @@ the ignored `third_party-src/` directory and are never committed.
 | thiserror | 2.0 | Library error types | https://github.com/dtolnay/thiserror | 2.0.19 |
 | tracing | 0.1 | Structured application events | https://github.com/tokio-rs/tracing | tracing-0.1.44 |
 | tracing-subscriber | 0.3 | Executable log output | https://github.com/tokio-rs/tracing | tracing-subscriber-0.3.23 |
+| wgpu | 30 | Cross-platform GPU sprite rendering | https://github.com/gfx-rs/wgpu | v30.0.0 (`8bf3e5ff4ab45e2c150e0d6c70d01d25f5b126c1`) |
+| winit | 0.30 | Native window and keyboard event loop | https://github.com/rust-windowing/winit | v0.30.13 (`e9809ef54b18499bb4f2cac945719ecc2a61061b`) |
 
-## Deferred Until Used
+## Deferred Until Needed
 
-- `wgpu`, `winit`, `bytemuck`, and `image`: add with the first real renderer
-  and window implementation.
 - `binrw`: add only if compiled-definition field parsing needs declarative
   binary layouts; the current bounded zlib/header parser uses the standard
   library and `flate2`.

@@ -15,9 +15,12 @@ license = "AGPL-3.0-or-later"
 repository = "https://github.com/Rancemxn/neopvz"
 
 [workspace.dependencies]
+bytemuck = { version = "1.25", features = ["derive"] }
 clap = { version = "4", features = ["derive"] }
 flate2 = "1.1"
+image = { version = "0.25", default-features = false, features = ["jpeg", "png"] }
 kira = { version = "0.12", default-features = false, features = ["cpal", "ogg", "vorbis"] }
+pollster = "1.0"
 quick-xml = { version = "0.41", features = ["serialize"] }
 serde = { version = "1.0", features = ["derive"] }
 serde_json = "1.0"
@@ -26,3 +29,5 @@ tempfile = "3.27"
 thiserror = "2.0"
 tracing = "0.1"
 tracing-subscriber = "0.3"
+wgpu = "30"
+winit = "0.30"
