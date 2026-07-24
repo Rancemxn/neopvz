@@ -2253,9 +2253,7 @@ impl Game {
         let mut zombie_index = 0;
         while zombie_index < self.state.board.zombies.len() {
             let zombie = &self.state.board.zombies[zombie_index];
-            if zombie.health <= 0
-                || zombie.row != row
-                || !spikeweed_hits(zombie.position_x, column)
+            if zombie.health <= 0 || zombie.row != row || !spikeweed_hits(zombie.position_x, column)
             {
                 zombie_index += 1;
                 continue;
@@ -3416,7 +3414,10 @@ mod tests {
             starting_health - SPIKEWEED_DAMAGE
         );
         // Zombies walk over spikeweed instead of chewing it.
-        assert_eq!(game.state.board.plants[0].health, game.state.board.plants[0].max_health);
+        assert_eq!(
+            game.state.board.plants[0].health,
+            game.state.board.plants[0].max_health
+        );
         assert!(!game.state.board.zombies[0].eating);
     }
 
