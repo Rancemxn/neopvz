@@ -2963,6 +2963,94 @@ mod tests {
     }
 
     #[test]
+    fn gatlingpea_emits_a_four_shot_burst() {
+        let mut game = Game::new(7, SceneKind::Day);
+        game.state.sun = 300;
+        game.advance(InputFrame {
+            actions: vec![
+                InputAction::SelectSeed { slot: 40 },
+                InputAction::Plant { row: 2, column: 0 },
+            ],
+        });
+        game.state.board.plants[0].launch_counter = 1;
+        let mut setup_events = Vec::new();
+        game.spawn_normal_zombie(2, 0, Some(500 * POSITION_SCALE), &mut setup_events);
+
+        let fired = (0..70)
+            .flat_map(|_| game.advance(InputFrame::default()))
+            .filter(|event| matches!(event, GameEvent::ProjectileFired { .. }))
+            .count();
+
+        assert_eq!(fired, 4);
+    }
+
+    #[test]
+    fn cactus_fires_a_spike_projectile() {
+        let mut game = Game::new(7, SceneKind::Day);
+        game.state.sun = 200;
+        game.advance(InputFrame {
+            actions: vec![
+                InputAction::SelectSeed { slot: 26 },
+                InputAction::Plant { row: 2, column: 0 },
+            ],
+        });
+        game.state.board.plants[0].launch_counter = 1;
+        let mut setup_events = Vec::new();
+        let zombie = game.spawn_normal_zombie(2, 0, Some(500 * POSITION_SCALE), &mut setup_events);
+
+        let mut fired = false;
+        let mut hit = false;
+        for _ in 0..200 {
+            for event in game.advance(InputFrame::default()) {
+                fired |= matches!(
+                    event,
+                    GameEvent::ProjectileFired {
+                        projectile_type: ProjectileType::Spike,
+                        ..
+                    }
+                );
+                hit |= matches!(
+                    event,
+                    GameEvent::ProjectileHit {
+                        zombie: hit_zombie,
+                        damage: 20,
+                        ..
+                    } if hit_zombie == zombie
+                );
+            }
+            if hit {
+                break;
+            }
+        }
+
+        assert!(fired);
+        assert!(hit);
+    }
+
+    #[test]
+    fn leftpeater_fires_only_backward() {
+        let mut game = Game::new(7, SceneKind::Day);
+        let mut events = Vec::new();
+        game.fire_projectiles(1, PlantType::Other(52), 2, 2, &mut events);
+
+        assert_eq!(
+            events,
+            vec![GameEvent::ProjectileFired {
+                entity: 1,
+                source: 1,
+                projectile_type: ProjectileType::Pea,
+                row: 2,
+            }]
+        );
+        assert_eq!(game.state.board.projectiles.len(), 1);
+        assert_eq!(
+            game.state.board.projectiles[0].motion,
+            ProjectileMotion::Backwards
+        );
+        assert!(game.state.board.projectiles[0].velocity_x < 0);
+    }
+
+    #[test]
     fn starfruit_emits_five_directional_projectiles() {
         let mut game = Game::new(7, SceneKind::Day);
         game.state.sun = 250;
