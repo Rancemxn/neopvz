@@ -2928,6 +2928,69 @@ mod tests {
     }
 
     #[test]
+    fn seashroom_uses_the_same_short_range_puff_attack_in_pool() {
+        let mut game = Game::new(7, SceneKind::Pool);
+        game.state.sun = 50;
+        game.advance(InputFrame {
+            actions: vec![
+                InputAction::SelectSeed { slot: 24 },
+                InputAction::Plant { row: 2, column: 0 },
+            ],
+        });
+        game.state.board.plants[0].launch_counter = 1;
+        let mut setup_events = Vec::new();
+        let near = game.spawn_normal_zombie(
+            2,
+            0,
+            Some(plant_attack_start(0) + 100 * POSITION_SCALE),
+            &mut setup_events,
+        );
+        let events = (0..80)
+            .flat_map(|_| game.advance(InputFrame::default()))
+            .collect::<Vec<_>>();
+        assert!(events.iter().any(|event| matches!(
+            event,
+            GameEvent::ProjectileFired {
+                projectile_type: ProjectileType::Puff,
+                ..
+            }
+        )));
+        assert!(events.iter().any(|event| matches!(
+            event,
+            GameEvent::ProjectileHit {
+                zombie,
+                damage: 20,
+                ..
+            } if *zombie == near
+        )));
+
+        let mut far_game = Game::new(7, SceneKind::Pool);
+        far_game.state.sun = 50;
+        far_game.advance(InputFrame {
+            actions: vec![
+                InputAction::SelectSeed { slot: 24 },
+                InputAction::Plant { row: 2, column: 0 },
+            ],
+        });
+        far_game.state.board.plants[0].launch_counter = 1;
+        let mut far_setup = Vec::new();
+        far_game.spawn_normal_zombie(
+            2,
+            0,
+            Some(plant_attack_start(0) + 300 * POSITION_SCALE),
+            &mut far_setup,
+        );
+        let far_events = (0..60)
+            .flat_map(|_| far_game.advance(InputFrame::default()))
+            .collect::<Vec<_>>();
+        assert!(
+            !far_events
+                .iter()
+                .any(|event| matches!(event, GameEvent::ProjectileFired { .. }))
+        );
+    }
+
+    #[test]
     fn scaredy_shroom_stops_shooting_at_a_nearby_zombie() {
         let mut close_game = Game::new(7, SceneKind::Day);
         close_game.state.sun = 100;
