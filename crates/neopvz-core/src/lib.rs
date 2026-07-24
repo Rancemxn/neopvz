@@ -58,6 +58,8 @@ const SPIKEWEED_DAMAGE: i32 = 20;
 const PUFF_PROJECTILE_MAX_AGE: u32 = 75;
 // Plant::GetPlantAttackRect SEED_PUFFSHROOM/SEASHROOM width 230 from mX+60.
 const PUFF_ATTACK_RANGE: i64 = 230;
+// Plant::GetPlantAttackRect SEED_FUMESHROOM width 340 from mX+60.
+const FUME_ATTACK_RANGE: i64 = 340;
 
 pub type Tick = u64;
 pub type EntityId = u32;
@@ -190,6 +192,10 @@ impl PlantType {
         self.slot() == 21
     }
 
+    fn is_fume_shroom(self) -> bool {
+        self.slot() == 10
+    }
+
     fn is_puff_range_shooter(self) -> bool {
         // PuffShroom and SeaShroom use MOTION_PUFF short-range shots.
         matches!(self.slot(), 8 | 24)
@@ -242,6 +248,8 @@ impl PlantType {
     fn projectile_motion(self) -> ProjectileMotion {
         if self.firing_pattern() == FiringPattern::Homing {
             ProjectileMotion::Homing
+        } else if self.is_fume_shroom() {
+            ProjectileMotion::Fume
         } else if self.is_puff_range_shooter() {
             ProjectileMotion::Puff
         } else {
@@ -679,6 +687,7 @@ pub enum ProjectileMotion {
     Homing,
     Star,
     Puff,
+    Fume,
 }
 
 #[derive(Clone, Copy, Debug)]
@@ -1512,6 +1521,12 @@ impl Game {
                     FiringPattern::Backward => {
                         row_distance == 0 && zombie.position_x < grid_x(column)
                     }
+                    _ if plant_type.is_fume_shroom() => {
+                        row_distance == 0
+                            && zombie.position_x > plant_attack_start(column)
+                            && zombie.position_x
+                                < plant_attack_start(column) + FUME_ATTACK_RANGE * POSITION_SCALE
+                    }
                     _ if plant_type.is_puff_range_shooter() => {
                         row_distance == 0
                             && zombie.position_x > plant_attack_start(column)
@@ -2035,6 +2050,12 @@ impl Game {
                 self.state.board.projectiles.remove(projectile_index);
                 continue;
             }
+            if self.state.board.projectiles[projectile_index].motion == ProjectileMotion::Fume {
+                let projectile = self.state.board.projectiles[projectile_index].clone();
+                self.apply_fume_damage(&projectile, events);
+                self.state.board.projectiles.remove(projectile_index);
+                continue;
+            }
             self.apply_torchwood(projectile_index);
             let projectile = self.state.board.projectiles[projectile_index].clone();
             let projectile_row = projectile_row(projectile.position_y, self.state.board.rows);
@@ -2212,6 +2233,47 @@ impl Game {
                 health_remaining,
             });
             self.apply_projectile_chill(zombie_id, projectile.projectile_type, events);
+            if health_remaining <= 0 {
+                self.state.board.zombies.remove(zombie_index);
+                events.push(GameEvent::ZombieDied { entity: zombie_id });
+            }
+        }
+    }
+
+    fn apply_fume_damage(&mut self, projectile: &ProjectileState, events: &mut Vec<GameEvent>) {
+        let target_ids = self
+            .state
+            .board
+            .zombies
+            .iter()
+            .filter(|zombie| {
+                zombie.health > 0
+                    && zombie.row == projectile.row
+                    && zombie.position_x > projectile.position_x
+                    && zombie.position_x
+                        < projectile.position_x + FUME_ATTACK_RANGE * POSITION_SCALE
+            })
+            .map(|zombie| zombie.id)
+            .collect::<Vec<_>>();
+
+        for zombie_id in target_ids {
+            let Some(zombie_index) = self
+                .state
+                .board
+                .zombies
+                .iter()
+                .position(|zombie| zombie.id == zombie_id)
+            else {
+                continue;
+            };
+            self.state.board.zombies[zombie_index].health -= projectile.damage;
+            let health_remaining = self.state.board.zombies[zombie_index].health;
+            events.push(GameEvent::ProjectileHit {
+                projectile: projectile.id,
+                zombie: zombie_id,
+                damage: projectile.damage,
+                health_remaining,
+            });
             if health_remaining <= 0 {
                 self.state.board.zombies.remove(zombie_index);
                 events.push(GameEvent::ZombieDied { entity: zombie_id });
@@ -2469,7 +2531,11 @@ impl Game {
                     motion: plant_type.projectile_motion(),
                     position_x,
                     position_y,
-                    velocity_x: 3_330_000,
+                    velocity_x: if plant_type.is_fume_shroom() {
+                        0
+                    } else {
+                        3_330_000
+                    },
                     velocity_y: 0,
                 },
                 events,
@@ -2778,6 +2844,75 @@ mod tests {
             expire_game.advance(InputFrame::default());
         }
         assert!(expire_game.state.board.projectiles.is_empty());
+    }
+
+    #[test]
+    fn fume_shroom_hits_every_zombie_inside_its_attack_rectangle() {
+        let mut game = Game::new(7, SceneKind::Day);
+        game.state.sun = 100;
+        game.advance(InputFrame {
+            actions: vec![
+                InputAction::SelectSeed { slot: 10 },
+                InputAction::Plant { row: 2, column: 0 },
+            ],
+        });
+        game.state.board.plants[0].launch_counter = 1;
+        let mut setup_events = Vec::new();
+        let attack_start = plant_attack_start(0);
+        let near = game.spawn_normal_zombie(
+            2,
+            0,
+            Some(attack_start + 100 * POSITION_SCALE),
+            &mut setup_events,
+        );
+        let edge = game.spawn_normal_zombie(
+            2,
+            0,
+            Some(attack_start + 300 * POSITION_SCALE),
+            &mut setup_events,
+        );
+        let far = game.spawn_normal_zombie(
+            2,
+            0,
+            Some(attack_start + 400 * POSITION_SCALE),
+            &mut setup_events,
+        );
+
+        let events = (0..60)
+            .flat_map(|_| game.advance(InputFrame::default()))
+            .collect::<Vec<_>>();
+
+        assert!(events.iter().any(|event| matches!(
+            event,
+            GameEvent::ProjectileFired {
+                projectile_type: ProjectileType::Puff,
+                ..
+            }
+        )));
+        for target in [near, edge] {
+            assert!(events.iter().any(|event| matches!(
+                event,
+                GameEvent::ProjectileHit {
+                    zombie,
+                    damage: 20,
+                    ..
+                } if *zombie == target
+            )));
+            assert_eq!(
+                game.state
+                    .board
+                    .zombies
+                    .iter()
+                    .find(|zombie| zombie.id == target)
+                    .unwrap()
+                    .health,
+                250
+            );
+        }
+        assert!(!events.iter().any(|event| matches!(
+            event,
+            GameEvent::ProjectileHit { zombie, .. } if *zombie == far
+        )));
     }
 
     #[test]
