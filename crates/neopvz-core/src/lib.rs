@@ -1368,13 +1368,16 @@ impl Game {
             });
             return;
         }
-        if self
+        let occupied = self
             .state
             .board
             .plants
             .iter()
-            .any(|plant| plant.row == row && plant.column == column)
-        {
+            .any(|plant| plant.row == row && plant.column == column);
+        let pumpkin_already_present = self.state.board.plants.iter().any(|plant| {
+            plant.row == row && plant.column == column && plant.plant_type.slot() == 30
+        });
+        if occupied && (slot != 30 || pumpkin_already_present) {
             events.push(GameEvent::InputRejected {
                 action,
                 reason: InputRejectReason::Occupied,
@@ -1479,7 +1482,7 @@ impl Game {
             .board
             .plants
             .iter()
-            .position(|plant| plant.row == row && plant.column == column)
+            .rposition(|plant| plant.row == row && plant.column == column)
         else {
             events.push(GameEvent::InputRejected {
                 action,
@@ -2809,6 +2812,81 @@ mod tests {
                 ..
             }
         )));
+    }
+
+    #[test]
+    fn pumpkin_shell_covers_a_plant_and_absorbs_bites_first() {
+        let mut game = Game::new(7, SceneKind::Day);
+        game.state.sun = 500;
+        game.advance(InputFrame {
+            actions: vec![
+                InputAction::SelectSeed { slot: 1 },
+                InputAction::Plant { row: 2, column: 2 },
+                InputAction::SelectSeed { slot: 30 },
+                InputAction::Plant { row: 2, column: 2 },
+            ],
+        });
+        let sunflower = game
+            .state
+            .board
+            .plants
+            .iter()
+            .find(|plant| plant.plant_type == PlantType::Sunflower)
+            .unwrap()
+            .id;
+        let pumpkin = game
+            .state
+            .board
+            .plants
+            .iter()
+            .find(|plant| plant.plant_type == PlantType::Other(30))
+            .unwrap()
+            .id;
+        assert_eq!(game.state.board.plants.len(), 2);
+        assert_eq!(game.state.board.plants[1].id, pumpkin);
+        assert_eq!(game.state.board.plants[1].max_health, 4_000);
+
+        let mut setup_events = Vec::new();
+        game.spawn_normal_zombie(
+            2,
+            0,
+            Some(grid_x(2) + 30 * POSITION_SCALE),
+            &mut setup_events,
+        );
+        for _ in 0..4 {
+            game.advance(InputFrame::default());
+        }
+
+        assert_eq!(
+            game.state
+                .board
+                .plants
+                .iter()
+                .find(|plant| plant.id == pumpkin)
+                .unwrap()
+                .health,
+            3_996
+        );
+        assert_eq!(
+            game.state
+                .board
+                .plants
+                .iter()
+                .find(|plant| plant.id == sunflower)
+                .unwrap()
+                .health,
+            300
+        );
+
+        let events = game.advance(InputFrame {
+            actions: vec![InputAction::Shovel { row: 2, column: 2 }],
+        });
+        assert!(events.iter().any(|event| matches!(
+            event,
+            GameEvent::PlantShoveled { entity } if *entity == pumpkin
+        )));
+        assert_eq!(game.state.board.plants.len(), 1);
+        assert_eq!(game.state.board.plants[0].id, sunflower);
     }
 
     #[test]
