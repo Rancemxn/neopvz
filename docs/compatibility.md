@@ -13,7 +13,7 @@ evidence; a reviewer assertion alone is never sufficient.
 Status is `verified`, `partial`, or `missing`. The progress quantity is the sum
 of `total - accepted` across all rows.
 
-Current baseline: **977 accepted / 1802 total; 825 unresolved**.
+Current baseline: **978 accepted / 1802 total; 824 unresolved**.
 
 ## Foundation and Boundaries
 
@@ -47,7 +47,7 @@ loader coverage. They do not authorize committing the manifest or its assets.
 
 | Obligation | Entity/effect domain | Accepted | Total | Status | Evidence / owner |
 |---|---|---:|---:|---|---|
-| ENT-PLANT | Plant definitions and player-observable behavior | 31 | 49 | partial | PRs `#27`, `#30`, `#33`, `#36`, `#39`, `#42`, `#44`, `#48`, `#50`, `#53`, `#56`, `#58`, `#59`, `#60`, `#66`, `#67`, `#69`, `#70`, `#71`, `#72`, `#73`; runs `29969908209`/`29973097050`/`29973716257`/`29974169417`/`29974744365`/`29975305952`/`29975305940`/`29975652655`/`29975652651`/`29978884187`/`29978884201`/`29979356134`/`29979356138`/`29980230929`/`29980230938`/`29980841578`/`29980841574`/`30002936972`/`30002936877`/`30004214119`/`30004214079`/`30005507287`/`30005507199`/`30068974241`/`30099543625`/`30099543626`/`30132257878`/`30132257848`/`30132674816`/`30132674807`/`30133226675`/`30133226646`/`30133360999`/`30133360983`/`30134001945`/`30134001990`; ignored `artifacts/pult-plants/verification.md`, `artifacts/basic-shooters/verification.md`, `artifacts/fume-shroom/verification.md`, `artifacts/gloom-shroom/verification.md`, `artifacts/scaredy-shroom/verification.md`, and local source/runtime records |
+| ENT-PLANT | Plant definitions and player-observable behavior | 32 | 49 | partial | PRs `#27`, `#30`, `#33`, `#36`, `#39`, `#42`, `#44`, `#48`, `#50`, `#53`, `#56`, `#58`, `#59`, `#60`, `#66`, `#67`, `#69`, `#70`, `#71`, `#72`, `#73`, `#74`; runs `29969908209`/`29973097050`/`29973716257`/`29974169417`/`29974744365`/`29975305952`/`29975305940`/`29975652655`/`29975652651`/`29978884187`/`29978884201`/`29979356134`/`29979356138`/`29980230929`/`29980230938`/`29980841578`/`29980841574`/`30002936972`/`30002936877`/`30004214119`/`30004214079`/`30005507287`/`30005507199`/`30068974241`/`30099543625`/`30099543626`/`30132257878`/`30132257848`/`30132674816`/`30132674807`/`30133226675`/`30133226646`/`30133360999`/`30133360983`/`30134001945`/`30134001990`/`30134299774`/`30134299749`; ignored `artifacts/pult-plants/verification.md`, `artifacts/basic-shooters/verification.md`, `artifacts/fume-shroom/verification.md`, `artifacts/gloom-shroom/verification.md`, `artifacts/scaredy-shroom/verification.md`, and local source/runtime records |
 | ENT-ZOMBIE | Zombie definitions and player-observable behavior | 1 | 33 | partial | PR `#27`; runs `29969908209`/`29969908244`; ignored local source/runtime records |
 | ENT-PROJECTILE | Projectile types and collision behavior | 9 | 14 | partial | PRs `#30`, `#33`, `#36`, `#69`; runs `29973097050`/`29973716257`/`29974169417`/`30132257878`/`30132257848`; ignored `artifacts/pult-plants/verification.md` and local source/runtime records |
 | ENT-PICKUP | Sun, coins, prizes, and pickup behavior | 0 | 26 | missing | Issue `#5` |
@@ -60,10 +60,10 @@ The current partial entity acceptance is intentionally narrow: Peashooter,
 Sunflower, SnowPea, Repeater, Threepeater, SplitPea, Starfruit, Cattail,
 Torchwood projectile conversion, SunShroom, TwinSunflower, CherryBomb,
 PotatoMine, Squash, Jalapeno, IceShroom, DoomShroom, Wallnut, Tallnut, Chomper,
-Spikeweed, PuffShroom, FumeShroom, GloomShroom, ScaredyShroom, CabbagePult,
-KernelPult, WinterMelon, GatlingPea, Cactus, and LeftPeater behavior; the
-normal zombie; and Pea, SnowPea, Cabbage, Kernel, Butter, Melon, WinterMelon,
-Star, and Spike projectile/collision behavior. Remaining definitions are unresolved until their
+Spikeweed, PuffShroom, SeaShroom, FumeShroom, GloomShroom, ScaredyShroom,
+CabbagePult, KernelPult, WinterMelon, GatlingPea, Cactus, and LeftPeater
+behavior; the normal zombie; and Pea, SnowPea, Cabbage, Kernel, Butter, Melon,
+WinterMelon, Star, and Spike projectile/collision behavior. Remaining definitions are unresolved until their
 player-observable rules and domain-matched evidence are implemented.
 
 ## Player-Accessible Modes
