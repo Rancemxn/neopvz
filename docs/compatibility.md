@@ -13,7 +13,7 @@ evidence; a reviewer assertion alone is never sufficient.
 Status is `verified`, `partial`, or `missing`. The progress quantity is the sum
 of `total - accepted` across all rows.
 
-Current baseline: **963 accepted / 1802 total; 839 unresolved**.
+Current baseline: **964 accepted / 1802 total; 838 unresolved**.
 
 ## Foundation and Boundaries
 
@@ -27,7 +27,7 @@ Current baseline: **963 accepted / 1802 total; 839 unresolved**.
 | FND-006 | Version identity and external-resource safety checks | 1 | 1 | verified | PR `#25`, runs `29947497509`/`29947497544`, ignored local record |
 | FND-007 | Deterministic replay and state-hash harness | 1 | 1 | verified | PR `#27`, runs `29969592800`/`29969592830` |
 | FND-008 | Screenshot, semantic comparison, and independent review pipeline | 1 | 1 | verified | Ignored `artifacts/visual-issue14/independent-review.md`, Issue `#14`; title checkpoint crop/diff/review artifacts |
-| FND-009 | Original-process instrumentation provenance and cross-checks | 0 | 1 | missing | Issue `#15` |
+| FND-009 | Original-process instrumentation provenance and cross-checks | 1 | 1 | verified | Ignored `artifacts/original-observation/verification.md`; independent `ReadProcessMemory` observation cross-checked against the 1.0.0.1051 lawn capture; Issue `#15` |
 
 ## External Resource Inventory
 
