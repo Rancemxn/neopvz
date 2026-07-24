@@ -2742,10 +2742,11 @@ mod tests {
         let far_events = (0..40)
             .flat_map(|_| far_game.advance(InputFrame::default()))
             .collect::<Vec<_>>();
-        assert!(!far_events.iter().any(|event| matches!(
-            event,
-            GameEvent::ProjectileFired { .. }
-        )));
+        assert!(
+            !far_events
+                .iter()
+                .any(|event| matches!(event, GameEvent::ProjectileFired { .. }))
+        );
 
         // Forced puff projectile expires at age 75 without a hit.
         let mut expire_game = Game::new(7, SceneKind::Day);
