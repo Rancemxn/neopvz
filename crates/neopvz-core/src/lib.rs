@@ -3499,6 +3499,7 @@ impl Game {
         id
     }
 
+    #[allow(dead_code)]
     fn spawn_conehead_zombie(
         &mut self,
         row: u8,
