@@ -28,6 +28,7 @@ const SUNSHROOM_GROWTH_TICKS: u32 = 12_000;
 const SMALL_SUN_VALUE: u32 = 15;
 const INSTANT_PLANT_COUNTDOWN: u32 = 100;
 const BLOVER_SPECIAL_COUNTDOWN: u32 = 50;
+const GRAVEBUSTER_EAT_TICKS: u32 = 400;
 const POTATO_ARM_TICKS: u32 = 1_500;
 const PLANT_SPECIAL_DAMAGE: i32 = 1_800;
 const SQUASH_LOOK_TICKS: u32 = 80;
@@ -180,6 +181,10 @@ impl PlantType {
 
     fn is_gold_magnet(self) -> bool {
         self.slot() == 45
+    }
+
+    fn is_gravebuster(self) -> bool {
+        self.slot() == 11
     }
 
     fn is_blover(self) -> bool {
@@ -935,6 +940,12 @@ pub struct CraterState {
 }
 
 #[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
+pub struct GraveState {
+    pub row: u8,
+    pub column: u8,
+}
+
+#[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
 pub struct MowerState {
     pub row: u8,
     pub position_x: i64,
@@ -963,6 +974,8 @@ pub struct BoardState {
     pub suns: Vec<SunPickupState>,
     pub coins: Vec<CoinPickupState>,
     pub craters: Vec<CraterState>,
+    #[serde(default)]
+    pub graves: Vec<GraveState>,
     pub mowers: Vec<MowerState>,
     pub wave: WaveState,
     pub sun_countdown: u32,
@@ -1013,6 +1026,7 @@ impl BoardState {
             suns: Vec::new(),
             coins: Vec::new(),
             craters: Vec::new(),
+            graves: Vec::new(),
             mowers,
             wave: WaveState {
                 current: 0,
@@ -1097,6 +1111,11 @@ pub enum GameEvent {
     BloverTriggered {
         entity: EntityId,
         row: u8,
+    },
+    GraveCleared {
+        entity: EntityId,
+        row: u8,
+        column: u8,
     },
     PlantSpecialHit {
         plant: EntityId,
@@ -1522,6 +1541,19 @@ impl Game {
             });
             return;
         }
+        let has_grave = self
+            .state
+            .board
+            .graves
+            .iter()
+            .any(|grave| grave.row == row && grave.column == column);
+        if slot == 11 && !has_grave {
+            events.push(GameEvent::InputRejected {
+                action,
+                reason: InputRejectReason::InvalidTerrain,
+            });
+            return;
+        }
         let occupied = self
             .state
             .board
@@ -1614,7 +1646,9 @@ impl Game {
             self.rng.range_inclusive(0, launch_rate)
         };
         let max_health = plant_type.max_health();
-        let (special_counter, special_armed) = if plant_type.is_blover() {
+        let (special_counter, special_armed) = if plant_type.is_gravebuster() {
+            (GRAVEBUSTER_EAT_TICKS, false)
+        } else if plant_type.is_blover() {
             (BLOVER_SPECIAL_COUNTDOWN, false)
         } else if plant_type.is_cherry_bomb()
             || plant_type.is_jalapeno()
@@ -1839,6 +1873,9 @@ impl Game {
                             .rng
                             .range_inclusive(GOLD_MAGNET_RECHARGE_MIN, GOLD_MAGNET_RECHARGE_MAX);
                     }
+                } else if plant_type.is_gravebuster() {
+                    plant.special_counter = plant.special_counter.saturating_sub(1);
+                    special = plant.special_counter == 0;
                 } else if plant_type.is_blover() {
                     if !plant.special_armed {
                         plant.special_counter = plant.special_counter.saturating_sub(1);
@@ -2117,6 +2154,34 @@ impl Game {
                 entity: plant_id,
                 row,
             });
+            return;
+        }
+
+        if plant_type.is_gravebuster() {
+            if let Some(grave_index) = self
+                .state
+                .board
+                .graves
+                .iter()
+                .position(|grave| grave.row == row && grave.column == column)
+            {
+                self.state.board.graves.remove(grave_index);
+                events.push(GameEvent::GraveCleared {
+                    entity: plant_id,
+                    row,
+                    column,
+                });
+            }
+            if let Some(plant) = self
+                .state
+                .board
+                .plants
+                .iter_mut()
+                .find(|plant| plant.id == plant_id)
+            {
+                plant.health = 0;
+            }
+            events.push(GameEvent::PlantDied { entity: plant_id });
             return;
         }
 
@@ -4150,6 +4215,65 @@ mod tests {
         assert_eq!(frozen.position_x, before);
         assert!(!frozen.eating);
         assert!(frozen.frozen_counter > 0);
+    }
+
+    #[test]
+    fn gravebuster_requires_and_clears_a_grave_after_four_hundred_ticks() {
+        let mut game = Game::new(7, SceneKind::Day);
+        game.state.sun = 75;
+
+        let rejected = game.advance(InputFrame {
+            actions: vec![
+                InputAction::SelectSeed { slot: 11 },
+                InputAction::Plant { row: 2, column: 2 },
+            ],
+        });
+        assert!(rejected.iter().any(|event| matches!(
+            event,
+            GameEvent::InputRejected {
+                reason: InputRejectReason::InvalidTerrain,
+                ..
+            }
+        )));
+
+        game.state
+            .board
+            .graves
+            .push(GraveState { row: 2, column: 2 });
+        let placed = game.advance(InputFrame {
+            actions: vec![
+                InputAction::SelectSeed { slot: 11 },
+                InputAction::Plant { row: 2, column: 2 },
+            ],
+        });
+        let gravebuster = game.state.board.plants[0].id;
+        assert!(placed.iter().any(|event| matches!(
+            event,
+            GameEvent::PlantPlaced {
+                entity,
+                plant_type: PlantType::Other(11),
+                ..
+            } if *entity == gravebuster
+        )));
+        assert_eq!(
+            game.state.board.plants[0].special_counter,
+            GRAVEBUSTER_EAT_TICKS - 1
+        );
+
+        let mut cleared = false;
+        for _ in 0..(GRAVEBUSTER_EAT_TICKS - 1) {
+            cleared |= game.advance(InputFrame::default()).iter().any(|event| {
+                matches!(
+                    event,
+                    GameEvent::GraveCleared { entity, row: 2, column: 2 }
+                        if *entity == gravebuster
+                )
+            });
+        }
+
+        assert!(cleared);
+        assert!(game.state.board.graves.is_empty());
+        assert!(game.state.board.plants.is_empty());
     }
 
     #[test]
