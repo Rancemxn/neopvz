@@ -735,6 +735,7 @@ pub enum ZombieType {
     Buckethead,
     ScreenDoor,
     DuckyTube,
+    Football,
     PoleVaulter,
 }
 
@@ -3601,6 +3602,28 @@ impl Game {
     }
 
     #[allow(dead_code)]
+    fn spawn_football_zombie(
+        &mut self,
+        row: u8,
+        wave: u32,
+        position_override: Option<i64>,
+        events: &mut Vec<GameEvent>,
+    ) -> EntityId {
+        let id = self._spawn_zombie_inner(
+            ZombieType::Football,
+            1670,
+            row,
+            wave,
+            position_override,
+            events,
+        );
+        if let Some(zombie) = self.state.board.zombies.iter_mut().find(|z| z.id == id) {
+            zombie.speed = 660_000;
+        }
+        id
+    }
+
+    #[allow(dead_code)]
     fn spawn_pole_vaulter_zombie(
         &mut self,
         row: u8,
@@ -5426,6 +5449,43 @@ mod tests {
                 .unwrap()
                 .zombie_type,
             ZombieType::DuckyTube
+        );
+    }
+
+    #[test]
+    fn football_zombie_has_1670_health_and_increased_speed() {
+        let mut game = Game::new(7, SceneKind::Day);
+        let mut setup = Vec::new();
+        let zombie = game.spawn_football_zombie(2, 0, Some(500 * POSITION_SCALE), &mut setup);
+        assert_eq!(
+            game.state
+                .board
+                .zombies
+                .iter()
+                .find(|z| z.id == zombie)
+                .unwrap()
+                .health,
+            1670
+        );
+        assert_eq!(
+            game.state
+                .board
+                .zombies
+                .iter()
+                .find(|z| z.id == zombie)
+                .unwrap()
+                .zombie_type,
+            ZombieType::Football
+        );
+        assert_eq!(
+            game.state
+                .board
+                .zombies
+                .iter()
+                .find(|z| z.id == zombie)
+                .unwrap()
+                .speed,
+            660_000
         );
     }
 
