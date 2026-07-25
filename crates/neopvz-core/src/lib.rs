@@ -54,6 +54,8 @@ const CHOMPER_CHEW_TICKS: u32 = 4_000;
 const GARLIC_EAT_TICKS: u32 = 70;
 const GARLIC_ROW_CHANGE_TICKS: u32 = 170;
 const GARLIC_RESET_TICKS: u32 = 270;
+const MOWER_TRIGGER_X: i64 = 0;
+const MOWER_SPEED: i64 = 8 * POSITION_SCALE;
 // Plant_UpdateTanglekelp starts its grab state with a 100-tick countdown.
 const TANGLE_KELP_GRAB_TICKS: u32 = 100;
 // Plant_UpdateSpike / Plant_SpikesSetAnimAttack in 1.0.0.1051: attack
@@ -891,6 +893,14 @@ pub struct CraterState {
 }
 
 #[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
+pub struct MowerState {
+    pub row: u8,
+    pub position_x: i64,
+    pub active: bool,
+    pub spent: bool,
+}
+
+#[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
 pub struct WaveState {
     pub current: u32,
     pub total: u32,
@@ -910,6 +920,7 @@ pub struct BoardState {
     pub projectiles: Vec<ProjectileState>,
     pub suns: Vec<SunPickupState>,
     pub craters: Vec<CraterState>,
+    pub mowers: Vec<MowerState>,
     pub wave: WaveState,
     pub sun_countdown: u32,
     pub suns_fallen: u32,
@@ -924,6 +935,21 @@ impl BoardState {
             DAY_ROWS
         };
         let sun_countdown = SUN_COUNTDOWN + rng.range(276);
+        let mowers = if matches!(
+            scene,
+            SceneKind::Day | SceneKind::Night | SceneKind::Pool | SceneKind::Roof
+        ) {
+            (0..rows)
+                .map(|row| MowerState {
+                    row,
+                    position_x: -80 * POSITION_SCALE,
+                    active: false,
+                    spent: false,
+                })
+                .collect()
+        } else {
+            Vec::new()
+        };
         Self {
             rows,
             columns: GRID_COLUMNS,
@@ -943,6 +969,7 @@ impl BoardState {
             projectiles: Vec::new(),
             suns: Vec::new(),
             craters: Vec::new(),
+            mowers,
             wave: WaveState {
                 current: 0,
                 total: 1,
@@ -1073,6 +1100,9 @@ pub enum GameEvent {
     },
     ZombieDied {
         entity: EntityId,
+    },
+    MowerTriggered {
+        row: u8,
     },
     ZombieRowChanged {
         entity: EntityId,
@@ -1295,6 +1325,7 @@ impl Game {
         if !self.state.paused && self.is_playing_scene() {
             self.update_plants(&mut events);
             self.update_zombies(&mut events);
+            self.update_mowers(&mut events);
             self.update_projectiles(&mut events);
             self.update_seed_packets();
             self.update_sun_spawning(&mut events);
@@ -2153,9 +2184,63 @@ impl Game {
         true
     }
 
+    fn trigger_mower(&mut self, row: u8, events: &mut Vec<GameEvent>) -> bool {
+        let Some(mower) = self
+            .state
+            .board
+            .mowers
+            .iter_mut()
+            .find(|mower| mower.row == row && !mower.active && !mower.spent)
+        else {
+            return false;
+        };
+        mower.active = true;
+        events.push(GameEvent::MowerTriggered { row });
+        for zombie in &mut self.state.board.zombies {
+            if zombie.row == row && zombie.health > 0 {
+                zombie.health = 0;
+                zombie.eating = false;
+                events.push(GameEvent::ZombieDied { entity: zombie.id });
+            }
+        }
+        true
+    }
+
+    fn update_mowers(&mut self, events: &mut Vec<GameEvent>) {
+        for mower in &mut self.state.board.mowers {
+            if !mower.active {
+                continue;
+            }
+            let previous_x = mower.position_x;
+            mower.position_x = mower.position_x.saturating_add(MOWER_SPEED);
+            if mower.position_x > i64::from(LOGICAL_WIDTH) * POSITION_SCALE {
+                mower.active = false;
+                mower.spent = true;
+                continue;
+            }
+            let row = mower.row;
+            let mower_x = mower.position_x;
+            for zombie in &mut self.state.board.zombies {
+                if zombie.row == row
+                    && zombie.health > 0
+                    && zombie.position_x + 70 * POSITION_SCALE > previous_x
+                    && zombie.position_x < mower_x + 80 * POSITION_SCALE
+                {
+                    zombie.health = 0;
+                    zombie.eating = false;
+                    events.push(GameEvent::ZombieDied { entity: zombie.id });
+                }
+            }
+        }
+        self.state.board.zombies.retain(|zombie| zombie.health > 0);
+    }
+
     fn update_zombies(&mut self, events: &mut Vec<GameEvent>) {
         let zombie_count = self.state.board.zombies.len() as u32;
         for zombie_index in 0..self.state.board.zombies.len() {
+            if self.state.board.zombies[zombie_index].health <= 0 {
+                continue;
+            }
             let garlic_active = self.advance_garlic_state(zombie_index, events);
             let (entity, row, position_x, age, was_eating, frozen) = {
                 let zombie = &mut self.state.board.zombies[zombie_index];
@@ -2217,7 +2302,18 @@ impl Game {
                 }
             }
 
-            if self.state.board.zombies[zombie_index].position_x <= -100 * POSITION_SCALE {
+            let mower_covering_row = self
+                .state
+                .board
+                .mowers
+                .iter()
+                .any(|mower| mower.row == row && mower.active);
+            let mower_triggered = position_x <= MOWER_TRIGGER_X
+                && (self.trigger_mower(row, events) || mower_covering_row);
+            if !mower_triggered
+                && self.state.board.zombies[zombie_index].health > 0
+                && position_x <= -100 * POSITION_SCALE
+            {
                 self.state.scene = SceneKind::GameOver;
                 events.push(GameEvent::GameLost { zombie: entity });
                 break;
@@ -4638,6 +4734,46 @@ mod tests {
         )));
         assert_eq!(roof.state.board.plants.len(), 1);
         assert_eq!(roof.state.board.plants[0].plant_type, PlantType::Other(33));
+    }
+
+    #[test]
+    fn lawn_mower_triggers_before_a_zombie_can_end_the_row() {
+        let mut game = Game::new(7, SceneKind::Day);
+        let mut setup_events = Vec::new();
+        let zombie = game.spawn_normal_zombie(2, 0, Some(0), &mut setup_events);
+        game.state.board.zombies[0].speed = 0;
+
+        let events = game.advance(InputFrame::default());
+
+        assert!(
+            events
+                .iter()
+                .any(|event| matches!(event, GameEvent::MowerTriggered { row: 2 }))
+        );
+        assert!(events.iter().any(|event| matches!(
+            event,
+            GameEvent::ZombieDied { entity } if *entity == zombie
+        )));
+        assert!(matches!(game.state.scene, SceneKind::Day));
+        assert!(game.state.board.zombies.is_empty());
+        assert!(game.state.board.mowers[2].active);
+    }
+
+    #[test]
+    fn a_row_without_a_lawn_mower_reaches_game_over() {
+        let mut game = Game::new(7, SceneKind::Day);
+        game.state.board.mowers.clear();
+        let mut setup_events = Vec::new();
+        let zombie = game.spawn_normal_zombie(2, 0, Some(-100 * POSITION_SCALE), &mut setup_events);
+        game.state.board.zombies[0].speed = 0;
+
+        let events = game.advance(InputFrame::default());
+
+        assert!(events.iter().any(|event| matches!(
+            event,
+            GameEvent::GameLost { zombie: id } if *id == zombie
+        )));
+        assert!(matches!(game.state.scene, SceneKind::GameOver));
     }
 
     #[test]
