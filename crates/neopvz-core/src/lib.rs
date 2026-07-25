@@ -738,6 +738,7 @@ pub enum ZombieType {
     Football,
     Newspaper,
     Imp,
+    Jackbox,
     PoleVaulter,
 }
 
@@ -934,6 +935,8 @@ pub struct ZombieState {
     pub has_vaulted: bool,
     #[serde(default)]
     pub newspaper_health: i32,
+    #[serde(default)]
+    pub jackbox_timer: u32,
 }
 
 #[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
@@ -2609,13 +2612,99 @@ impl Game {
         self.state.board.zombies.retain(|zombie| zombie.health > 0);
     }
 
+    fn apply_jackbox_explosion(&mut self, zombie_index: usize, events: &mut Vec<GameEvent>) {
+        let zx;
+        let zrow;
+        let zombie_id;
+        {
+            let zombie = &self.state.board.zombies[zombie_index];
+            zx = zombie.position_x;
+            zrow = zombie.row;
+            zombie_id = zombie.id;
+        }
+
+        let explosion_radius = 115 * POSITION_SCALE;
+
+        // Damage plants within 115 unit radius, same row ±1 row.
+        let mut plant_targets = Vec::new();
+        for (i, plant) in self.state.board.plants.iter().enumerate() {
+            if plant.health <= 0 {
+                continue;
+            }
+            let row_diff = (i16::from(plant.row) - i16::from(zrow)).unsigned_abs();
+            if row_diff > 1 {
+                continue;
+            }
+            let px = grid_x(plant.column);
+            let dx = (px - zx).unsigned_abs();
+            if dx > explosion_radius as u64 {
+                continue;
+            }
+            plant_targets.push(i);
+        }
+        for i in plant_targets {
+            self.state.board.plants[i].health = 0;
+            events.push(GameEvent::PlantDied {
+                entity: self.state.board.plants[i].id,
+            });
+        }
+
+        // Also damage nearby zombies (friendly fire).
+        let mut zombie_targets = Vec::new();
+        for (other_idx, other) in self.state.board.zombies.iter().enumerate() {
+            if other_idx == zombie_index {
+                continue;
+            }
+            if other.health <= 0 {
+                continue;
+            }
+            let row_diff = (i16::from(other.row) - i16::from(zrow)).unsigned_abs();
+            if row_diff > 1 {
+                continue;
+            }
+            let dx = (other.position_x - zx).unsigned_abs();
+            if dx > explosion_radius as u64 {
+                continue;
+            }
+            zombie_targets.push(other.id);
+        }
+        for target in zombie_targets {
+            for z in &mut self.state.board.zombies {
+                if z.id == target {
+                    z.health -= PLANT_SPECIAL_DAMAGE;
+                }
+            }
+            events.push(GameEvent::ZombieDied { entity: target });
+        }
+
+        events.push(GameEvent::ZombieDied { entity: zombie_id });
+    }
+
     fn update_zombies(&mut self, events: &mut Vec<GameEvent>) {
         let zombie_count = self.state.board.zombies.len() as u32;
         for zombie_index in 0..self.state.board.zombies.len() {
             if self.state.board.zombies[zombie_index].health <= 0 {
+                // Jack-in-the-Box: explode when killed by external damage.
+                if self.state.board.zombies[zombie_index].zombie_type == ZombieType::Jackbox
+                    && self.state.board.zombies[zombie_index].jackbox_timer > 0
+                {
+                    self.state.board.zombies[zombie_index].jackbox_timer = 0;
+                    self.apply_jackbox_explosion(zombie_index, events);
+                }
                 continue;
             }
             let garlic_active = self.advance_garlic_state(zombie_index, events);
+            // Jack-in-the-Box: decrement timer and explode when zero.
+            {
+                let zombie = &mut self.state.board.zombies[zombie_index];
+                if zombie.zombie_type == ZombieType::Jackbox && zombie.jackbox_timer > 0 {
+                    zombie.jackbox_timer = zombie.jackbox_timer.saturating_sub(1);
+                    if zombie.jackbox_timer == 0 {
+                        zombie.health = 0;
+                        self.apply_jackbox_explosion(zombie_index, events);
+                    }
+                }
+            }
             let (entity, row, position_x, age, was_eating, frozen) = {
                 let zombie = &mut self.state.board.zombies[zombie_index];
                 zombie.age = zombie.age.saturating_add(1);
@@ -3519,6 +3608,7 @@ impl Game {
             hypnotized: false,
             has_vaulted: false,
             newspaper_health: 0,
+            jackbox_timer: 0,
         });
         events.push(GameEvent::ZombieSpawned {
             entity: id,
@@ -3683,6 +3773,28 @@ impl Game {
     }
 
     #[allow(dead_code)]
+    fn spawn_jackbox_zombie(
+        &mut self,
+        row: u8,
+        wave: u32,
+        position_override: Option<i64>,
+        events: &mut Vec<GameEvent>,
+    ) -> EntityId {
+        let id = self._spawn_zombie_inner(
+            ZombieType::Jackbox,
+            270,
+            row,
+            wave,
+            position_override,
+            events,
+        );
+        if let Some(zombie) = self.state.board.zombies.iter_mut().find(|z| z.id == id) {
+            zombie.jackbox_timer = self.rng.range_inclusive(500, 1500);
+        }
+        id
+    }
+
+    #[allow(dead_code)]
     fn _spawn_zombie_inner(
         &mut self,
         zombie_type: ZombieType,
@@ -3716,6 +3828,7 @@ impl Game {
             hypnotized: false,
             has_vaulted: false,
             newspaper_health: 0,
+            jackbox_timer: 0,
         });
         events.push(GameEvent::ZombieSpawned {
             entity: id,
@@ -5615,6 +5728,45 @@ mod tests {
                 .zombie_type,
             ZombieType::Imp
         );
+    }
+
+    #[test]
+    fn jackbox_zombie_explodes_after_timer_and_damages_nearby_plants() {
+        let mut game = Game::new(7, SceneKind::Day);
+        let mut setup = Vec::new();
+        let zombie = game.spawn_jackbox_zombie(2, 0, Some(780 * POSITION_SCALE), &mut setup);
+
+        assert_eq!(
+            game.state
+                .board
+                .zombies
+                .iter()
+                .find(|z| z.id == zombie)
+                .unwrap()
+                .zombie_type,
+            ZombieType::Jackbox
+        );
+
+        // Advance enough ticks to trigger the random timer (500-1500).
+        let mut events = Vec::new();
+        for _ in 0..2000 {
+            events.extend(game.advance(InputFrame::default()));
+            if !game.state.board.zombies.iter().any(|z| z.id == zombie) {
+                break;
+            }
+        }
+
+        // Jackbox zombie should be dead after detonation.
+        assert!(
+            !game.state.board.zombies.iter().any(|z| z.id == zombie),
+            "Jackbox zombie should die in its own explosion"
+        );
+        // Verify ZombieDied event was emitted.
+        let died: Vec<_> = events
+            .iter()
+            .filter(|e| matches!(e, GameEvent::ZombieDied { entity: eid } if *eid == zombie))
+            .collect();
+        assert!(!died.is_empty(), "ZombieDied should be emitted for Jackbox");
     }
 
     #[test]
