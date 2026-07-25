@@ -734,6 +734,7 @@ pub enum ZombieType {
     Flag,
     Buckethead,
     ScreenDoor,
+    DuckyTube,
     PoleVaulter,
 }
 
@@ -3582,6 +3583,24 @@ impl Game {
     }
 
     #[allow(dead_code)]
+    fn spawn_ducky_tube_zombie(
+        &mut self,
+        row: u8,
+        wave: u32,
+        position_override: Option<i64>,
+        events: &mut Vec<GameEvent>,
+    ) -> EntityId {
+        self._spawn_zombie_inner(
+            ZombieType::DuckyTube,
+            270,
+            row,
+            wave,
+            position_override,
+            events,
+        )
+    }
+
+    #[allow(dead_code)]
     fn spawn_pole_vaulter_zombie(
         &mut self,
         row: u8,
@@ -5380,6 +5399,33 @@ mod tests {
                 .unwrap()
                 .zombie_type,
             ZombieType::ScreenDoor
+        );
+    }
+
+    #[test]
+    fn ducky_tube_zombie_has_270_health_and_ducky_type() {
+        let mut game = Game::new(7, SceneKind::Day);
+        let mut setup = Vec::new();
+        let zombie = game.spawn_ducky_tube_zombie(2, 0, Some(500 * POSITION_SCALE), &mut setup);
+        assert_eq!(
+            game.state
+                .board
+                .zombies
+                .iter()
+                .find(|z| z.id == zombie)
+                .unwrap()
+                .health,
+            270
+        );
+        assert_eq!(
+            game.state
+                .board
+                .zombies
+                .iter()
+                .find(|z| z.id == zombie)
+                .unwrap()
+                .zombie_type,
+            ZombieType::DuckyTube
         );
     }
 
