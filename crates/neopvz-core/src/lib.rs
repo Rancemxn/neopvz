@@ -736,6 +736,7 @@ pub enum ZombieType {
     ScreenDoor,
     DuckyTube,
     Football,
+    Newspaper,
     PoleVaulter,
 }
 
@@ -930,6 +931,8 @@ pub struct ZombieState {
     pub hypnotized: bool,
     #[serde(default)]
     pub has_vaulted: bool,
+    #[serde(default)]
+    pub newspaper_health: i32,
 }
 
 #[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
@@ -2624,7 +2627,14 @@ impl Game {
                 let frozen = zombie.frozen_counter != 0;
                 if !frozen && !zombie.eating && !garlic_active {
                     let speed = if zombie.chilled_counter == 0 {
-                        zombie.speed
+                        if zombie.zombie_type == ZombieType::Newspaper
+                            && zombie.health > 0
+                            && zombie.health <= 270
+                        {
+                            660_000
+                        } else {
+                            zombie.speed
+                        }
                     } else {
                         zombie.speed * 2 / 5
                     };
@@ -3507,6 +3517,7 @@ impl Game {
             from_wave: wave,
             hypnotized: false,
             has_vaulted: false,
+            newspaper_health: 0,
         });
         events.push(GameEvent::ZombieSpawned {
             entity: id,
@@ -3624,6 +3635,24 @@ impl Game {
     }
 
     #[allow(dead_code)]
+    fn spawn_newspaper_zombie(
+        &mut self,
+        row: u8,
+        wave: u32,
+        position_override: Option<i64>,
+        events: &mut Vec<GameEvent>,
+    ) -> EntityId {
+        self._spawn_zombie_inner(
+            ZombieType::Newspaper,
+            540,
+            row,
+            wave,
+            position_override,
+            events,
+        )
+    }
+
+    #[allow(dead_code)]
     fn spawn_pole_vaulter_zombie(
         &mut self,
         row: u8,
@@ -3674,6 +3703,7 @@ impl Game {
             from_wave: wave,
             hypnotized: false,
             has_vaulted: false,
+            newspaper_health: 0,
         });
         events.push(GameEvent::ZombieSpawned {
             entity: id,
@@ -5486,6 +5516,65 @@ mod tests {
                 .unwrap()
                 .speed,
             660_000
+        );
+    }
+
+    #[test]
+    fn newspaper_zombie_speeds_up_after_taking_enough_damage() {
+        let mut game = Game::new(7, SceneKind::Day);
+        let mut setup = Vec::new();
+        let zombie = game.spawn_newspaper_zombie(2, 0, Some(500 * POSITION_SCALE), &mut setup);
+
+        // Verify starting health is 540.
+        assert_eq!(
+            game.state
+                .board
+                .zombies
+                .iter()
+                .find(|z| z.id == zombie)
+                .unwrap()
+                .health,
+            540
+        );
+        assert_eq!(
+            game.state
+                .board
+                .zombies
+                .iter()
+                .find(|z| z.id == zombie)
+                .unwrap()
+                .zombie_type,
+            ZombieType::Newspaper
+        );
+
+        // Damage the zombie to below 270 HP (breaking the newspaper).
+        game.state.board.zombies.iter_mut().for_each(|z| {
+            if z.id == zombie {
+                z.health = 260;
+            }
+        });
+        let pos_before = game
+            .state
+            .board
+            .zombies
+            .iter()
+            .find(|z| z.id == zombie)
+            .unwrap()
+            .position_x;
+        game.advance(InputFrame::default());
+        let pos_after = game
+            .state
+            .board
+            .zombies
+            .iter()
+            .find(|z| z.id == zombie)
+            .unwrap()
+            .position_x;
+        // With newspaper speed (660,000) the zombie should move at least 100,000 units.
+        assert!(
+            pos_before - pos_after >= 100_000,
+            "newspaper zombie at 260 HP should move fast; moved {}",
+            pos_before - pos_after
         );
     }
 
