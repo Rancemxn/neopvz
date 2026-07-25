@@ -5067,7 +5067,6 @@ mod tests {
         // Let zombie eat through the full 4000 HP (1000 bites at 4 damage each).
         let mut saw_special = false;
         let mut saw_hit = false;
-        let mut saw_dead = false;
         let mut saw_plant_died = false;
         for _ in 0..200 {
             let events = game.advance(InputFrame::default());
