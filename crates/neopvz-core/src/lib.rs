@@ -3230,7 +3230,7 @@ impl Game {
                 attacker: Some(attacker_id),
             });
             if health_remaining <= 0 {
-                self.state.board.zombies.remove(target_idx);
+                self.state.board.zombies[target_idx].health = 0;
                 events.push(GameEvent::ZombieDied { entity: target_id });
             }
         }
