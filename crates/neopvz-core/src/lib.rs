@@ -5310,11 +5310,11 @@ mod tests {
         game.state.sun = 50;
         game.advance(InputFrame {
             actions: vec![
-                InputAction::SelectSeed { slot: 35 },
+                InputAction::SelectSeed { slot: 1 },
                 InputAction::Plant { row: 2, column: 2 },
             ],
         });
-        let coffee_id = game.state.board.plants[0].id;
+        let sunflower_id = game.state.board.plants[0].id;
 
         let mut setup = Vec::new();
         let zombie =
@@ -5331,7 +5331,7 @@ mod tests {
         }
         assert!(vaulted, "ZombieVaulted");
         assert!(
-            game.state.board.plants.iter().any(|p| p.id == coffee_id),
+            game.state.board.plants.iter().any(|p| p.id == sunflower_id),
             "plant survived vault"
         );
     }
