@@ -194,7 +194,7 @@ impl PlantType {
     }
 
     fn is_spikeweed(self) -> bool {
-        self.slot() == 21
+        matches!(self.slot(), 21 | 46)
     }
 
     fn is_fume_shroom(self) -> bool {
@@ -626,7 +626,7 @@ const PLANT_DEFINITIONS: [PlantDefinition; 53] = [
         cost: 125,
         refresh_time: 5_000,
         launch_rate: 0,
-        max_health: 300,
+        max_health: 450,
     },
     // 47 CobCannon
     PlantDefinition {
@@ -1652,7 +1652,12 @@ impl Game {
                 } else if plant_type.is_spikeweed() {
                     if plant.special_armed {
                         plant.special_counter = plant.special_counter.saturating_sub(1);
-                        if plant.special_counter == SPIKEWEED_DAMAGE_COUNTDOWN {
+                        let damage_countdown = if plant_type.slot() == 46 {
+                            matches!(plant.special_counter, 69 | 33)
+                        } else {
+                            plant.special_counter == SPIKEWEED_DAMAGE_COUNTDOWN
+                        };
+                        if damage_countdown {
                             spikeweed_hit = true;
                         } else if plant.special_counter == 0 {
                             plant.special_armed = false;
@@ -4373,6 +4378,52 @@ mod tests {
             last_events
                 .iter()
                 .any(|event| matches!(event, GameEvent::WaveStarted { wave: 0 }))
+        );
+    }
+
+    #[test]
+    fn spikerock_attacks_twice_per_cycle_and_has_extra_health() {
+        let mut game = Game::new(7, SceneKind::Day);
+        game.state.sun = 500;
+        game.advance(InputFrame {
+            actions: vec![
+                InputAction::SelectSeed { slot: 46 },
+                InputAction::Plant { row: 2, column: 0 },
+            ],
+        });
+        let spikerock = game.state.board.plants[0].id;
+        assert_eq!(game.state.board.plants[0].max_health, 450);
+
+        let mut setup_events = Vec::new();
+        let zombie = game.spawn_normal_zombie(
+            2,
+            0,
+            Some(grid_x(0) + 40 * POSITION_SCALE),
+            &mut setup_events,
+        );
+        let starting_health = game.state.board.zombies[0].health;
+        let events = (0..70)
+            .flat_map(|_| game.advance(InputFrame::default()))
+            .collect::<Vec<_>>();
+
+        let hits = events
+            .iter()
+            .filter(|event| {
+                matches!(
+                    event,
+                    GameEvent::PlantSpecialHit {
+                        plant,
+                        zombie: hit_zombie,
+                        damage: SPIKEWEED_DAMAGE,
+                        ..
+                    } if *plant == spikerock && *hit_zombie == zombie
+                )
+            })
+            .count();
+        assert_eq!(hits, 2);
+        assert_eq!(
+            game.state.board.zombies[0].health,
+            starting_health - 2 * SPIKEWEED_DAMAGE
         );
     }
 
