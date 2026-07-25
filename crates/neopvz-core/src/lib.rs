@@ -804,6 +804,7 @@ pub enum InputRejectReason {
 pub enum InputAction {
     Pause,
     Resume,
+    Restart,
     SelectSeed { slot: u8 },
     Plant { row: u8, column: u8 },
     Shovel { row: u8, column: u8 },
@@ -1000,6 +1001,7 @@ pub struct GameState {
     pub seed: u64,
     pub tick: Tick,
     pub scene: SceneKind,
+    pub level_scene: SceneKind,
     pub sun: u32,
     pub wave: u32,
     pub paused: bool,
@@ -1010,6 +1012,7 @@ pub struct GameState {
 #[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
 pub enum GameEvent {
     Started,
+    Restarted,
     Paused,
     Resumed,
     SeedSelected {
@@ -1303,6 +1306,7 @@ impl Game {
             seed,
             tick: 0,
             scene,
+            level_scene: scene,
             sun: 50,
             wave: 0,
             paused: false,
@@ -1318,11 +1322,13 @@ impl Game {
 
     pub fn advance(&mut self, input: InputFrame) -> Vec<GameEvent> {
         let mut events = Vec::new();
+        let mut restarted = false;
         for action in input.actions {
+            restarted |= matches!(action, InputAction::Restart);
             self.apply_input(action, &mut events);
         }
 
-        if !self.state.paused && self.is_playing_scene() {
+        if !restarted && !self.state.paused && self.is_playing_scene() {
             self.update_plants(&mut events);
             self.update_zombies(&mut events);
             self.update_mowers(&mut events);
@@ -1367,6 +1373,14 @@ impl Game {
                 if self.state.paused {
                     self.state.paused = false;
                     events.push(GameEvent::Resumed);
+                }
+            }
+            InputAction::Restart => {
+                if matches!(self.state.scene, SceneKind::GameOver | SceneKind::Complete) {
+                    let seed = self.state.seed;
+                    let scene = self.state.level_scene;
+                    *self = Self::new(seed, scene);
+                    events.push(GameEvent::Restarted);
                 }
             }
             InputAction::SelectSeed { slot } => self.select_seed(slot, events),
@@ -4904,6 +4918,35 @@ mod tests {
             game.state.board.zombies[0].health,
             starting_health - 2 * SPIKEWEED_DAMAGE
         );
+    }
+
+    #[test]
+    fn restart_restores_the_terminal_scene_and_clears_progress() {
+        let mut game = Game::new(7, SceneKind::Night);
+        game.advance(InputFrame {
+            actions: vec![
+                InputAction::SelectSeed { slot: 1 },
+                InputAction::Plant { row: 2, column: 2 },
+            ],
+        });
+        game.state.tick = 42;
+        game.state.scene = SceneKind::GameOver;
+        game.state.sun = 25;
+
+        let events = game.advance(InputFrame {
+            actions: vec![InputAction::Restart],
+        });
+
+        assert!(
+            events
+                .iter()
+                .any(|event| matches!(event, GameEvent::Restarted))
+        );
+        assert_eq!(game.state.scene, SceneKind::Night);
+        assert_eq!(game.state.level_scene, SceneKind::Night);
+        assert_eq!(game.state.tick, 0);
+        assert_eq!(game.state.sun, 50);
+        assert!(game.state.board.plants.is_empty());
     }
 
     #[test]

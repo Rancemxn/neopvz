@@ -911,6 +911,14 @@ impl App {
                 };
                 self.pending_input.push(action);
             }
+            KeyCode::KeyR
+                if matches!(
+                    self.game.state().scene,
+                    SceneKind::GameOver | SceneKind::Complete
+                ) =>
+            {
+                self.pending_input.push(InputAction::Restart);
+            }
             KeyCode::KeyP if self.game.state().scene == SceneKind::Day => {
                 self.pending_input
                     .push(InputAction::Plant { row: 2, column: 2 });
