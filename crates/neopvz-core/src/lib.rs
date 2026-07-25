@@ -2613,57 +2613,68 @@ impl Game {
     }
 
     fn apply_jackbox_explosion(&mut self, zombie_index: usize, events: &mut Vec<GameEvent>) {
-        let zombie = &self.state.board.zombies[zombie_index];
-        let zx = zombie.position_x;
-        let zrow = zombie.row;
-        let zombie_id = zombie.id;
-        drop(zombie);
+        let zx;
+        let zrow;
+        let zombie_id;
+        {
+            let zombie = &self.state.board.zombies[zombie_index];
+            zx = zombie.position_x;
+            zrow = zombie.row;
+            zombie_id = zombie.id;
+        }
 
         let explosion_radius = 115 * POSITION_SCALE;
 
         // Damage plants within 115 unit radius, same row ±1 row.
-        let mut i = 0;
-        while i < self.state.board.plants.len() {
-            let plant = self.state.board.plants[i];
+        let mut plant_targets = Vec::new();
+        for (i, plant) in self.state.board.plants.iter().enumerate() {
             if plant.health <= 0 {
-                i += 1;
                 continue;
             }
-            let row_diff = (i16::from(plant.row) - i16::from(zrow)).abs() as u32;
+            let row_diff = (i16::from(plant.row) - i16::from(zrow)).unsigned_abs();
             if row_diff > 1 {
-                i += 1;
                 continue;
             }
             let px = grid_x(plant.column);
-            let dx = (px - zx).abs();
-            if dx > explosion_radius {
-                i += 1;
+            let dx = (px - zx).unsigned_abs();
+            if dx > explosion_radius as u64 {
                 continue;
             }
+            plant_targets.push(i);
+        }
+        for i in plant_targets {
             self.state.board.plants[i].health = 0;
-            events.push(GameEvent::PlantDied { entity: plant.id });
-            i += 1;
+            events.push(GameEvent::PlantDied {
+                entity: self.state.board.plants[i].id,
+            });
         }
 
         // Also damage nearby zombies (friendly fire).
-        for other_idx in 0..self.state.board.zombies.len() {
+        let mut zombie_targets = Vec::new();
+        for (other_idx, other) in self.state.board.zombies.iter().enumerate() {
             if other_idx == zombie_index {
                 continue;
             }
-            let other = &self.state.board.zombies[other_idx];
             if other.health <= 0 {
                 continue;
             }
-            let row_diff = (i16::from(other.row) - i16::from(zrow)).abs() as u32;
+            let row_diff = (i16::from(other.row) - i16::from(zrow)).unsigned_abs();
             if row_diff > 1 {
                 continue;
             }
-            let dx = (other.position_x - zx).abs();
-            if dx > explosion_radius {
+            let dx = (other.position_x - zx).unsigned_abs();
+            if dx > explosion_radius as u64 {
                 continue;
             }
-            self.state.board.zombies[other_idx].health -= PLANT_SPECIAL_DAMAGE;
-            events.push(GameEvent::ZombieDied { entity: other.id });
+            zombie_targets.push(other.id);
+        }
+        for target in zombie_targets {
+            for z in &mut self.state.board.zombies {
+                if z.id == target {
+                    z.health -= PLANT_SPECIAL_DAMAGE;
+                }
+            }
+            events.push(GameEvent::ZombieDied { entity: target });
         }
 
         events.push(GameEvent::ZombieDied { entity: zombie_id });
