@@ -13,7 +13,7 @@ evidence; a reviewer assertion alone is never sufficient.
 Status is `verified`, `partial`, or `missing`. The progress quantity is the sum
 of `total - accepted` across all rows.
 
-Current baseline: **981 accepted / 1802 total; 821 unresolved**.
+Current baseline: **982 accepted / 1802 total; 820 unresolved**.
 
 ## Foundation and Boundaries
 
@@ -54,7 +54,7 @@ loader coverage. They do not authorize committing the manifest or its assets.
 | ENT-GRID | Graves, craters, portals, vases, and other grid items | 1 | 13 | partial | PR `#50`; runs `29979356134`/`29979356138`; ignored local source/runtime records |
 | ENT-LAWNMOWER | Lawn, pool, roof, and special mower behavior | 0 | 4 | missing | Issue `#5` |
 | ENT-EFFECT | Player-observable particle/effect events | 0 | 105 | missing | Issues `#2`, `#5` |
-| SIM-SYSTEM | Tick ordering, RNG, damage, cooldown, resources, waves, collisions, placement, special rules, pause, win/loss, and restart | 0 | 13 | missing | Issue `#5` |
+| SIM-SYSTEM | Tick ordering, RNG, damage, cooldown, resources, waves, collisions, placement, special rules, pause, win/loss, and restart | 1 | 13 | partial | PR `#78`, runs `30135391025`/`30135391020`; core pause-freeze test and ignored `artifacts/windows-23f3f67/verification.md` |
 
 The current partial entity acceptance is intentionally narrow: Peashooter,
 Sunflower, SnowPea, Repeater, Threepeater, SplitPea, Starfruit, Cattail,
