@@ -1925,10 +1925,7 @@ impl Game {
                             .rng
                             .range_inclusive(GOLD_MAGNET_RECHARGE_MIN, GOLD_MAGNET_RECHARGE_MAX);
                     }
-                } else if plant_type.is_instant_coffee() {
-                    plant.special_counter = plant.special_counter.saturating_sub(1);
-                    special = plant.special_counter == 0;
-                } else if plant_type.is_gravebuster() {
+                } else if plant_type.is_instant_coffee() || plant_type.is_gravebuster() {
                     plant.special_counter = plant.special_counter.saturating_sub(1);
                     special = plant.special_counter == 0;
                 } else if plant_type.is_blover() {
