@@ -49,6 +49,8 @@ const DOOM_CRATER_TICKS: u32 = 18_000;
 const ZOMBIE_BITE_DAMAGE: i32 = 4;
 const CHOMPER_BITE_WINDUP_TICKS: u32 = 70;
 const CHOMPER_CHEW_TICKS: u32 = 4_000;
+// Plant_UpdateTanglekelp starts its grab state with a 100-tick countdown.
+const TANGLE_KELP_GRAB_TICKS: u32 = 100;
 // Plant_UpdateSpike / Plant_SpikesSetAnimAttack in 1.0.0.1051: attack
 // state lasts 100 ticks and deals 20 damage when the countdown reaches 75.
 const SPIKEWEED_ATTACK_TICKS: u32 = 100;
@@ -171,6 +173,10 @@ impl PlantType {
 
     fn is_chomper(self) -> bool {
         self.slot() == 6
+    }
+
+    fn is_tangle_kelp(self) -> bool {
+        self.slot() == 19
     }
 
     fn is_jalapeno(self) -> bool {
@@ -1578,6 +1584,11 @@ impl Game {
             } else {
                 None
             };
+            let tangle_target = if plant_type.is_tangle_kelp() {
+                self.find_chomper_target(row, column)
+            } else {
+                None
+            };
             let potato_trigger = plant_type.is_potato_mine()
                 && self.state.board.zombies.iter().any(|zombie| {
                     zombie.health > 0
@@ -1599,6 +1610,8 @@ impl Game {
             let mut spikeweed_started = false;
             let mut chomper_bite_target = None;
             let mut squash_hit_target = None;
+            let mut tangle_grab_target = None;
+            let mut tangle_started = false;
             {
                 let plant = &mut self.state.board.plants[index];
                 if plant_type.is_chomper() {
@@ -1648,6 +1661,19 @@ impl Game {
                     } else if let Some(target) = squash_target {
                         plant.special_target = Some(target);
                         plant.special_counter = SQUASH_LOOK_TICKS;
+                    }
+                } else if plant_type.is_tangle_kelp() {
+                    if plant.special_armed {
+                        plant.special_counter = plant.special_counter.saturating_sub(1);
+                        if plant.special_counter == 0 {
+                            tangle_grab_target = plant.special_target.take();
+                            plant.health = 0;
+                        }
+                    } else if let Some(target) = tangle_target {
+                        plant.special_armed = true;
+                        plant.special_counter = TANGLE_KELP_GRAB_TICKS;
+                        plant.special_target = Some(target);
+                        tangle_started = true;
                     }
                 } else if plant_type.is_spikeweed() {
                     if plant.special_armed {
@@ -1764,6 +1790,30 @@ impl Game {
                 }
                 events.push(GameEvent::PlantDied { entity: id });
                 continue;
+            }
+            if let Some(zombie_id) = tangle_grab_target {
+                events.push(GameEvent::PlantSpecialTriggered {
+                    entity: id,
+                    plant_type,
+                });
+                if let Some(zombie_index) = self
+                    .state
+                    .board
+                    .zombies
+                    .iter()
+                    .position(|zombie| zombie.id == zombie_id && zombie.health > 0)
+                {
+                    self.state.board.zombies.remove(zombie_index);
+                    events.push(GameEvent::ZombieDied { entity: zombie_id });
+                }
+                events.push(GameEvent::PlantDied { entity: id });
+                continue;
+            }
+            if tangle_started {
+                events.push(GameEvent::PlantSpecialTriggered {
+                    entity: id,
+                    plant_type,
+                });
             }
             if spikeweed_started {
                 events.push(GameEvent::PlantSpecialTriggered {
@@ -4379,6 +4429,48 @@ mod tests {
                 .iter()
                 .any(|event| matches!(event, GameEvent::WaveStarted { wave: 0 }))
         );
+    }
+
+    #[test]
+    fn tangle_kelp_grabs_a_nearby_zombie_then_dies() {
+        let mut game = Game::new(7, SceneKind::Pool);
+        game.state.sun = 500;
+        game.advance(InputFrame {
+            actions: vec![
+                InputAction::SelectSeed { slot: 19 },
+                InputAction::Plant { row: 2, column: 2 },
+            ],
+        });
+        let tangle_kelp = game.state.board.plants[0].id;
+        let mut setup_events = Vec::new();
+        let zombie = game.spawn_normal_zombie(
+            2,
+            0,
+            Some(grid_x(2) + 30 * POSITION_SCALE),
+            &mut setup_events,
+        );
+
+        let events = (0..=TANGLE_KELP_GRAB_TICKS)
+            .flat_map(|_| game.advance(InputFrame::default()))
+            .collect::<Vec<_>>();
+
+        assert!(events.iter().any(|event| matches!(
+            event,
+            GameEvent::PlantSpecialTriggered {
+                entity,
+                plant_type: PlantType::Other(19),
+            } if *entity == tangle_kelp
+        )));
+        assert!(events.iter().any(|event| matches!(
+            event,
+            GameEvent::ZombieDied { entity } if *entity == zombie
+        )));
+        assert!(events.iter().any(|event| matches!(
+            event,
+            GameEvent::PlantDied { entity } if *entity == tangle_kelp
+        )));
+        assert!(game.state.board.zombies.is_empty());
+        assert!(game.state.board.plants.is_empty());
     }
 
     #[test]
