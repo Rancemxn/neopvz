@@ -248,6 +248,10 @@ impl PlantType {
         self.slot() == 49
     }
 
+    fn is_hypno_shroom(self) -> bool {
+        self.slot() == 12
+    }
+
     fn is_fume_shroom(self) -> bool {
         self.slot() == 10
     }
@@ -915,6 +919,8 @@ pub struct ZombieState {
     pub garlic_counter: u32,
     pub garlic_target: Option<EntityId>,
     pub from_wave: u32,
+    #[serde(default)]
+    pub hypnotized: bool,
 }
 
 #[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
@@ -1170,6 +1176,12 @@ pub enum GameEvent {
         row: u8,
         wave: u32,
     },
+    ZombieDamaged {
+        entity: EntityId,
+        damage: i32,
+        health_remaining: i32,
+        attacker: Option<EntityId>,
+    },
     ProjectileFired {
         entity: EntityId,
         source: EntityId,
@@ -1201,6 +1213,9 @@ pub enum GameEvent {
     },
     MowerTriggered {
         row: u8,
+    },
+    ZombieHypnotized {
+        entity: EntityId,
     },
     ZombieRowChanged {
         entity: EntityId,
@@ -2592,7 +2607,11 @@ impl Game {
                     } else {
                         zombie.speed * 2 / 5
                     };
-                    zombie.position_x -= speed;
+                    if zombie.hypnotized {
+                        zombie.position_x = zombie.position_x.saturating_add(speed);
+                    } else {
+                        zombie.position_x = zombie.position_x.saturating_sub(speed);
+                    }
                 }
                 (
                     zombie.id,
@@ -2609,88 +2628,101 @@ impl Game {
             } else if garlic_active {
                 self.state.board.zombies[zombie_index].eating = true;
             } else if age % 4 == 0 {
-                let target = self.find_plant_for_zombie(row, position_x);
-                self.state.board.zombies[zombie_index].eating = target.is_some();
-                if let Some(plant_index) = target {
-                    let plant_id = self.state.board.plants[plant_index].id;
-                    if self.state.board.plants[plant_index].plant_type.is_garlic() {
-                        self.state.board.zombies[zombie_index].eating = true;
-                        self.state.board.zombies[zombie_index].garlic_counter = 1;
-                        self.state.board.zombies[zombie_index].garlic_target = Some(plant_id);
-                    } else {
-                        let plant_type = self.state.board.plants[plant_index].plant_type;
-                        self.state.board.plants[plant_index].health -= ZOMBIE_BITE_DAMAGE;
-                        let health_remaining = self.state.board.plants[plant_index].health;
-                        events.push(GameEvent::PlantDamaged {
-                            entity: plant_id,
-                            damage: ZOMBIE_BITE_DAMAGE,
-                            health_remaining,
-                        });
-                        if health_remaining <= 0 {
-                            if plant_type.is_explode_o_nut() {
-                                let column = self.state.board.plants[plant_index].column;
-                                let center_x = grid_x(column);
-                                let explode_targets = self
-                                    .state
-                                    .board
-                                    .zombies
-                                    .iter()
-                                    .filter(|z| {
-                                        z.health > 0
-                                            && z.row.abs_diff(row) <= 1
-                                            && (z.position_x - center_x).abs()
-                                                <= 115 * POSITION_SCALE
-                                    })
-                                    .map(|z| z.id)
-                                    .collect::<Vec<_>>();
-                                if !explode_targets.is_empty() {
-                                    events.push(GameEvent::PlantSpecialTriggered {
-                                        entity: plant_id,
-                                        plant_type,
-                                    });
-                                }
-                                for zombie_id in &explode_targets {
-                                    // Apply damage without removing — the outer
-                                    // zombie loop uses a fixed range, and
-                                    // update_mowers retains dead zombies.
-                                    let Some(target_idx) = self
+                let is_hypnotized = self.state.board.zombies[zombie_index].hypnotized;
+                if !is_hypnotized || !self.attack_zombie_target(entity, row, events) {
+                    let target = self.find_plant_for_zombie(row, position_x);
+                    self.state.board.zombies[zombie_index].eating = target.is_some();
+                    if let Some(plant_index) = target {
+                        let plant_id = self.state.board.plants[plant_index].id;
+                        if self.state.board.plants[plant_index]
+                            .plant_type
+                            .is_hypno_shroom()
+                        {
+                            self.state.board.plants.remove(plant_index);
+                            self.state.board.zombies[zombie_index].hypnotized = true;
+                            self.state.board.zombies[zombie_index].eating = false;
+                            events.push(GameEvent::ZombieHypnotized { entity });
+                            events.push(GameEvent::PlantDied { entity: plant_id });
+                        } else if self.state.board.plants[plant_index].plant_type.is_garlic() {
+                            self.state.board.zombies[zombie_index].eating = true;
+                            self.state.board.zombies[zombie_index].garlic_counter = 1;
+                            self.state.board.zombies[zombie_index].garlic_target = Some(plant_id);
+                        } else {
+                            let plant_type = self.state.board.plants[plant_index].plant_type;
+                            self.state.board.plants[plant_index].health -= ZOMBIE_BITE_DAMAGE;
+                            let health_remaining = self.state.board.plants[plant_index].health;
+                            events.push(GameEvent::PlantDamaged {
+                                entity: plant_id,
+                                damage: ZOMBIE_BITE_DAMAGE,
+                                health_remaining,
+                            });
+                            if health_remaining <= 0 {
+                                if plant_type.is_explode_o_nut() {
+                                    let column = self.state.board.plants[plant_index].column;
+                                    let center_x = grid_x(column);
+                                    let explode_targets = self
                                         .state
                                         .board
                                         .zombies
                                         .iter()
-                                        .position(|z| z.id == *zombie_id)
-                                    else {
-                                        continue;
-                                    };
-                                    self.state.board.zombies[target_idx].health -=
-                                        PLANT_SPECIAL_DAMAGE;
-                                    let health_remaining =
-                                        self.state.board.zombies[target_idx].health;
-                                    events.push(GameEvent::PlantSpecialHit {
-                                        plant: plant_id,
-                                        zombie: *zombie_id,
-                                        damage: PLANT_SPECIAL_DAMAGE,
-                                        health_remaining,
-                                    });
-                                    if health_remaining <= 0 {
-                                        self.state.board.zombies[target_idx].health = 0;
-                                        events.push(GameEvent::ZombieDied { entity: *zombie_id });
+                                        .filter(|z| {
+                                            z.health > 0
+                                                && z.row.abs_diff(row) <= 1
+                                                && (z.position_x - center_x).abs()
+                                                    <= 115 * POSITION_SCALE
+                                        })
+                                        .map(|z| z.id)
+                                        .collect::<Vec<_>>();
+                                    if !explode_targets.is_empty() {
+                                        events.push(GameEvent::PlantSpecialTriggered {
+                                            entity: plant_id,
+                                            plant_type,
+                                        });
+                                    }
+                                    for zombie_id in &explode_targets {
+                                        // Apply damage without removing — the outer
+                                        // zombie loop uses a fixed range, and
+                                        // update_mowers retains dead zombies.
+                                        let Some(target_idx) = self
+                                            .state
+                                            .board
+                                            .zombies
+                                            .iter()
+                                            .position(|z| z.id == *zombie_id)
+                                        else {
+                                            continue;
+                                        };
+                                        self.state.board.zombies[target_idx].health -=
+                                            PLANT_SPECIAL_DAMAGE;
+                                        let health_remaining =
+                                            self.state.board.zombies[target_idx].health;
+                                        events.push(GameEvent::PlantSpecialHit {
+                                            plant: plant_id,
+                                            zombie: *zombie_id,
+                                            damage: PLANT_SPECIAL_DAMAGE,
+                                            health_remaining,
+                                        });
+                                        if health_remaining <= 0 {
+                                            self.state.board.zombies[target_idx].health = 0;
+                                            events
+                                                .push(GameEvent::ZombieDied { entity: *zombie_id });
+                                        }
                                     }
                                 }
+                                self.state.board.plants.remove(plant_index);
+                                // Find the eating zombie by ID — the explosion may have
+                                // shifted indices or removed it entirely.
+                                if let Some(pos) =
+                                    self.state.board.zombies.iter().position(|z| z.id == entity)
+                                {
+                                    self.state.board.zombies[pos].eating = false;
+                                }
+                                events.push(GameEvent::PlantDied { entity: plant_id });
                             }
-                            self.state.board.plants.remove(plant_index);
-                            // Find the eating zombie by ID — the explosion may have
-                            // shifted indices or removed it entirely.
-                            if let Some(pos) =
-                                self.state.board.zombies.iter().position(|z| z.id == entity)
-                            {
-                                self.state.board.zombies[pos].eating = false;
-                            }
-                            events.push(GameEvent::PlantDied { entity: plant_id });
                         }
+                    } else if was_eating {
+                        self.state.board.zombies[zombie_index].eating = false;
                     }
-                } else if was_eating {
-                    self.state.board.zombies[zombie_index].eating = false;
                 }
             }
 
@@ -3148,6 +3180,61 @@ impl Game {
             .map(|zombie| zombie.id)
     }
 
+    /// A hypnotized zombie attacks a non-hypnotized zombie in the same row.
+    /// Returns true when it found and damaged a target zombie.
+    fn attack_zombie_target(
+        &mut self,
+        attacker_id: EntityId,
+        row: u8,
+        events: &mut Vec<GameEvent>,
+    ) -> bool {
+        let position_x = self
+            .state
+            .board
+            .zombies
+            .iter()
+            .find(|z| z.id == attacker_id)
+            .map(|z| z.position_x)
+            .unwrap_or(i64::MAX);
+        let target_id = self
+            .state
+            .board
+            .zombies
+            .iter()
+            .filter(|z| {
+                z.health > 0
+                    && !z.hypnotized
+                    && z.row == row
+                    && (z.position_x - position_x).abs() <= 115 * POSITION_SCALE
+            })
+            .min_by_key(|z| z.position_x)
+            .map(|z| z.id);
+        let Some(target_id) = target_id else {
+            return false;
+        };
+        if let Some(target_idx) = self
+            .state
+            .board
+            .zombies
+            .iter()
+            .position(|z| z.id == target_id)
+        {
+            self.state.board.zombies[target_idx].health -= ZOMBIE_BITE_DAMAGE;
+            let health_remaining = self.state.board.zombies[target_idx].health;
+            events.push(GameEvent::ZombieDamaged {
+                entity: target_id,
+                damage: ZOMBIE_BITE_DAMAGE,
+                health_remaining,
+                attacker: Some(attacker_id),
+            });
+            if health_remaining <= 0 {
+                self.state.board.zombies.remove(target_idx);
+                events.push(GameEvent::ZombieDied { entity: target_id });
+            }
+        }
+        true
+    }
+
     fn fire_projectiles(
         &mut self,
         source: EntityId,
@@ -3389,6 +3476,7 @@ impl Game {
             garlic_counter: 0,
             garlic_target: None,
             from_wave: wave,
+            hypnotized: false,
         });
         events.push(GameEvent::ZombieSpawned {
             entity: id,
@@ -5110,6 +5198,54 @@ mod tests {
             game.state.board.zombies.iter().any(|z| z.id == other),
             "other-row zombie survived"
         );
+    }
+
+    #[test]
+    fn hypno_shroom_hypnotizes_a_biting_zombie() {
+        let mut game = Game::new(7, SceneKind::Night);
+        game.state.sun = 75;
+        game.advance(InputFrame {
+            actions: vec![
+                InputAction::SelectSeed { slot: 12 },
+                InputAction::Plant { row: 2, column: 2 },
+            ],
+        });
+        assert_eq!(game.state.board.plants[0].plant_type.slot(), 12);
+
+        let hypno_id = game.state.board.plants[0].id;
+        let mut setup = Vec::new();
+        let zombie =
+            game.spawn_normal_zombie(2, 0, Some(grid_x(2) + 30 * POSITION_SCALE), &mut setup);
+        let other =
+            game.spawn_normal_zombie(2, 0, Some(grid_x(2) + 400 * POSITION_SCALE), &mut setup);
+
+        let mut hypnotized = false;
+        let mut plant_died = false;
+        let mut zombie_damaged = false;
+        let mut other_died = false;
+        for _ in 0..300 {
+            let events = game.advance(InputFrame::default());
+            for event in &events {
+                match event {
+                    GameEvent::ZombieHypnotized { entity } if *entity == zombie => {
+                        hypnotized = true
+                    }
+                    GameEvent::PlantDied { entity } if *entity == hypno_id => plant_died = true,
+                    GameEvent::ZombieDamaged {
+                        entity: target,
+                        attacker: Some(a),
+                        ..
+                    } if *a == zombie && *target == other => zombie_damaged = true,
+                    GameEvent::ZombieDied { entity } if *entity == other => other_died = true,
+                    _ => {}
+                }
+            }
+        }
+        assert!(hypnotized, "ZombieHypnotized");
+        assert!(plant_died, "PlantDied");
+        assert!(zombie_damaged, "hypnotized zombie attacked other zombie");
+        assert!(other_died, "other zombie died from hypnotized attacks");
+        assert!(game.state.board.plants.is_empty(), "hypno plant removed");
     }
 
     #[test]
