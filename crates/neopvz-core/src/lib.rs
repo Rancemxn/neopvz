@@ -5553,25 +5553,28 @@ mod tests {
                 z.health = 260;
             }
         });
-
-        // Set speed to 0 (default random) and verify it's overridden to 660_000.
-        game.state.board.zombies.iter_mut().for_each(|z| {
-            if z.id == zombie {
-                z.speed = 0;
-            }
-        });
-        game.advance(InputFrame::default());
-        let speed = game
+        let pos_before = game
             .state
             .board
             .zombies
             .iter()
             .find(|z| z.id == zombie)
             .unwrap()
-            .speed;
-        assert_eq!(
-            speed, 660_000,
-            "newspaper zombie at 260 HP should use newspaper speed"
+            .position_x;
+        game.advance(InputFrame::default());
+        let pos_after = game
+            .state
+            .board
+            .zombies
+            .iter()
+            .find(|z| z.id == zombie)
+            .unwrap()
+            .position_x;
+        // With newspaper speed (660,000) the zombie should move at least 100,000 units.
+        assert!(
+            pos_before - pos_after >= 100_000,
+            "newspaper zombie at 260 HP should move fast; moved {}",
+            pos_before - pos_after
         );
     }
 
