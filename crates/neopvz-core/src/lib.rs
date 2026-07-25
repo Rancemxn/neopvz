@@ -5318,7 +5318,7 @@ mod tests {
 
         let mut setup = Vec::new();
         let zombie =
-            game.spawn_pole_vaulter_zombie(2, 0, Some(grid_x(2) + 70 * POSITION_SCALE), &mut setup);
+            game.spawn_pole_vaulter_zombie(2, 0, Some(grid_x(2) + 20 * POSITION_SCALE), &mut setup);
 
         let mut vaulted = false;
         for _ in 0..100 {
