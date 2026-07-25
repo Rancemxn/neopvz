@@ -74,6 +74,9 @@ const GLOOM_ATTACK_RANGE: i64 = 240;
 const GLOOM_ROW_RADIUS: u8 = 1;
 // ScaredyShroom's same-version threat check uses a 120-unit radius.
 const SCAREDY_THREAT_RADIUS: i64 = 120;
+// GoldMagnet recharges for a random 200-300 updates after a suck.
+const GOLD_MAGNET_RECHARGE_MIN: u32 = 200;
+const GOLD_MAGNET_RECHARGE_MAX: u32 = 300;
 
 pub type Tick = u64;
 pub type EntityId = u32;
@@ -172,6 +175,10 @@ impl PlantType {
 
     fn is_marigold(self) -> bool {
         self.slot() == 38
+    }
+
+    fn is_gold_magnet(self) -> bool {
+        self.slot() == 45
     }
 
     fn is_cherry_bomb(self) -> bool {
@@ -1520,8 +1527,23 @@ impl Game {
         let pumpkin_already_present = self.state.board.plants.iter().any(|plant| {
             plant.row == row && plant.column == column && plant.plant_type.slot() == 30
         });
-        let can_layer_on_support =
-            (has_lilypad || has_flowerpot) && !has_top_plant && !matches!(slot, 16 | 19 | 24 | 33);
+        let has_magnet_shroom = self.state.board.plants.iter().any(|plant| {
+            plant.row == row && plant.column == column && plant.plant_type.slot() == 31
+        });
+        let gold_magnet_already_present = self.state.board.plants.iter().any(|plant| {
+            plant.row == row && plant.column == column && plant.plant_type.slot() == 45
+        });
+        if slot == 45 && !has_magnet_shroom {
+            events.push(GameEvent::InputRejected {
+                action,
+                reason: InputRejectReason::Occupied,
+            });
+            return;
+        }
+        let can_layer_on_support = ((has_lilypad || has_flowerpot)
+            && !has_top_plant
+            && !matches!(slot, 16 | 19 | 24 | 33))
+            || (slot == 45 && has_magnet_shroom && !gold_magnet_already_present);
         if occupied
             && ((slot == 30 && pumpkin_already_present) || (slot != 30 && !can_layer_on_support))
         {
@@ -1767,6 +1789,19 @@ impl Game {
                         && zombie.row == row
                         && spikeweed_hits(zombie.position_x, column)
                 });
+            let gold_magnet_target = if plant_type.is_gold_magnet() {
+                self.state
+                    .board
+                    .coins
+                    .iter()
+                    .min_by_key(|coin| {
+                        (coin.position_x - grid_x(column)).abs()
+                            + (coin.position_y - grid_y(row)).abs()
+                    })
+                    .map(|coin| coin.id)
+            } else {
+                None
+            };
 
             let mut fire = false;
             let mut produce_suns = 0;
@@ -1779,9 +1814,22 @@ impl Game {
             let mut squash_hit_target = None;
             let mut tangle_grab_target = None;
             let mut tangle_started = false;
+            let mut gold_magnet_coin = None;
             {
                 let plant = &mut self.state.board.plants[index];
-                if plant_type.is_chomper() {
+                if plant_type.is_gold_magnet() {
+                    if plant.special_counter > 0 {
+                        plant.special_counter -= 1;
+                    } else if let Some(target) = gold_magnet_target {
+                        if self.rng.range(50) == 0 {
+                            gold_magnet_coin = Some(target);
+                            plant.special_counter = self.rng.range_inclusive(
+                                GOLD_MAGNET_RECHARGE_MIN,
+                                GOLD_MAGNET_RECHARGE_MAX,
+                            );
+                        }
+                    }
+                } else if plant_type.is_chomper() {
                     if plant.special_armed {
                         plant.special_counter = plant.special_counter.saturating_sub(1);
                         if plant.special_counter == 0 {
@@ -1918,6 +1966,9 @@ impl Game {
 
             if fire {
                 self.fire_projectiles(id, plant_type, row, column, events);
+            }
+            if let Some(coin_id) = gold_magnet_coin {
+                self.collect_coin(coin_id, events);
             }
             if let Some(zombie_id) = chomper_bite_target
                 && let Some(zombie_index) = self
@@ -5064,6 +5115,58 @@ mod tests {
                 && *coin_total == coin.value
         )));
         assert_eq!(game.state.coins, coin.value);
+        assert!(game.state.board.coins.is_empty());
+    }
+
+    #[test]
+    fn gold_magnet_requires_magnetshroom_and_collects_coins() {
+        let mut bare = Game::new(7, SceneKind::Day);
+        bare.state.sun = 500;
+        let rejected = bare.advance(InputFrame {
+            actions: vec![
+                InputAction::SelectSeed { slot: 45 },
+                InputAction::Plant { row: 2, column: 2 },
+            ],
+        });
+        assert!(rejected.iter().any(|event| matches!(
+            event,
+            GameEvent::InputRejected {
+                action: InputAction::Plant { row: 2, column: 2 },
+                reason: InputRejectReason::Occupied,
+            }
+        )));
+
+        let mut game = Game::new(7, SceneKind::Day);
+        game.state.sun = 500;
+        game.advance(InputFrame {
+            actions: vec![
+                InputAction::SelectSeed { slot: 31 },
+                InputAction::Plant { row: 2, column: 2 },
+                InputAction::SelectSeed { slot: 45 },
+                InputAction::Plant { row: 2, column: 2 },
+            ],
+        });
+        assert_eq!(game.state.board.plants.len(), 2);
+        game.state.board.wave.countdown = 100_000;
+        let mut spawn_events = Vec::new();
+        game.spawn_coin(CoinType::Gold, grid_x(2), grid_y(2), &mut spawn_events);
+        let coin_id = game.state.board.coins[0].id;
+
+        let mut collected = false;
+        for _ in 0..5_000 {
+            let events = game.advance(InputFrame::default());
+            if events.iter().any(|event| {
+                matches!(
+                    event,
+                    GameEvent::CoinCollected { entity, .. } if *entity == coin_id
+                )
+            }) {
+                collected = true;
+                break;
+            }
+        }
+        assert!(collected);
+        assert_eq!(game.state.coins, 5);
         assert!(game.state.board.coins.is_empty());
     }
 
