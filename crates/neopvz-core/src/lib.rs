@@ -2619,6 +2619,8 @@ impl Game {
         let zombie_id = zombie.id;
         drop(zombie);
 
+        let explosion_radius = 115 * POSITION_SCALE;
+
         // Damage plants within 115 unit radius, same row ±1 row.
         let mut i = 0;
         while i < self.state.board.plants.len() {
@@ -2627,13 +2629,14 @@ impl Game {
                 i += 1;
                 continue;
             }
-            let row_diff = (i16::from(plant.row) - i16::from(zrow)).unsigned_abs();
+            let row_diff = (i16::from(plant.row) - i16::from(zrow)).abs() as u32;
             if row_diff > 1 {
                 i += 1;
                 continue;
             }
-            let dx = (plant.position_x - zx).unsigned_abs();
-            if dx > 115 * POSITION_SCALE {
+            let px = grid_x(plant.column);
+            let dx = (px - zx).abs();
+            if dx > explosion_radius {
                 i += 1;
                 continue;
             }
@@ -2643,7 +2646,6 @@ impl Game {
         }
 
         // Also damage nearby zombies (friendly fire).
-        let explosion_radius = 115 * POSITION_SCALE;
         for other_idx in 0..self.state.board.zombies.len() {
             if other_idx == zombie_index {
                 continue;
@@ -2652,11 +2654,11 @@ impl Game {
             if other.health <= 0 {
                 continue;
             }
-            let row_diff = (i16::from(other.row) - i16::from(zrow)).unsigned_abs();
+            let row_diff = (i16::from(other.row) - i16::from(zrow)).abs() as u32;
             if row_diff > 1 {
                 continue;
             }
-            let dx = (other.position_x - zx).unsigned_abs();
+            let dx = (other.position_x - zx).abs();
             if dx > explosion_radius {
                 continue;
             }
