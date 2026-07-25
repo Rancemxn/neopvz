@@ -80,6 +80,14 @@ const SCAREDY_THREAT_RADIUS: i64 = 120;
 // GoldMagnet recharges for a random 200-300 updates after a suck.
 const GOLD_MAGNET_RECHARGE_MIN: u32 = 200;
 const GOLD_MAGNET_RECHARGE_MAX: u32 = 300;
+// Zombie::UpdateYeti in 1.0.0.1051 flees after a 1500-2000 tick phase.
+const YETI_HEALTH: i32 = 1_350;
+const YETI_FLEE_MIN_TICKS: u32 = 1_500;
+const YETI_FLEE_MAX_TICKS: u32 = 2_000;
+const YETI_WALK_SPEED: i64 = 400_000;
+const YETI_RUNNING_SPEED: i64 = 800_000;
+const YETI_FLEE_EDGE: i64 = 850 * POSITION_SCALE;
+const YETI_DIAMOND_COUNT: usize = 4;
 
 pub type Tick = u64;
 pub type EntityId = u32;
@@ -740,6 +748,7 @@ pub enum ZombieType {
     Imp,
     Jackbox,
     PoleVaulter,
+    Yeti,
 }
 
 #[derive(Clone, Copy, Debug, Deserialize, Eq, PartialEq, Serialize)]
@@ -833,6 +842,7 @@ impl ProjectileType {
 pub enum CoinType {
     Silver,
     Gold,
+    Diamond,
 }
 
 impl CoinType {
@@ -840,6 +850,7 @@ impl CoinType {
         match self {
             Self::Silver => 1,
             Self::Gold => 5,
+            Self::Diamond => 100,
         }
     }
 }
@@ -937,6 +948,12 @@ pub struct ZombieState {
     pub newspaper_health: i32,
     #[serde(default)]
     pub jackbox_timer: u32,
+    #[serde(default)]
+    pub yeti_counter: u32,
+    #[serde(default)]
+    pub yeti_running: bool,
+    #[serde(default)]
+    pub yeti_loot_dropped: bool,
 }
 
 #[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
@@ -1225,6 +1242,9 @@ pub enum GameEvent {
         duration: u32,
     },
     ZombieDied {
+        entity: EntityId,
+    },
+    ZombieFled {
         entity: EntityId,
     },
     MowerTriggered {
@@ -2132,12 +2152,12 @@ impl Game {
                     .iter()
                     .position(|zombie| zombie.id == zombie_id && zombie.health > 0)
             {
+                self.emit_zombie_died(zombie_id, events);
                 self.state.board.zombies.remove(zombie_index);
                 events.push(GameEvent::PlantSpecialTriggered {
                     entity: id,
                     plant_type,
                 });
-                events.push(GameEvent::ZombieDied { entity: zombie_id });
             }
             if let Some(zombie_id) = squash_hit_target {
                 events.push(GameEvent::PlantSpecialTriggered {
@@ -2160,8 +2180,8 @@ impl Game {
                         health_remaining,
                     });
                     if health_remaining <= 0 {
+                        self.emit_zombie_died(zombie_id, events);
                         self.state.board.zombies.remove(zombie_index);
-                        events.push(GameEvent::ZombieDied { entity: zombie_id });
                     }
                 }
                 events.push(GameEvent::PlantDied { entity: id });
@@ -2179,8 +2199,8 @@ impl Game {
                     .iter()
                     .position(|zombie| zombie.id == zombie_id && zombie.health > 0)
                 {
+                    self.emit_zombie_died(zombie_id, events);
                     self.state.board.zombies.remove(zombie_index);
-                    events.push(GameEvent::ZombieDied { entity: zombie_id });
                 }
                 events.push(GameEvent::PlantDied { entity: id });
                 continue;
@@ -2358,8 +2378,8 @@ impl Game {
                     health_remaining,
                 });
                 if health_remaining <= 0 {
+                    self.emit_zombie_died(zombie_id, events);
                     self.state.board.zombies.remove(zombie_index);
-                    events.push(GameEvent::ZombieDied { entity: zombie_id });
                 }
             }
 
@@ -2441,8 +2461,8 @@ impl Game {
                         health_remaining,
                     });
                     if health_remaining <= 0 {
+                        self.emit_zombie_died(zombie_id, events);
                         self.state.board.zombies.remove(zombie_index);
-                        events.push(GameEvent::ZombieDied { entity: zombie_id });
                     }
                 }
             }
@@ -2499,8 +2519,8 @@ impl Game {
                 health_remaining,
             });
             if health_remaining <= 0 {
+                self.emit_zombie_died(zombie_id, events);
                 self.state.board.zombies.remove(zombie_index);
-                events.push(GameEvent::ZombieDied { entity: zombie_id });
             }
         }
         if let Some(plant) = self
@@ -2573,17 +2593,22 @@ impl Game {
         };
         mower.active = true;
         events.push(GameEvent::MowerTriggered { row });
+        let mut dead_ids = Vec::new();
         for zombie in &mut self.state.board.zombies {
             if zombie.row == row && zombie.health > 0 {
                 zombie.health = 0;
                 zombie.eating = false;
-                events.push(GameEvent::ZombieDied { entity: zombie.id });
+                dead_ids.push(zombie.id);
             }
+        }
+        for entity in dead_ids {
+            self.emit_zombie_died(entity, events);
         }
         true
     }
 
     fn update_mowers(&mut self, events: &mut Vec<GameEvent>) {
+        let mut dead_ids = Vec::new();
         for mower in &mut self.state.board.mowers {
             if !mower.active {
                 continue;
@@ -2605,9 +2630,12 @@ impl Game {
                 {
                     zombie.health = 0;
                     zombie.eating = false;
-                    events.push(GameEvent::ZombieDied { entity: zombie.id });
+                    dead_ids.push(zombie.id);
                 }
             }
+        }
+        for entity in dead_ids {
+            self.emit_zombie_died(entity, events);
         }
         self.state.board.zombies.retain(|zombie| zombie.health > 0);
     }
@@ -2674,10 +2702,38 @@ impl Game {
                     z.health -= PLANT_SPECIAL_DAMAGE;
                 }
             }
-            events.push(GameEvent::ZombieDied { entity: target });
+            self.emit_zombie_died(target, events);
         }
 
-        events.push(GameEvent::ZombieDied { entity: zombie_id });
+        self.emit_zombie_died(zombie_id, events);
+    }
+
+    fn emit_zombie_died(&mut self, entity: EntityId, events: &mut Vec<GameEvent>) {
+        let loot_position = self
+            .state
+            .board
+            .zombies
+            .iter_mut()
+            .find(|zombie| zombie.id == entity)
+            .and_then(|zombie| {
+                if zombie.zombie_type == ZombieType::Yeti && !zombie.yeti_loot_dropped {
+                    zombie.yeti_loot_dropped = true;
+                    Some((zombie.position_x, zombie.row))
+                } else {
+                    None
+                }
+            });
+        if let Some((position_x, row)) = loot_position {
+            for offset in [20, 30, 40, 50].into_iter().take(YETI_DIAMOND_COUNT) {
+                self.spawn_coin(
+                    CoinType::Diamond,
+                    position_x - offset * POSITION_SCALE,
+                    grid_y(row),
+                    events,
+                );
+            }
+        }
+        events.push(GameEvent::ZombieDied { entity });
     }
 
     fn update_zombies(&mut self, events: &mut Vec<GameEvent>) {
@@ -2694,6 +2750,15 @@ impl Game {
                 continue;
             }
             let garlic_active = self.advance_garlic_state(zombie_index, events);
+            {
+                let zombie = &mut self.state.board.zombies[zombie_index];
+                if zombie.zombie_type == ZombieType::Yeti && !zombie.yeti_running {
+                    zombie.yeti_counter = zombie.yeti_counter.saturating_sub(1);
+                    if zombie.yeti_counter == 0 {
+                        zombie.yeti_running = true;
+                    }
+                }
+            }
             // Jack-in-the-Box: decrement timer and explode when zero.
             {
                 let zombie = &mut self.state.board.zombies[zombie_index];
@@ -2716,19 +2781,22 @@ impl Game {
                 }
                 let frozen = zombie.frozen_counter != 0;
                 if !frozen && !zombie.eating && !garlic_active {
-                    let speed = if zombie.chilled_counter == 0 {
-                        if zombie.zombie_type == ZombieType::Newspaper
-                            && zombie.health > 0
-                            && zombie.health <= 270
-                        {
-                            660_000
-                        } else {
-                            zombie.speed
-                        }
+                    let base_speed = if zombie.yeti_running {
+                        YETI_RUNNING_SPEED
+                    } else if zombie.zombie_type == ZombieType::Newspaper
+                        && zombie.health > 0
+                        && zombie.health <= 270
+                    {
+                        660_000
                     } else {
-                        zombie.speed * 2 / 5
+                        zombie.speed
                     };
-                    if zombie.hypnotized {
+                    let speed = if zombie.chilled_counter == 0 {
+                        base_speed
+                    } else {
+                        base_speed * 2 / 5
+                    };
+                    if zombie.hypnotized || zombie.yeti_running {
                         zombie.position_x = zombie.position_x.saturating_add(speed);
                     } else {
                         zombie.position_x = zombie.position_x.saturating_sub(speed);
@@ -2833,8 +2901,7 @@ impl Game {
                                         });
                                         if health_remaining <= 0 {
                                             self.state.board.zombies[target_idx].health = 0;
-                                            events
-                                                .push(GameEvent::ZombieDied { entity: *zombie_id });
+                                            self.emit_zombie_died(*zombie_id, events);
                                         }
                                     }
                                 }
@@ -2863,6 +2930,17 @@ impl Game {
                 .any(|mower| mower.row == row && mower.active);
             let mower_triggered = position_x <= MOWER_TRIGGER_X
                 && (self.trigger_mower(row, events) || mower_covering_row);
+            let fled = self
+                .state
+                .board
+                .zombies
+                .get(zombie_index)
+                .is_some_and(|zombie| zombie.yeti_running && zombie.position_x > YETI_FLEE_EDGE);
+            if fled {
+                let entity = self.state.board.zombies.remove(zombie_index).id;
+                events.push(GameEvent::ZombieFled { entity });
+                continue;
+            }
             if !mower_triggered
                 && self.state.board.zombies[zombie_index].health > 0
                 && position_x <= -100 * POSITION_SCALE
@@ -2932,8 +3010,8 @@ impl Game {
                 self.apply_projectile_chill(zombie_id, projectile.projectile_type, events);
                 if health_remaining <= 0 {
                     // ponytail: remove terminal entities now; add death phases when rendering consumes them.
+                    self.emit_zombie_died(zombie_id, events);
                     self.state.board.zombies.remove(zombie_index);
-                    events.push(GameEvent::ZombieDied { entity: zombie_id });
                 }
                 if projectile.projectile_type.is_splash() {
                     self.apply_splash_damage(&projectile, zombie_id, events);
@@ -3083,8 +3161,8 @@ impl Game {
             });
             self.apply_projectile_chill(zombie_id, projectile.projectile_type, events);
             if health_remaining <= 0 {
+                self.emit_zombie_died(zombie_id, events);
                 self.state.board.zombies.remove(zombie_index);
-                events.push(GameEvent::ZombieDied { entity: zombie_id });
             }
         }
     }
@@ -3124,8 +3202,8 @@ impl Game {
                 health_remaining,
             });
             if health_remaining <= 0 {
+                self.emit_zombie_died(zombie_id, events);
                 self.state.board.zombies.remove(zombie_index);
-                events.push(GameEvent::ZombieDied { entity: zombie_id });
             }
         }
     }
@@ -3165,8 +3243,8 @@ impl Game {
                 health_remaining,
             });
             if health_remaining <= 0 {
+                self.emit_zombie_died(zombie_id, events);
                 self.state.board.zombies.remove(zombie_index);
-                events.push(GameEvent::ZombieDied { entity: zombie_id });
             }
         }
     }
@@ -3245,8 +3323,8 @@ impl Game {
                 health_remaining,
             });
             if health_remaining <= 0 {
+                self.emit_zombie_died(zombie_id, events);
                 self.state.board.zombies.remove(zombie_index);
-                events.push(GameEvent::ZombieDied { entity: zombie_id });
             } else {
                 zombie_index += 1;
             }
@@ -3358,7 +3436,7 @@ impl Game {
             });
             if health_remaining <= 0 {
                 self.state.board.zombies[target_idx].health = 0;
-                events.push(GameEvent::ZombieDied { entity: target_id });
+                self.emit_zombie_died(target_id, events);
             }
         }
         true
@@ -3609,6 +3687,9 @@ impl Game {
             has_vaulted: false,
             newspaper_health: 0,
             jackbox_timer: 0,
+            yeti_counter: 0,
+            yeti_running: false,
+            yeti_loot_dropped: false,
         });
         events.push(GameEvent::ZombieSpawned {
             entity: id,
@@ -3795,6 +3876,31 @@ impl Game {
     }
 
     #[allow(dead_code)]
+    fn spawn_yeti_zombie(
+        &mut self,
+        row: u8,
+        wave: u32,
+        position_override: Option<i64>,
+        events: &mut Vec<GameEvent>,
+    ) -> EntityId {
+        let id = self._spawn_zombie_inner(
+            ZombieType::Yeti,
+            YETI_HEALTH,
+            row,
+            wave,
+            position_override,
+            events,
+        );
+        if let Some(zombie) = self.state.board.zombies.iter_mut().find(|z| z.id == id) {
+            zombie.speed = YETI_WALK_SPEED;
+            zombie.yeti_counter = self
+                .rng
+                .range_inclusive(YETI_FLEE_MIN_TICKS, YETI_FLEE_MAX_TICKS);
+        }
+        id
+    }
+
+    #[allow(dead_code)]
     fn _spawn_zombie_inner(
         &mut self,
         zombie_type: ZombieType,
@@ -3829,6 +3935,9 @@ impl Game {
             has_vaulted: false,
             newspaper_health: 0,
             jackbox_timer: 0,
+            yeti_counter: 0,
+            yeti_running: false,
+            yeti_loot_dropped: false,
         });
         events.push(GameEvent::ZombieSpawned {
             entity: id,
@@ -5767,6 +5876,125 @@ mod tests {
             .filter(|e| matches!(e, GameEvent::ZombieDied { entity: eid } if *eid == zombie))
             .collect();
         assert!(!died.is_empty(), "ZombieDied should be emitted for Jackbox");
+    }
+
+    #[test]
+    fn yeti_flees_right_after_its_phase_and_emits_flee_event() {
+        let mut game = Game::new(7, SceneKind::Day);
+        let mut setup = Vec::new();
+        let zombie = game.spawn_yeti_zombie(2, 0, Some(500 * POSITION_SCALE), &mut setup);
+        let index = game
+            .state
+            .board
+            .zombies
+            .iter()
+            .position(|candidate| candidate.id == zombie)
+            .unwrap();
+
+        assert_eq!(
+            game.state.board.zombies[index].zombie_type,
+            ZombieType::Yeti
+        );
+        assert_eq!(game.state.board.zombies[index].health, YETI_HEALTH);
+        assert_eq!(game.state.board.zombies[index].max_health, YETI_HEALTH);
+        assert_eq!(game.state.board.zombies[index].speed, YETI_WALK_SPEED);
+        assert!(
+            (YETI_FLEE_MIN_TICKS..=YETI_FLEE_MAX_TICKS)
+                .contains(&game.state.board.zombies[index].yeti_counter)
+        );
+
+        game.state.board.zombies[index].yeti_counter = 1;
+        let before = game.state.board.zombies[index].position_x;
+        let events = game.advance(InputFrame::default());
+        let running = game
+            .state
+            .board
+            .zombies
+            .iter()
+            .find(|candidate| candidate.id == zombie)
+            .unwrap();
+        assert!(running.yeti_running);
+        assert!(running.position_x > before);
+        assert!(
+            !events.iter().any(
+                |event| matches!(event, GameEvent::ZombieFled { entity } if *entity == zombie)
+            )
+        );
+
+        game.state.board.zombies[index].position_x = YETI_FLEE_EDGE;
+        let events = game.advance(InputFrame::default());
+        assert!(
+            !game
+                .state
+                .board
+                .zombies
+                .iter()
+                .any(|candidate| candidate.id == zombie)
+        );
+        assert!(
+            events.iter().any(
+                |event| matches!(event, GameEvent::ZombieFled { entity } if *entity == zombie)
+            )
+        );
+    }
+
+    #[test]
+    fn yeti_drops_four_diamonds_when_killed() {
+        let mut game = Game::new(7, SceneKind::Day);
+        let mut setup = Vec::new();
+        let zombie = game.spawn_yeti_zombie(2, 0, Some(500 * POSITION_SCALE), &mut setup);
+        game.state
+            .board
+            .zombies
+            .iter_mut()
+            .find(|candidate| candidate.id == zombie)
+            .unwrap()
+            .health = 0;
+
+        let mut events = Vec::new();
+        game.emit_zombie_died(zombie, &mut events);
+        assert_eq!(
+            events
+                .iter()
+                .filter(|event| matches!(
+                    event,
+                    GameEvent::CoinProduced {
+                        coin_type: CoinType::Diamond,
+                        value: 100,
+                        ..
+                    }
+                ))
+                .count(),
+            YETI_DIAMOND_COUNT
+        );
+        assert_eq!(game.state.board.coins.len(), YETI_DIAMOND_COUNT);
+        assert!(
+            events.iter().any(
+                |event| matches!(event, GameEvent::ZombieDied { entity } if *entity == zombie)
+            )
+        );
+
+        let coin_ids = game
+            .state
+            .board
+            .coins
+            .iter()
+            .map(|coin| coin.id)
+            .collect::<Vec<_>>();
+        for coin_id in coin_ids {
+            game.collect_coin(coin_id, &mut events);
+        }
+        assert_eq!(game.state.coins, 400);
+        assert!(game.state.board.coins.is_empty());
+
+        game.emit_zombie_died(zombie, &mut events);
+        assert_eq!(
+            events
+                .iter()
+                .filter(|event| matches!(event, GameEvent::CoinProduced { .. }))
+                .count(),
+            YETI_DIAMOND_COUNT
+        );
     }
 
     #[test]
