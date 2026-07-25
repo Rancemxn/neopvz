@@ -733,6 +733,7 @@ pub enum ZombieType {
     Conehead,
     Flag,
     Buckethead,
+    PoleVaulter,
 }
 
 #[derive(Clone, Copy, Debug, Deserialize, Eq, PartialEq, Serialize)]
@@ -924,6 +925,8 @@ pub struct ZombieState {
     pub from_wave: u32,
     #[serde(default)]
     pub hypnotized: bool,
+    #[serde(default)]
+    pub has_vaulted: bool,
 }
 
 #[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
@@ -1218,6 +1221,9 @@ pub enum GameEvent {
         row: u8,
     },
     ZombieHypnotized {
+        entity: EntityId,
+    },
+    ZombieVaulted {
         entity: EntityId,
     },
     ZombieRowChanged {
@@ -2648,7 +2654,13 @@ impl Game {
                     self.state.board.zombies[zombie_index].eating = target.is_some();
                     if let Some(plant_index) = target {
                         let plant_id = self.state.board.plants[plant_index].id;
-                        if self.state.board.plants[plant_index]
+                        let ztype = self.state.board.zombies[zombie_index].zombie_type;
+                        let has_vaulted = self.state.board.zombies[zombie_index].has_vaulted;
+                        if ztype == ZombieType::PoleVaulter && !has_vaulted {
+                            self.state.board.zombies[zombie_index].has_vaulted = true;
+                            self.state.board.zombies[zombie_index].eating = false;
+                            events.push(GameEvent::ZombieVaulted { entity });
+                        } else if self.state.board.plants[plant_index]
                             .plant_type
                             .is_hypno_shroom()
                         {
@@ -3491,6 +3503,7 @@ impl Game {
             garlic_target: None,
             from_wave: wave,
             hypnotized: false,
+            has_vaulted: false,
         });
         events.push(GameEvent::ZombieSpawned {
             entity: id,
@@ -3549,6 +3562,24 @@ impl Game {
     }
 
     #[allow(dead_code)]
+    fn spawn_pole_vaulter_zombie(
+        &mut self,
+        row: u8,
+        wave: u32,
+        position_override: Option<i64>,
+        events: &mut Vec<GameEvent>,
+    ) -> EntityId {
+        self._spawn_zombie_inner(
+            ZombieType::PoleVaulter,
+            500,
+            row,
+            wave,
+            position_override,
+            events,
+        )
+    }
+
+    #[allow(dead_code)]
     fn _spawn_zombie_inner(
         &mut self,
         zombie_type: ZombieType,
@@ -3580,6 +3611,7 @@ impl Game {
             garlic_target: None,
             from_wave: wave,
             hypnotized: false,
+            has_vaulted: false,
         });
         events.push(GameEvent::ZombieSpawned {
             entity: id,
@@ -5269,6 +5301,38 @@ mod tests {
                 .unwrap()
                 .zombie_type,
             ZombieType::Buckethead
+        );
+    }
+
+    #[test]
+    fn pole_vaulter_skips_the_first_plant_and_triggers_vault_event() {
+        let mut game = Game::new(7, SceneKind::Day);
+        game.state.sun = 50;
+        game.advance(InputFrame {
+            actions: vec![
+                InputAction::SelectSeed { slot: 1 },
+                InputAction::Plant { row: 2, column: 2 },
+            ],
+        });
+        let sunflower_id = game.state.board.plants[0].id;
+
+        let mut setup = Vec::new();
+        let zombie =
+            game.spawn_pole_vaulter_zombie(2, 0, Some(grid_x(2) + 20 * POSITION_SCALE), &mut setup);
+
+        let mut vaulted = false;
+        for _ in 0..100 {
+            let events = game.advance(InputFrame::default());
+            for event in &events {
+                if matches!(event, GameEvent::ZombieVaulted { entity } if *entity == zombie) {
+                    vaulted = true;
+                }
+            }
+        }
+        assert!(vaulted, "ZombieVaulted");
+        assert!(
+            game.state.board.plants.iter().any(|p| p.id == sunflower_id),
+            "plant survived vault"
         );
     }
 
