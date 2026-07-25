@@ -1378,13 +1378,20 @@ impl Game {
         let has_lilypad = self.state.board.plants.iter().any(|plant| {
             plant.row == row && plant.column == column && plant.plant_type.slot() == 16
         });
+        let has_flowerpot = self.state.board.plants.iter().any(|plant| {
+            plant.row == row && plant.column == column && plant.plant_type.slot() == 33
+        });
         let aquatic = matches!(slot, 16 | 19 | 24);
-        let valid_terrain = if aquatic {
-            self.state.scene == SceneKind::Pool
-        } else if self.state.scene == SceneKind::Pool {
-            slot == 43 || has_lilypad
-        } else {
-            true
+        let valid_terrain = match self.state.scene {
+            SceneKind::Pool => {
+                if aquatic {
+                    true
+                } else {
+                    slot == 43 || has_lilypad
+                }
+            }
+            SceneKind::Roof => slot == 33 || has_flowerpot,
+            _ => !aquatic && slot != 33,
         };
         if !valid_terrain {
             events.push(GameEvent::InputRejected {
@@ -1407,10 +1414,10 @@ impl Game {
         let pumpkin_already_present = self.state.board.plants.iter().any(|plant| {
             plant.row == row && plant.column == column && plant.plant_type.slot() == 30
         });
-        let can_layer_on_lilypad =
-            has_lilypad && !has_top_plant && !matches!(slot, 16 | 19 | 24 | 33);
+        let can_layer_on_support =
+            (has_lilypad || has_flowerpot) && !has_top_plant && !matches!(slot, 16 | 19 | 24 | 33);
         if occupied
-            && ((slot == 30 && pumpkin_already_present) || (slot != 30 && !can_layer_on_lilypad))
+            && ((slot == 30 && pumpkin_already_present) || (slot != 30 && !can_layer_on_support))
         {
             events.push(GameEvent::InputRejected {
                 action,
@@ -4513,6 +4520,51 @@ mod tests {
             GameEvent::PlantShoveled { entity } if *entity == base
         )));
         assert!(pool.state.board.plants.is_empty());
+    }
+
+    #[test]
+    fn flower_pot_is_required_for_roof_planting_and_shoveled_first() {
+        let mut bare_roof = Game::new(7, SceneKind::Roof);
+        bare_roof.state.sun = 500;
+        let rejected = bare_roof.advance(InputFrame {
+            actions: vec![
+                InputAction::SelectSeed { slot: 0 },
+                InputAction::Plant { row: 2, column: 2 },
+            ],
+        });
+        assert!(rejected.iter().any(|event| matches!(
+            event,
+            GameEvent::InputRejected {
+                reason: InputRejectReason::InvalidTerrain,
+                ..
+            }
+        )));
+        assert!(bare_roof.state.board.plants.is_empty());
+
+        let mut roof = Game::new(7, SceneKind::Roof);
+        roof.state.sun = 500;
+        roof.advance(InputFrame {
+            actions: vec![
+                InputAction::SelectSeed { slot: 33 },
+                InputAction::Plant { row: 2, column: 2 },
+                InputAction::SelectSeed { slot: 0 },
+                InputAction::Plant { row: 2, column: 2 },
+            ],
+        });
+        assert_eq!(roof.state.board.plants.len(), 2);
+        assert_eq!(roof.state.board.plants[0].plant_type, PlantType::Other(33));
+        assert_eq!(roof.state.board.plants[1].plant_type, PlantType::Peashooter);
+
+        let top = roof.state.board.plants[1].id;
+        let events = roof.advance(InputFrame {
+            actions: vec![InputAction::Shovel { row: 2, column: 2 }],
+        });
+        assert!(events.iter().any(|event| matches!(
+            event,
+            GameEvent::PlantShoveled { entity } if *entity == top
+        )));
+        assert_eq!(roof.state.board.plants.len(), 1);
+        assert_eq!(roof.state.board.plants[0].plant_type, PlantType::Other(33));
     }
 
     #[test]
