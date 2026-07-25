@@ -936,7 +936,7 @@ pub struct ZombieState {
     #[serde(default)]
     pub newspaper_health: i32,
     #[serde(default)]
-    pub jackbox_timer: i32,
+    pub jackbox_timer: u32,
 }
 
 #[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
@@ -2698,8 +2698,8 @@ impl Game {
             {
                 let zombie = &mut self.state.board.zombies[zombie_index];
                 if zombie.zombie_type == ZombieType::Jackbox && zombie.jackbox_timer > 0 {
-                    zombie.jackbox_timer -= 1;
-                    if zombie.jackbox_timer <= 0 {
+                    zombie.jackbox_timer = zombie.jackbox_timer.saturating_sub(1);
+                    if zombie.jackbox_timer == 0 {
                         zombie.health = 0;
                         self.apply_jackbox_explosion(zombie_index, events);
                     }
