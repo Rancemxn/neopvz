@@ -1820,14 +1820,13 @@ impl Game {
                 if plant_type.is_gold_magnet() {
                     if plant.special_counter > 0 {
                         plant.special_counter -= 1;
-                    } else if let Some(target) = gold_magnet_target {
-                        if self.rng.range(50) == 0 {
-                            gold_magnet_coin = Some(target);
-                            plant.special_counter = self.rng.range_inclusive(
-                                GOLD_MAGNET_RECHARGE_MIN,
-                                GOLD_MAGNET_RECHARGE_MAX,
-                            );
-                        }
+                    } else if let Some(target) = gold_magnet_target
+                        && self.rng.range(50) == 0
+                    {
+                        gold_magnet_coin = Some(target);
+                        plant.special_counter = self
+                            .rng
+                            .range_inclusive(GOLD_MAGNET_RECHARGE_MIN, GOLD_MAGNET_RECHARGE_MAX);
                     }
                 } else if plant_type.is_chomper() {
                     if plant.special_armed {
