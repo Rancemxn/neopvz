@@ -13,7 +13,7 @@ evidence; a reviewer assertion alone is never sufficient.
 Status is `verified`, `partial`, or `missing`. The progress quantity is the sum
 of `total - accepted` across all rows.
 
-Current baseline: **991 accepted / 1802 total; 811 unresolved**.
+Current baseline: **993 accepted / 1802 total; 809 unresolved**.
 
 ## Foundation and Boundaries
 
@@ -52,9 +52,9 @@ loader coverage. They do not authorize committing the manifest or its assets.
 | ENT-PROJECTILE | Projectile types and collision behavior | 11 | 14 | partial | PRs `#30`, `#33`, `#36`, `#58`, `#67`, `#69`, `#71`, `#72`, `#74`; runs `29973097050`/`29973716257`/`29974169417`/`30003168668`/`30003168691`/`30132257878`/`30132257848`/`30133226675`/`30133226646`/`30133613372`/`30133613399`/`30134299774`/`30134299749`; ignored `artifacts/puffshroom-range/verification.md`, `artifacts/pult-plants/verification.md`, `artifacts/fume-shroom/verification.md`, `artifacts/gloom-shroom/verification.md`, and local Torchwood source/runtime records |
 | ENT-PICKUP | Sun, coins, prizes, and pickup behavior | 0 | 26 | missing | Issue `#5` |
 | ENT-GRID | Graves, craters, portals, vases, and other grid items | 1 | 13 | partial | PR `#50`; runs `29979356134`/`29979356138`; ignored local source/runtime records |
-| ENT-LAWNMOWER | Lawn, pool, roof, and special mower behavior | 0 | 4 | missing | Issue `#5` |
+| ENT-LAWNMOWER | Lawn, pool, roof, and special mower behavior | 1 | 4 | partial | PR `#84`; runs `30142029320`/`30142029344`; ignored `artifacts/lawnmower-trigger/verification.md`; row trigger, sweep, and no-mower loss boundary covered; remaining special mower variants unresolved |
 | ENT-EFFECT | Player-observable particle/effect events | 0 | 105 | missing | Issues `#2`, `#5` |
-| SIM-SYSTEM | Tick ordering, RNG, damage, cooldown, resources, waves, collisions, placement, special rules, pause, win/loss, and restart | 4 | 13 | partial | PRs `#78`, `#81`, `#82`, `#83`; runs `30135391025`/`30135391020`/`30137046838`/`30137046837`/`30137384083`/`30137384077`/`30141692579`/`30141692532`; core pause-freeze, aquatic-placement, roof-placement, and Garlic timing tests with ignored local records |
+| SIM-SYSTEM | Tick ordering, RNG, damage, cooldown, resources, waves, collisions, placement, special rules, pause, win/loss, and restart | 5 | 13 | partial | PRs `#78`, `#81`, `#82`, `#83`, `#84`; runs `30135391025`/`30135391020`/`30137046838`/`30137046837`/`30137384083`/`30137384077`/`30141692579`/`30141692532`/`30142029320`/`30142029344`; core pause-freeze, aquatic-placement, roof-placement, Garlic timing, and mower-boundary tests with ignored local records |
 
 The current partial entity acceptance is intentionally narrow: Peashooter,
 Sunflower, SnowPea, Repeater, Threepeater, SplitPea, Starfruit, Cattail,
