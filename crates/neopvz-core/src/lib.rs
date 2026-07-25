@@ -1225,6 +1225,7 @@ pub enum GameEvent {
     GameLost {
         zombie: EntityId,
     },
+    GameWon,
     StateChanged,
 }
 
@@ -1451,6 +1452,14 @@ impl Game {
             self.update_craters();
             self.state.tick = self.state.tick.saturating_add(1);
             self.state.wave = self.state.board.wave.current;
+
+            // Win condition: all waves complete, no zombies remaining.
+            if self.state.board.wave.current >= self.state.board.wave.total
+                && self.state.board.zombies.is_empty()
+            {
+                self.state.scene = SceneKind::Complete;
+                events.push(GameEvent::GameWon);
+            }
             events.push(GameEvent::StateChanged);
         }
 
@@ -5883,6 +5892,22 @@ mod tests {
         );
         assert!(!game.state.paused);
         assert_eq!(game.state.tick, initial.tick + 1);
+    }
+
+    #[test]
+    fn all_waves_complete_and_no_zombies_triggers_game_won() {
+        let mut game = Game::new(7, SceneKind::Day);
+        game.state.board.wave.current = game.state.board.wave.total;
+        game.state.board.wave.countdown = 0;
+
+        let events = game.advance(InputFrame::default());
+
+        assert!(
+            events
+                .iter()
+                .any(|event| matches!(event, GameEvent::GameWon))
+        );
+        assert!(matches!(game.state.scene, SceneKind::Complete));
     }
 
     #[test]
