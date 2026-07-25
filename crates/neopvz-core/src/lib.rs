@@ -2629,7 +2629,9 @@ impl Game {
                 self.state.board.zombies[zombie_index].eating = true;
             } else if age % 4 == 0 {
                 let is_hypnotized = self.state.board.zombies[zombie_index].hypnotized;
-                if !is_hypnotized || !self.attack_zombie_target(entity, row, events) {
+                if is_hypnotized {
+                    self.attack_zombie_target(entity, row, events);
+                } else {
                     let target = self.find_plant_for_zombie(row, position_x);
                     self.state.board.zombies[zombie_index].eating = target.is_some();
                     if let Some(plant_index) = target {
@@ -5217,13 +5219,13 @@ mod tests {
         let zombie =
             game.spawn_normal_zombie(2, 0, Some(grid_x(2) + 30 * POSITION_SCALE), &mut setup);
         let other =
-            game.spawn_normal_zombie(2, 0, Some(grid_x(2) + 400 * POSITION_SCALE), &mut setup);
+            game.spawn_normal_zombie(2, 0, Some(grid_x(2) + 120 * POSITION_SCALE), &mut setup);
 
         let mut hypnotized = false;
         let mut plant_died = false;
         let mut zombie_damaged = false;
         let mut other_died = false;
-        for _ in 0..300 {
+        for _ in 0..600 {
             let events = game.advance(InputFrame::default());
             for event in &events {
                 match event {
