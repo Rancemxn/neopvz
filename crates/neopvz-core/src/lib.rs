@@ -737,6 +737,7 @@ pub enum ZombieType {
     DuckyTube,
     Football,
     Newspaper,
+    Imp,
     PoleVaulter,
 }
 
