@@ -5748,8 +5748,9 @@ mod tests {
         );
 
         // Advance enough ticks to trigger the random timer (500-1500).
+        let mut events = Vec::new();
         for _ in 0..2000 {
-            game.advance(InputFrame::default());
+            events.extend(game.advance(InputFrame::default()));
             if !game.state.board.zombies.iter().any(|z| z.id == zombie) {
                 break;
             }
@@ -5761,7 +5762,7 @@ mod tests {
             "Jackbox zombie should die in its own explosion"
         );
         // Verify ZombieDied event was emitted.
-        let died: Vec<_> = setup
+        let died: Vec<_> = events
             .iter()
             .filter(|e| matches!(e, GameEvent::ZombieDied { entity: eid } if *eid == zombie))
             .collect();
