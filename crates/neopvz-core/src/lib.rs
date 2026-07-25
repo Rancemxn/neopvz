@@ -3672,6 +3672,17 @@ impl Game {
     }
 
     #[allow(dead_code)]
+    fn spawn_imp_zombie(
+        &mut self,
+        row: u8,
+        wave: u32,
+        position_override: Option<i64>,
+        events: &mut Vec<GameEvent>,
+    ) -> EntityId {
+        self._spawn_zombie_inner(ZombieType::Imp, 70, row, wave, position_override, events)
+    }
+
+    #[allow(dead_code)]
     fn _spawn_zombie_inner(
         &mut self,
         zombie_type: ZombieType,
@@ -5576,6 +5587,33 @@ mod tests {
             pos_before - pos_after >= 100_000,
             "newspaper zombie at 260 HP should move fast; moved {}",
             pos_before - pos_after
+        );
+    }
+
+    #[test]
+    fn imp_zombie_has_70_health_and_imp_type() {
+        let mut game = Game::new(7, SceneKind::Day);
+        let mut setup = Vec::new();
+        let zombie = game.spawn_imp_zombie(2, 0, Some(500 * POSITION_SCALE), &mut setup);
+        assert_eq!(
+            game.state
+                .board
+                .zombies
+                .iter()
+                .find(|z| z.id == zombie)
+                .unwrap()
+                .health,
+            70
+        );
+        assert_eq!(
+            game.state
+                .board
+                .zombies
+                .iter()
+                .find(|z| z.id == zombie)
+                .unwrap()
+                .zombie_type,
+            ZombieType::Imp
         );
     }
 
