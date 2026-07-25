@@ -2220,16 +2220,15 @@ impl Game {
                     (plant.plant_type.is_nocturnal() && plant.asleep && plant.wake_up_counter == 0)
                         .then_some(plant.id)
                 });
-            if let Some(target_id) = target_id {
-                if let Some(target) = self
+            if let Some(target_id) = target_id
+                && let Some(target) = self
                     .state
                     .board
                     .plants
                     .iter_mut()
                     .find(|plant| plant.id == target_id)
-                {
-                    target.wake_up_counter = COFFEE_WAKE_TICKS;
-                }
+            {
+                target.wake_up_counter = COFFEE_WAKE_TICKS;
             }
             if let Some(coffee) = self
                 .state
@@ -5531,15 +5530,15 @@ mod tests {
                 .iter()
                 .all(|plant| plant.id != coffee)
         );
-        let mushroom = game
+        let mushroom_state = game
             .state
             .board
             .plants
             .iter()
             .find(|plant| plant.id == mushroom)
             .unwrap();
-        assert!(mushroom.asleep);
-        assert_eq!(mushroom.wake_up_counter, COFFEE_WAKE_TICKS);
+        assert!(mushroom_state.asleep);
+        assert_eq!(mushroom_state.wake_up_counter, COFFEE_WAKE_TICKS);
 
         for _ in 0..COFFEE_WAKE_TICKS - 1 {
             game.advance(InputFrame::default());
@@ -5554,15 +5553,15 @@ mod tests {
                 .asleep
         );
         game.advance(InputFrame::default());
-        let mushroom = game
+        let mushroom_state = game
             .state
             .board
             .plants
             .iter()
             .find(|plant| plant.id == mushroom)
             .unwrap();
-        assert!(!mushroom.asleep);
-        assert_eq!(mushroom.wake_up_counter, 0);
+        assert!(!mushroom_state.asleep);
+        assert_eq!(mushroom_state.wake_up_counter, 0);
     }
 
     #[test]
