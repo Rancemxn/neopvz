@@ -4377,6 +4377,39 @@ mod tests {
     }
 
     #[test]
+    fn pause_freezes_simulation_until_resume() {
+        let mut game = Game::new(7, SceneKind::Day);
+        let initial = game.state.clone();
+
+        let paused_events = game.advance(InputFrame {
+            actions: vec![InputAction::Pause],
+        });
+        assert!(
+            paused_events
+                .iter()
+                .any(|event| matches!(event, GameEvent::Paused))
+        );
+        for _ in 0..20 {
+            game.advance(InputFrame::default());
+        }
+        assert!(game.state.paused);
+        assert_eq!(game.state.tick, initial.tick);
+        assert_eq!(game.state.board.sun_countdown, initial.board.sun_countdown);
+        assert_eq!(game.state.board.wave, initial.board.wave);
+
+        let resumed_events = game.advance(InputFrame {
+            actions: vec![InputAction::Resume],
+        });
+        assert!(
+            resumed_events
+                .iter()
+                .any(|event| matches!(event, GameEvent::Resumed))
+        );
+        assert!(!game.state.paused);
+        assert_eq!(game.state.tick, initial.tick + 1);
+    }
+
+    #[test]
     fn replay_record_round_trips_and_verifies() {
         let mut replay = Replay::new(7, SceneKind::Day);
         replay.frames = vec![
