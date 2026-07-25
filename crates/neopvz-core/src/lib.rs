@@ -738,6 +738,7 @@ pub enum ZombieType {
     Football,
     Newspaper,
     Imp,
+    Jackbox,
     PoleVaulter,
 }
 
