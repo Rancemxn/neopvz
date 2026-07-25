@@ -27,6 +27,7 @@ const MAX_SEED_SLOTS: u8 = 53;
 const SUNSHROOM_GROWTH_TICKS: u32 = 12_000;
 const SMALL_SUN_VALUE: u32 = 15;
 const INSTANT_PLANT_COUNTDOWN: u32 = 100;
+const BLOVER_SPECIAL_COUNTDOWN: u32 = 50;
 const POTATO_ARM_TICKS: u32 = 1_500;
 const PLANT_SPECIAL_DAMAGE: i32 = 1_800;
 const SQUASH_LOOK_TICKS: u32 = 80;
@@ -179,6 +180,10 @@ impl PlantType {
 
     fn is_gold_magnet(self) -> bool {
         self.slot() == 45
+    }
+
+    fn is_blover(self) -> bool {
+        self.slot() == 27
     }
 
     fn is_cherry_bomb(self) -> bool {
@@ -1089,6 +1094,10 @@ pub enum GameEvent {
         entity: EntityId,
         plant_type: PlantType,
     },
+    BloverTriggered {
+        entity: EntityId,
+        row: u8,
+    },
     PlantSpecialHit {
         plant: EntityId,
         zombie: EntityId,
@@ -1605,7 +1614,9 @@ impl Game {
             self.rng.range_inclusive(0, launch_rate)
         };
         let max_health = plant_type.max_health();
-        let (special_counter, special_armed) = if plant_type.is_cherry_bomb()
+        let (special_counter, special_armed) = if plant_type.is_blover() {
+            (BLOVER_SPECIAL_COUNTDOWN, false)
+        } else if plant_type.is_cherry_bomb()
             || plant_type.is_jalapeno()
             || plant_type.is_ice_shroom()
             || plant_type.is_doom_shroom()
@@ -1827,6 +1838,14 @@ impl Game {
                         plant.special_counter = self
                             .rng
                             .range_inclusive(GOLD_MAGNET_RECHARGE_MIN, GOLD_MAGNET_RECHARGE_MAX);
+                    }
+                } else if plant_type.is_blover() {
+                    if !plant.special_armed {
+                        plant.special_counter = plant.special_counter.saturating_sub(1);
+                        if plant.special_counter == 0 {
+                            plant.special_armed = true;
+                            special = true;
+                        }
                     }
                 } else if plant_type.is_chomper() {
                     if plant.special_armed {
@@ -2092,6 +2111,14 @@ impl Game {
             entity: plant_id,
             plant_type,
         });
+
+        if plant_type.is_blover() {
+            events.push(GameEvent::BloverTriggered {
+                entity: plant_id,
+                row,
+            });
+            return;
+        }
 
         if plant_type.is_doom_shroom() {
             let center_x = grid_x(column);
@@ -5167,6 +5194,53 @@ mod tests {
         assert!(collected);
         assert_eq!(game.state.coins, 5);
         assert!(game.state.board.coins.is_empty());
+    }
+
+    #[test]
+    fn blover_triggers_once_after_fifty_ticks_and_survives() {
+        let mut game = Game::new(7, SceneKind::Day);
+        game.state.sun = 100;
+        let placed_events = game.advance(InputFrame {
+            actions: vec![
+                InputAction::SelectSeed { slot: 27 },
+                InputAction::Plant { row: 2, column: 2 },
+            ],
+        });
+        let blover = game.state.board.plants[0].id;
+        assert!(placed_events.iter().any(|event| matches!(
+            event,
+            GameEvent::PlantPlaced {
+                entity,
+                plant_type: PlantType::Other(27),
+                ..
+            } if *entity == blover
+        )));
+        assert_eq!(
+            game.state.board.plants[0].special_counter,
+            BLOVER_SPECIAL_COUNTDOWN - 1
+        );
+
+        let mut trigger_count = 0;
+        for _ in 0..49 {
+            let events = game.advance(InputFrame::default());
+            trigger_count += events
+                .iter()
+                .filter(|event| matches!(event, GameEvent::BloverTriggered { entity, .. } if *entity == blover))
+                .count();
+        }
+        assert_eq!(trigger_count, 1);
+        assert!(
+            game.state
+                .board
+                .plants
+                .iter()
+                .any(|plant| plant.id == blover)
+        );
+
+        let events = game.advance(InputFrame::default());
+        assert!(!events.iter().any(
+            |event| matches!(event, GameEvent::BloverTriggered { entity, .. } if *entity == blover)
+        ));
     }
 
     #[test]
