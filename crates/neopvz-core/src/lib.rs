@@ -28,6 +28,7 @@ const SUNSHROOM_GROWTH_TICKS: u32 = 12_000;
 const SMALL_SUN_VALUE: u32 = 15;
 const INSTANT_PLANT_COUNTDOWN: u32 = 100;
 const BLOVER_SPECIAL_COUNTDOWN: u32 = 50;
+const COFFEE_WAKE_TICKS: u32 = 100;
 const GRAVEBUSTER_EAT_TICKS: u32 = 400;
 const POTATO_ARM_TICKS: u32 = 1_500;
 const PLANT_SPECIAL_DAMAGE: i32 = 1_800;
@@ -181,6 +182,14 @@ impl PlantType {
 
     fn is_gold_magnet(self) -> bool {
         self.slot() == 45
+    }
+
+    fn is_instant_coffee(self) -> bool {
+        self.slot() == 35
+    }
+
+    fn is_nocturnal(self) -> bool {
+        matches!(self.slot(), 8 | 9 | 10 | 12 | 13 | 14 | 15 | 24 | 31 | 42)
     }
 
     fn is_gravebuster(self) -> bool {
@@ -879,6 +888,10 @@ pub struct PlantState {
     pub special_armed: bool,
     pub special_target: Option<EntityId>,
     pub blink_counter: u32,
+    #[serde(default)]
+    pub asleep: bool,
+    #[serde(default)]
+    pub wake_up_counter: u32,
 }
 
 #[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
@@ -1565,6 +1578,19 @@ impl Game {
                 && plant.column == column
                 && !matches!(plant.plant_type.slot(), 16 | 33)
         });
+        let coffee_target = self
+            .state
+            .board
+            .plants
+            .iter()
+            .rfind(|plant| {
+                plant.row == row
+                    && plant.column == column
+                    && !matches!(plant.plant_type.slot(), 16 | 33)
+            })
+            .is_some_and(|plant| {
+                plant.plant_type.is_nocturnal() && plant.asleep && plant.wake_up_counter == 0
+            });
         let pumpkin_already_present = self.state.board.plants.iter().any(|plant| {
             plant.row == row && plant.column == column && plant.plant_type.slot() == 30
         });
@@ -1581,10 +1607,18 @@ impl Game {
             });
             return;
         }
+        if slot == 35 && !coffee_target {
+            events.push(GameEvent::InputRejected {
+                action,
+                reason: InputRejectReason::Occupied,
+            });
+            return;
+        }
         let can_layer_on_support = ((has_lilypad || has_flowerpot)
             && !has_top_plant
             && !matches!(slot, 16 | 19 | 24 | 33))
-            || (slot == 45 && has_magnet_shroom && !gold_magnet_already_present);
+            || (slot == 45 && has_magnet_shroom && !gold_magnet_already_present)
+            || (slot == 35 && coffee_target);
         if occupied
             && ((slot == 30 && pumpkin_already_present) || (slot != 30 && !can_layer_on_support))
         {
@@ -1646,7 +1680,10 @@ impl Game {
             self.rng.range_inclusive(0, launch_rate)
         };
         let max_health = plant_type.max_health();
-        let (special_counter, special_armed) = if plant_type.is_gravebuster() {
+        let asleep = plant_type.is_nocturnal() && self.state.scene != SceneKind::Night;
+        let (special_counter, special_armed) = if plant_type.is_instant_coffee() {
+            (COFFEE_WAKE_TICKS, false)
+        } else if plant_type.is_gravebuster() {
             (GRAVEBUSTER_EAT_TICKS, false)
         } else if plant_type.is_blover() {
             (BLOVER_SPECIAL_COUNTDOWN, false)
@@ -1679,6 +1716,8 @@ impl Game {
             special_armed,
             special_target: None,
             blink_counter,
+            asleep,
+            wake_up_counter: 0,
         });
         events.push(GameEvent::PlantPlaced {
             entity: id,
@@ -1760,6 +1799,19 @@ impl Game {
     fn update_plants(&mut self, events: &mut Vec<GameEvent>) {
         let plant_count = self.state.board.plants.len();
         for index in 0..plant_count {
+            let asleep = {
+                let plant = &mut self.state.board.plants[index];
+                if plant.wake_up_counter > 0 {
+                    plant.wake_up_counter -= 1;
+                    if plant.wake_up_counter == 0 {
+                        plant.asleep = false;
+                    }
+                }
+                plant.asleep
+            };
+            if asleep {
+                continue;
+            }
             let (id, plant_type, row, column) = {
                 let plant = &self.state.board.plants[index];
                 (plant.id, plant.plant_type, plant.row, plant.column)
@@ -1873,6 +1925,9 @@ impl Game {
                             .rng
                             .range_inclusive(GOLD_MAGNET_RECHARGE_MIN, GOLD_MAGNET_RECHARGE_MAX);
                     }
+                } else if plant_type.is_instant_coffee() {
+                    plant.special_counter = plant.special_counter.saturating_sub(1);
+                    special = plant.special_counter == 0;
                 } else if plant_type.is_gravebuster() {
                     plant.special_counter = plant.special_counter.saturating_sub(1);
                     special = plant.special_counter == 0;
@@ -2148,6 +2203,46 @@ impl Game {
             entity: plant_id,
             plant_type,
         });
+
+        if plant_type.is_instant_coffee() {
+            let target_id = self
+                .state
+                .board
+                .plants
+                .iter()
+                .rfind(|plant| {
+                    plant.id != plant_id
+                        && plant.row == row
+                        && plant.column == column
+                        && !matches!(plant.plant_type.slot(), 16 | 33)
+                })
+                .and_then(|plant| {
+                    (plant.plant_type.is_nocturnal() && plant.asleep && plant.wake_up_counter == 0)
+                        .then_some(plant.id)
+                });
+            if let Some(target_id) = target_id {
+                if let Some(target) = self
+                    .state
+                    .board
+                    .plants
+                    .iter_mut()
+                    .find(|plant| plant.id == target_id)
+                {
+                    target.wake_up_counter = COFFEE_WAKE_TICKS;
+                }
+            }
+            if let Some(coffee) = self
+                .state
+                .board
+                .plants
+                .iter_mut()
+                .find(|plant| plant.id == plant_id)
+            {
+                coffee.health = 0;
+            }
+            events.push(GameEvent::PlantDied { entity: plant_id });
+            return;
+        }
 
         if plant_type.is_blover() {
             events.push(GameEvent::BloverTriggered {
@@ -3412,7 +3507,7 @@ mod tests {
 
     #[test]
     fn puffshroom_hits_nearby_and_expires_before_far_targets() {
-        let mut game = Game::new(7, SceneKind::Day);
+        let mut game = Game::new(7, SceneKind::Night);
         game.state.sun = 50;
         game.advance(InputFrame {
             actions: vec![
@@ -3469,7 +3564,7 @@ mod tests {
         );
 
         // Far target beyond puff range: plant should not arm a shot for it alone.
-        let mut far_game = Game::new(7, SceneKind::Day);
+        let mut far_game = Game::new(7, SceneKind::Night);
         far_game.state.sun = 50;
         far_game.advance(InputFrame {
             actions: vec![
@@ -3496,7 +3591,7 @@ mod tests {
         );
 
         // Forced puff projectile expires at age 75 without a hit.
-        let mut expire_game = Game::new(7, SceneKind::Day);
+        let mut expire_game = Game::new(7, SceneKind::Night);
         expire_game.state.sun = 50;
         expire_game.advance(InputFrame {
             actions: vec![
@@ -3536,6 +3631,7 @@ mod tests {
                 InputAction::Plant { row: 2, column: 0 },
             ],
         });
+        game.state.board.plants[0].asleep = false;
         game.state.board.plants[0].launch_counter = 1;
         let mut setup_events = Vec::new();
         let near = game.spawn_normal_zombie(
@@ -3571,6 +3667,7 @@ mod tests {
                 InputAction::Plant { row: 2, column: 0 },
             ],
         });
+        far_game.state.board.plants[0].asleep = false;
         far_game.state.board.plants[0].launch_counter = 1;
         let mut far_setup = Vec::new();
         far_game.spawn_normal_zombie(
@@ -3591,7 +3688,7 @@ mod tests {
 
     #[test]
     fn scaredy_shroom_stops_shooting_at_a_nearby_zombie() {
-        let mut close_game = Game::new(7, SceneKind::Day);
+        let mut close_game = Game::new(7, SceneKind::Night);
         close_game.state.sun = 100;
         close_game.advance(InputFrame {
             actions: vec![
@@ -3616,7 +3713,7 @@ mod tests {
                 .any(|event| matches!(event, GameEvent::ProjectileFired { .. }))
         );
 
-        let mut far_game = Game::new(7, SceneKind::Day);
+        let mut far_game = Game::new(7, SceneKind::Night);
         far_game.state.sun = 100;
         far_game.advance(InputFrame {
             actions: vec![
@@ -3646,7 +3743,7 @@ mod tests {
 
     #[test]
     fn fume_shroom_hits_every_zombie_inside_its_attack_rectangle() {
-        let mut game = Game::new(7, SceneKind::Day);
+        let mut game = Game::new(7, SceneKind::Night);
         game.state.sun = 100;
         game.advance(InputFrame {
             actions: vec![
@@ -3715,7 +3812,7 @@ mod tests {
 
     #[test]
     fn gloom_shroom_hits_three_rows_inside_its_area() {
-        let mut game = Game::new(7, SceneKind::Day);
+        let mut game = Game::new(7, SceneKind::Night);
         game.state.sun = 200;
         game.advance(InputFrame {
             actions: vec![
@@ -4105,7 +4202,7 @@ mod tests {
 
     #[test]
     fn ice_shroom_freezes_every_normal_zombie_and_applies_target_damage() {
-        let mut game = Game::new(7, SceneKind::Day);
+        let mut game = Game::new(7, SceneKind::Night);
         game.state.sun = 200;
         game.advance(InputFrame {
             actions: vec![
@@ -4182,7 +4279,7 @@ mod tests {
 
     #[test]
     fn frozen_zombies_do_not_move_or_eat_until_the_counter_expires() {
-        let mut game = Game::new(7, SceneKind::Day);
+        let mut game = Game::new(7, SceneKind::Night);
         game.state.sun = 200;
         game.advance(InputFrame {
             actions: vec![
@@ -4278,7 +4375,7 @@ mod tests {
 
     #[test]
     fn doom_shroom_removes_targets_and_leaves_a_replant_blocking_crater() {
-        let mut game = Game::new(7, SceneKind::Day);
+        let mut game = Game::new(7, SceneKind::Night);
         game.state.sun = 300;
         game.advance(InputFrame {
             actions: vec![
@@ -4520,7 +4617,7 @@ mod tests {
 
     #[test]
     fn sunshroom_starts_with_small_sun() {
-        let mut game = Game::new(7, SceneKind::Day);
+        let mut game = Game::new(7, SceneKind::Night);
         game.state.sun = 100;
         game.advance(InputFrame {
             actions: vec![
@@ -4544,7 +4641,7 @@ mod tests {
 
     #[test]
     fn sunshroom_grows_to_normal_sun() {
-        let mut game = Game::new(7, SceneKind::Day);
+        let mut game = Game::new(7, SceneKind::Night);
         game.state.sun = 100;
         game.advance(InputFrame {
             actions: vec![
@@ -5286,7 +5383,7 @@ mod tests {
             }
         )));
 
-        let mut game = Game::new(7, SceneKind::Day);
+        let mut game = Game::new(7, SceneKind::Night);
         game.state.sun = 500;
         game.advance(InputFrame {
             actions: vec![
@@ -5365,6 +5462,107 @@ mod tests {
         assert!(!events.iter().any(
             |event| matches!(event, GameEvent::BloverTriggered { entity, .. } if *entity == blover)
         ));
+    }
+
+    #[test]
+    fn instant_coffee_wakes_a_sleeping_mushroom_after_one_hundred_ticks() {
+        let mut game = Game::new(7, SceneKind::Day);
+        game.state.sun = 200;
+        game.advance(InputFrame {
+            actions: vec![
+                InputAction::SelectSeed { slot: 8 },
+                InputAction::Plant { row: 2, column: 2 },
+                InputAction::SelectSeed { slot: 35 },
+                InputAction::Plant { row: 2, column: 2 },
+            ],
+        });
+
+        let mushroom = game
+            .state
+            .board
+            .plants
+            .iter()
+            .find(|plant| plant.plant_type.slot() == 8)
+            .unwrap()
+            .id;
+        let coffee = game
+            .state
+            .board
+            .plants
+            .iter()
+            .find(|plant| plant.plant_type.slot() == 35)
+            .unwrap()
+            .id;
+        assert!(
+            game.state
+                .board
+                .plants
+                .iter()
+                .find(|plant| plant.id == mushroom)
+                .unwrap()
+                .asleep
+        );
+        assert_eq!(
+            game.state
+                .board
+                .plants
+                .iter()
+                .find(|plant| plant.id == coffee)
+                .unwrap()
+                .special_counter,
+            COFFEE_WAKE_TICKS - 1
+        );
+
+        let mut triggered = false;
+        for _ in 0..99 {
+            triggered |= game.advance(InputFrame::default()).iter().any(|event| {
+                matches!(
+                    event,
+                    GameEvent::PlantSpecialTriggered { entity, plant_type: PlantType::Other(35) }
+                        if *entity == coffee
+                )
+            });
+        }
+        assert!(triggered);
+        assert!(
+            game.state
+                .board
+                .plants
+                .iter()
+                .all(|plant| plant.id != coffee)
+        );
+        let mushroom = game
+            .state
+            .board
+            .plants
+            .iter()
+            .find(|plant| plant.id == mushroom)
+            .unwrap();
+        assert!(mushroom.asleep);
+        assert_eq!(mushroom.wake_up_counter, COFFEE_WAKE_TICKS);
+
+        for _ in 0..COFFEE_WAKE_TICKS - 1 {
+            game.advance(InputFrame::default());
+        }
+        assert!(
+            game.state
+                .board
+                .plants
+                .iter()
+                .find(|plant| plant.id == mushroom)
+                .unwrap()
+                .asleep
+        );
+        game.advance(InputFrame::default());
+        let mushroom = game
+            .state
+            .board
+            .plants
+            .iter()
+            .find(|plant| plant.id == mushroom)
+            .unwrap();
+        assert!(!mushroom.asleep);
+        assert_eq!(mushroom.wake_up_counter, 0);
     }
 
     #[test]
