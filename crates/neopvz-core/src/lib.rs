@@ -159,7 +159,7 @@ impl PlantType {
     }
 
     fn is_producer(self) -> bool {
-        matches!(self.slot(), 1 | 9 | 41)
+        matches!(self.slot(), 1 | 9 | 38 | 41)
     }
 
     fn is_sunshroom(self) -> bool {
@@ -168,6 +168,10 @@ impl PlantType {
 
     fn is_twin_sunflower(self) -> bool {
         self.slot() == 41
+    }
+
+    fn is_marigold(self) -> bool {
+        self.slot() == 38
     }
 
     fn is_cherry_bomb(self) -> bool {
@@ -782,6 +786,21 @@ impl ProjectileType {
 }
 
 #[derive(Clone, Copy, Debug, Deserialize, Eq, PartialEq, Serialize)]
+pub enum CoinType {
+    Silver,
+    Gold,
+}
+
+impl CoinType {
+    fn value(self) -> u32 {
+        match self {
+            Self::Silver => 1,
+            Self::Gold => 5,
+        }
+    }
+}
+
+#[derive(Clone, Copy, Debug, Deserialize, Eq, PartialEq, Serialize)]
 pub enum SunSource {
     Sky,
     Plant(EntityId),
@@ -809,6 +828,7 @@ pub enum InputAction {
     Plant { row: u8, column: u8 },
     Shovel { row: u8, column: u8 },
     CollectSun { entity: EntityId },
+    CollectCoin { entity: EntityId },
 }
 
 #[derive(Clone, Debug, Default, Deserialize, Eq, PartialEq, Serialize)]
@@ -887,6 +907,15 @@ pub struct SunPickupState {
 }
 
 #[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
+pub struct CoinPickupState {
+    pub id: EntityId,
+    pub coin_type: CoinType,
+    pub value: u32,
+    pub position_x: i64,
+    pub position_y: i64,
+}
+
+#[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
 pub struct CraterState {
     pub row: u8,
     pub column: u8,
@@ -920,6 +949,7 @@ pub struct BoardState {
     pub zombies: Vec<ZombieState>,
     pub projectiles: Vec<ProjectileState>,
     pub suns: Vec<SunPickupState>,
+    pub coins: Vec<CoinPickupState>,
     pub craters: Vec<CraterState>,
     pub mowers: Vec<MowerState>,
     pub wave: WaveState,
@@ -969,6 +999,7 @@ impl BoardState {
             zombies: Vec::new(),
             projectiles: Vec::new(),
             suns: Vec::new(),
+            coins: Vec::new(),
             craters: Vec::new(),
             mowers,
             wave: WaveState {
@@ -1003,6 +1034,7 @@ pub struct GameState {
     pub scene: SceneKind,
     pub level_scene: SceneKind,
     pub sun: u32,
+    pub coins: u32,
     pub wave: u32,
     pub paused: bool,
     pub board: BoardState,
@@ -1065,6 +1097,17 @@ pub enum GameEvent {
         entity: EntityId,
         value: u32,
         sun_total: u32,
+    },
+    CoinProduced {
+        entity: EntityId,
+        coin_type: CoinType,
+        value: u32,
+    },
+    CoinCollected {
+        entity: EntityId,
+        coin_type: CoinType,
+        value: u32,
+        coin_total: u32,
     },
     WaveStarted {
         wave: u32,
@@ -1308,6 +1351,7 @@ impl Game {
             scene,
             level_scene: scene,
             sun: 50,
+            coins: 0,
             wave: 0,
             paused: false,
             board,
@@ -1387,6 +1431,7 @@ impl Game {
             InputAction::Plant { row, column } => self.plant(row, column, events),
             InputAction::Shovel { row, column } => self.shovel(row, column, events),
             InputAction::CollectSun { entity } => self.collect_sun(entity, events),
+            InputAction::CollectCoin { entity } => self.collect_coin(entity, events),
         }
     }
 
@@ -1620,6 +1665,31 @@ impl Game {
         });
     }
 
+    fn collect_coin(&mut self, entity: EntityId, events: &mut Vec<GameEvent>) {
+        let action = InputAction::CollectCoin { entity };
+        let Some(index) = self
+            .state
+            .board
+            .coins
+            .iter()
+            .position(|coin| coin.id == entity)
+        else {
+            events.push(GameEvent::InputRejected {
+                action,
+                reason: InputRejectReason::MissingEntity,
+            });
+            return;
+        };
+        let coin = self.state.board.coins.remove(index);
+        self.state.coins = self.state.coins.saturating_add(coin.value);
+        events.push(GameEvent::CoinCollected {
+            entity,
+            coin_type: coin.coin_type,
+            value: coin.value,
+            coin_total: self.state.coins,
+        });
+    }
+
     fn update_plants(&mut self, events: &mut Vec<GameEvent>) {
         let plant_count = self.state.board.plants.len();
         for index in 0..plant_count {
@@ -1701,6 +1771,7 @@ impl Game {
             let mut fire = false;
             let mut produce_suns = 0;
             let mut produce_value = 25;
+            let mut produce_coin = false;
             let mut special = false;
             let mut spikeweed_hit = false;
             let mut spikeweed_started = false;
@@ -1826,9 +1897,13 @@ impl Game {
                         plant.launch_counter = self
                             .rng
                             .range_inclusive(plant.launch_rate - 150, plant.launch_rate);
-                        produce_suns = if plant_type.is_twin_sunflower() { 2 } else { 1 };
-                        if plant_type.is_sunshroom() && plant.production_stage == 0 {
-                            produce_value = SMALL_SUN_VALUE;
+                        if plant_type.is_marigold() {
+                            produce_coin = true;
+                        } else {
+                            produce_suns = if plant_type.is_twin_sunflower() { 2 } else { 1 };
+                            if plant_type.is_sunshroom() && plant.production_stage == 0 {
+                                produce_value = SMALL_SUN_VALUE;
+                            }
                         }
                     } else if plant_type.is_shooter() {
                         plant.launch_counter = plant.launch_rate - self.rng.range(15);
@@ -1935,6 +2010,14 @@ impl Game {
                 let _vertical_motion = self.rng.next();
                 let _horizontal_motion = self.rng.next();
                 let _ground_offset = self.rng.range(20);
+            }
+            if produce_coin {
+                let coin_type = if self.rng.range(100) < 10 {
+                    CoinType::Gold
+                } else {
+                    CoinType::Silver
+                };
+                self.spawn_coin(coin_type, grid_x(column), grid_y(row), events);
             }
 
             let plant = &mut self.state.board.plants[index];
@@ -2956,6 +3039,29 @@ impl Game {
         events.push(GameEvent::SunProduced {
             entity: id,
             source,
+            value,
+        });
+    }
+
+    fn spawn_coin(
+        &mut self,
+        coin_type: CoinType,
+        position_x: i64,
+        position_y: i64,
+        events: &mut Vec<GameEvent>,
+    ) {
+        let id = self.state.board.allocate_entity();
+        let value = coin_type.value();
+        self.state.board.coins.push(CoinPickupState {
+            id,
+            coin_type,
+            value,
+            position_x,
+            position_y,
+        });
+        events.push(GameEvent::CoinProduced {
+            entity: id,
+            coin_type,
             value,
         });
     }
@@ -4918,6 +5024,47 @@ mod tests {
             game.state.board.zombies[0].health,
             starting_health - 2 * SPIKEWEED_DAMAGE
         );
+    }
+
+    #[test]
+    fn marigold_produces_and_collects_a_coin() {
+        let mut game = Game::new(7, SceneKind::Day);
+        game.advance(InputFrame {
+            actions: vec![
+                InputAction::SelectSeed { slot: 38 },
+                InputAction::Plant { row: 2, column: 2 },
+            ],
+        });
+        game.state.board.plants[0].launch_counter = 1;
+
+        let produced = game.advance(InputFrame::default());
+        let coin = game.state.board.coins[0].clone();
+        assert!(produced.iter().any(|event| matches!(
+            event,
+            GameEvent::CoinProduced {
+                entity,
+                coin_type: CoinType::Silver | CoinType::Gold,
+                value: 1 | 5,
+            } if *entity == coin.id
+        )));
+
+        let collected = game.advance(InputFrame {
+            actions: vec![InputAction::CollectCoin { entity: coin.id }],
+        });
+        assert!(collected.iter().any(|event| matches!(
+            event,
+            GameEvent::CoinCollected {
+                entity,
+                coin_type,
+                value,
+                coin_total,
+            } if *entity == coin.id
+                && *coin_type == coin.coin_type
+                && *value == coin.value
+                && *coin_total == coin.value
+        )));
+        assert_eq!(game.state.coins, coin.value);
+        assert!(game.state.board.coins.is_empty());
     }
 
     #[test]
