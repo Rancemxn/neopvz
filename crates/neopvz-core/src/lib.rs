@@ -2649,34 +2649,43 @@ impl Game {
                                         plant_type,
                                     });
                                 }
-                                for zombie_id in explode_targets {
-                                    if let Some(zombie_index) = self
+                                for zombie_id in &explode_targets {
+                                    // Apply damage without removing — the outer
+                                    // zombie loop uses a fixed range, and
+                                    // update_mowers retains dead zombies.
+                                    let Some(target_idx) = self
                                         .state
                                         .board
                                         .zombies
                                         .iter()
-                                        .position(|z| z.id == zombie_id)
-                                    {
-                                        self.state.board.zombies[zombie_index].health -=
-                                            PLANT_SPECIAL_DAMAGE;
-                                        let health_remaining =
-                                            self.state.board.zombies[zombie_index].health;
-                                        events.push(GameEvent::PlantSpecialHit {
-                                            plant: plant_id,
-                                            zombie: zombie_id,
-                                            damage: PLANT_SPECIAL_DAMAGE,
-                                            health_remaining,
-                                        });
-                                        if health_remaining <= 0 {
-                                            self.state.board.zombies.remove(zombie_index);
-                                            events
-                                                .push(GameEvent::ZombieDied { entity: zombie_id });
-                                        }
+                                        .position(|z| z.id == *zombie_id)
+                                    else {
+                                        continue;
+                                    };
+                                    self.state.board.zombies[target_idx].health -=
+                                        PLANT_SPECIAL_DAMAGE;
+                                    let health_remaining =
+                                        self.state.board.zombies[target_idx].health;
+                                    events.push(GameEvent::PlantSpecialHit {
+                                        plant: plant_id,
+                                        zombie: *zombie_id,
+                                        damage: PLANT_SPECIAL_DAMAGE,
+                                        health_remaining,
+                                    });
+                                    if health_remaining <= 0 {
+                                        self.state.board.zombies[target_idx].health = 0;
+                                        events.push(GameEvent::ZombieDied { entity: *zombie_id });
                                     }
                                 }
                             }
                             self.state.board.plants.remove(plant_index);
-                            self.state.board.zombies[zombie_index].eating = false;
+                            // Find the eating zombie by ID — the explosion may have
+                            // shifted indices or removed it entirely.
+                            if let Some(pos) =
+                                self.state.board.zombies.iter().position(|z| z.id == entity)
+                            {
+                                self.state.board.zombies[pos].eating = false;
+                            }
                             events.push(GameEvent::PlantDied { entity: plant_id });
                         }
                     }
