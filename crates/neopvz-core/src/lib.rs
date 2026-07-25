@@ -736,6 +736,7 @@ pub enum ZombieType {
     ScreenDoor,
     DuckyTube,
     Football,
+    Newspaper,
     PoleVaulter,
 }
 
