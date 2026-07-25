@@ -731,6 +731,8 @@ const PLANT_DEFINITIONS: [PlantDefinition; 53] = [
 pub enum ZombieType {
     Normal,
     Conehead,
+    Flag,
+    Buckethead,
 }
 
 #[derive(Clone, Copy, Debug, Deserialize, Eq, PartialEq, Serialize)]
@@ -3507,6 +3509,55 @@ impl Game {
         position_override: Option<i64>,
         events: &mut Vec<GameEvent>,
     ) -> EntityId {
+        self._spawn_zombie_inner(
+            ZombieType::Conehead,
+            640,
+            row,
+            wave,
+            position_override,
+            events,
+        )
+    }
+
+    #[allow(dead_code)]
+    fn spawn_flag_zombie(
+        &mut self,
+        row: u8,
+        wave: u32,
+        position_override: Option<i64>,
+        events: &mut Vec<GameEvent>,
+    ) -> EntityId {
+        self._spawn_zombie_inner(ZombieType::Flag, 270, row, wave, position_override, events)
+    }
+
+    #[allow(dead_code)]
+    fn spawn_buckethead_zombie(
+        &mut self,
+        row: u8,
+        wave: u32,
+        position_override: Option<i64>,
+        events: &mut Vec<GameEvent>,
+    ) -> EntityId {
+        self._spawn_zombie_inner(
+            ZombieType::Buckethead,
+            1370,
+            row,
+            wave,
+            position_override,
+            events,
+        )
+    }
+
+    #[allow(dead_code)]
+    fn _spawn_zombie_inner(
+        &mut self,
+        zombie_type: ZombieType,
+        health: i32,
+        row: u8,
+        wave: u32,
+        position_override: Option<i64>,
+        events: &mut Vec<GameEvent>,
+    ) -> EntityId {
         let id = self.state.board.allocate_entity();
         let position_x = position_override
             .unwrap_or_else(|| i64::from(780 + self.rng.range(40)) * POSITION_SCALE);
@@ -3514,12 +3565,12 @@ impl Game {
         let speed = self.rng.fixed_range(230_000, 320_000);
         self.state.board.zombies.push(ZombieState {
             id,
-            zombie_type: ZombieType::Conehead,
+            zombie_type,
             row,
             position_x,
             speed,
-            health: 640,
-            max_health: 640,
+            health,
+            max_health: health,
             age: 0,
             groan_counter,
             frozen_counter: 0,
@@ -3532,7 +3583,7 @@ impl Game {
         });
         events.push(GameEvent::ZombieSpawned {
             entity: id,
-            zombie_type: ZombieType::Conehead,
+            zombie_type,
             row,
             wave,
         });
@@ -5162,6 +5213,62 @@ mod tests {
                 .unwrap()
                 .zombie_type,
             ZombieType::Conehead
+        );
+    }
+
+    #[test]
+    fn flag_zombie_is_identical_to_normal_except_type() {
+        let mut game = Game::new(7, SceneKind::Day);
+        let mut setup = Vec::new();
+        let zombie = game.spawn_flag_zombie(2, 0, Some(500 * POSITION_SCALE), &mut setup);
+
+        assert_eq!(
+            game.state
+                .board
+                .zombies
+                .iter()
+                .find(|z| z.id == zombie)
+                .unwrap()
+                .health,
+            270
+        );
+        assert_eq!(
+            game.state
+                .board
+                .zombies
+                .iter()
+                .find(|z| z.id == zombie)
+                .unwrap()
+                .zombie_type,
+            ZombieType::Flag
+        );
+    }
+
+    #[test]
+    fn buckethead_zombie_has_1370_health() {
+        let mut game = Game::new(7, SceneKind::Day);
+        let mut setup = Vec::new();
+        let zombie = game.spawn_buckethead_zombie(2, 0, Some(500 * POSITION_SCALE), &mut setup);
+
+        assert_eq!(
+            game.state
+                .board
+                .zombies
+                .iter()
+                .find(|z| z.id == zombie)
+                .unwrap()
+                .health,
+            1370
+        );
+        assert_eq!(
+            game.state
+                .board
+                .zombies
+                .iter()
+                .find(|z| z.id == zombie)
+                .unwrap()
+                .zombie_type,
+            ZombieType::Buckethead
         );
     }
 
