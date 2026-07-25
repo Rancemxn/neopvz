@@ -733,6 +733,7 @@ pub enum ZombieType {
     Conehead,
     Flag,
     Buckethead,
+    ScreenDoor,
     PoleVaulter,
 }
 
@@ -3562,6 +3563,25 @@ impl Game {
     }
 
     #[allow(dead_code)]
+    #[allow(dead_code)]
+    fn spawn_screen_door_zombie(
+        &mut self,
+        row: u8,
+        wave: u32,
+        position_override: Option<i64>,
+        events: &mut Vec<GameEvent>,
+    ) -> EntityId {
+        self._spawn_zombie_inner(
+            ZombieType::ScreenDoor,
+            1370,
+            row,
+            wave,
+            position_override,
+            events,
+        )
+    }
+
+    #[allow(dead_code)]
     fn spawn_pole_vaulter_zombie(
         &mut self,
         row: u8,
@@ -5333,6 +5353,33 @@ mod tests {
         assert!(
             game.state.board.plants.iter().any(|p| p.id == sunflower_id),
             "plant survived vault"
+        );
+    }
+
+    #[test]
+    fn screen_door_zombie_has_1370_health_and_type() {
+        let mut game = Game::new(7, SceneKind::Day);
+        let mut setup = Vec::new();
+        let zombie = game.spawn_screen_door_zombie(2, 0, Some(500 * POSITION_SCALE), &mut setup);
+        assert_eq!(
+            game.state
+                .board
+                .zombies
+                .iter()
+                .find(|z| z.id == zombie)
+                .unwrap()
+                .health,
+            1370
+        );
+        assert_eq!(
+            game.state
+                .board
+                .zombies
+                .iter()
+                .find(|z| z.id == zombie)
+                .unwrap()
+                .zombie_type,
+            ZombieType::ScreenDoor
         );
     }
 
