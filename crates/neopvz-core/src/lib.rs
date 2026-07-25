@@ -49,6 +49,11 @@ const DOOM_CRATER_TICKS: u32 = 18_000;
 const ZOMBIE_BITE_DAMAGE: i32 = 4;
 const CHOMPER_BITE_WINDUP_TICKS: u32 = 70;
 const CHOMPER_CHEW_TICKS: u32 = 4_000;
+// Zombie_UpdateAteGarlic in 1.0.0.1051 consumes Garlic at 70, changes row at
+// 170, and clears its eating state at 270 updates.
+const GARLIC_EAT_TICKS: u32 = 70;
+const GARLIC_ROW_CHANGE_TICKS: u32 = 170;
+const GARLIC_RESET_TICKS: u32 = 270;
 // Plant_UpdateTanglekelp starts its grab state with a 100-tick countdown.
 const TANGLE_KELP_GRAB_TICKS: u32 = 100;
 // Plant_UpdateSpike / Plant_SpikesSetAnimAttack in 1.0.0.1051: attack
@@ -177,6 +182,10 @@ impl PlantType {
 
     fn is_tangle_kelp(self) -> bool {
         self.slot() == 19
+    }
+
+    fn is_garlic(self) -> bool {
+        self.slot() == 36
     }
 
     fn is_jalapeno(self) -> bool {
@@ -846,6 +855,8 @@ pub struct ZombieState {
     pub frozen_counter: u32,
     pub chilled_counter: u32,
     pub eating: bool,
+    pub garlic_counter: u32,
+    pub garlic_target: Option<EntityId>,
     pub from_wave: u32,
 }
 
@@ -1062,6 +1073,11 @@ pub enum GameEvent {
     },
     ZombieDied {
         entity: EntityId,
+    },
+    ZombieRowChanged {
+        entity: EntityId,
+        from: u8,
+        to: u8,
     },
     GameLost {
         zombie: EntityId,
@@ -2091,9 +2107,56 @@ impl Game {
         events.push(GameEvent::PlantDied { entity: plant_id });
     }
 
+    fn advance_garlic_state(&mut self, zombie_index: usize, events: &mut Vec<GameEvent>) -> bool {
+        let counter = self.state.board.zombies[zombie_index].garlic_counter;
+        if counter == 0 {
+            return false;
+        }
+
+        let next_counter = counter.saturating_add(1);
+        let zombie_id = self.state.board.zombies[zombie_index].id;
+        if next_counter == GARLIC_EAT_TICKS {
+            let garlic_id = self.state.board.zombies[zombie_index].garlic_target;
+            if let Some(plant_index) = self
+                .state
+                .board
+                .plants
+                .iter()
+                .position(|plant| Some(plant.id) == garlic_id)
+            {
+                let plant_id = self.state.board.plants.remove(plant_index).id;
+                events.push(GameEvent::PlantDied { entity: plant_id });
+            }
+        }
+        if next_counter == GARLIC_ROW_CHANGE_TICKS && self.state.board.rows > 1 {
+            let from = self.state.board.zombies[zombie_index].row;
+            let choice = self.rng.range(u32::from(self.state.board.rows - 1)) as u8;
+            let to = if choice >= from { choice + 1 } else { choice };
+            self.state.board.zombies[zombie_index].row = to;
+            events.push(GameEvent::ZombieRowChanged {
+                entity: zombie_id,
+                from,
+                to,
+            });
+        }
+        if next_counter >= GARLIC_RESET_TICKS {
+            let zombie = &mut self.state.board.zombies[zombie_index];
+            zombie.garlic_counter = 0;
+            zombie.garlic_target = None;
+            zombie.eating = false;
+            return false;
+        }
+
+        let zombie = &mut self.state.board.zombies[zombie_index];
+        zombie.garlic_counter = next_counter;
+        zombie.eating = true;
+        true
+    }
+
     fn update_zombies(&mut self, events: &mut Vec<GameEvent>) {
         let zombie_count = self.state.board.zombies.len() as u32;
         for zombie_index in 0..self.state.board.zombies.len() {
+            let garlic_active = self.advance_garlic_state(zombie_index, events);
             let (entity, row, position_x, age, was_eating, frozen) = {
                 let zombie = &mut self.state.board.zombies[zombie_index];
                 zombie.age = zombie.age.saturating_add(1);
@@ -2104,7 +2167,7 @@ impl Game {
                     zombie.groan_counter = (self.rng.range(1_000) + 500) as i32;
                 }
                 let frozen = zombie.frozen_counter != 0;
-                if !frozen && !zombie.eating {
+                if !frozen && !zombie.eating && !garlic_active {
                     let speed = if zombie.chilled_counter == 0 {
                         zombie.speed
                     } else {
@@ -2124,22 +2187,30 @@ impl Game {
 
             if frozen {
                 self.state.board.zombies[zombie_index].eating = false;
+            } else if garlic_active {
+                self.state.board.zombies[zombie_index].eating = true;
             } else if age % 4 == 0 {
                 let target = self.find_plant_for_zombie(row, position_x);
                 self.state.board.zombies[zombie_index].eating = target.is_some();
                 if let Some(plant_index) = target {
                     let plant_id = self.state.board.plants[plant_index].id;
-                    self.state.board.plants[plant_index].health -= ZOMBIE_BITE_DAMAGE;
-                    let health_remaining = self.state.board.plants[plant_index].health;
-                    events.push(GameEvent::PlantDamaged {
-                        entity: plant_id,
-                        damage: ZOMBIE_BITE_DAMAGE,
-                        health_remaining,
-                    });
-                    if health_remaining <= 0 {
-                        self.state.board.plants.remove(plant_index);
-                        self.state.board.zombies[zombie_index].eating = false;
-                        events.push(GameEvent::PlantDied { entity: plant_id });
+                    if self.state.board.plants[plant_index].plant_type.is_garlic() {
+                        self.state.board.zombies[zombie_index].eating = true;
+                        self.state.board.zombies[zombie_index].garlic_counter = 1;
+                        self.state.board.zombies[zombie_index].garlic_target = Some(plant_id);
+                    } else {
+                        self.state.board.plants[plant_index].health -= ZOMBIE_BITE_DAMAGE;
+                        let health_remaining = self.state.board.plants[plant_index].health;
+                        events.push(GameEvent::PlantDamaged {
+                            entity: plant_id,
+                            damage: ZOMBIE_BITE_DAMAGE,
+                            health_remaining,
+                        });
+                        if health_remaining <= 0 {
+                            self.state.board.plants.remove(plant_index);
+                            self.state.board.zombies[zombie_index].eating = false;
+                            events.push(GameEvent::PlantDied { entity: plant_id });
+                        }
                     }
                 } else if was_eating {
                     self.state.board.zombies[zombie_index].eating = false;
@@ -2804,6 +2875,8 @@ impl Game {
             frozen_counter: 0,
             chilled_counter: 0,
             eating: false,
+            garlic_counter: 0,
+            garlic_target: None,
             from_wave: wave,
         });
         events.push(GameEvent::ZombieSpawned {
@@ -4565,6 +4638,48 @@ mod tests {
         )));
         assert_eq!(roof.state.board.plants.len(), 1);
         assert_eq!(roof.state.board.plants[0].plant_type, PlantType::Other(33));
+    }
+
+    #[test]
+    fn garlic_consumes_itself_then_diverts_the_biting_zombie() {
+        let mut game = Game::new(7, SceneKind::Day);
+        game.state.sun = 500;
+        game.advance(InputFrame {
+            actions: vec![
+                InputAction::SelectSeed { slot: 36 },
+                InputAction::Plant { row: 2, column: 2 },
+            ],
+        });
+        let garlic = game.state.board.plants[0].id;
+        let mut setup_events = Vec::new();
+        let zombie = game.spawn_normal_zombie(
+            2,
+            0,
+            Some(grid_x(2) + 20 * POSITION_SCALE),
+            &mut setup_events,
+        );
+        game.state.board.zombies[0].speed = 0;
+        for _ in 0..8 {
+            game.advance(InputFrame::default());
+        }
+        assert!(game.state.board.zombies[0].garlic_counter > 0);
+
+        game.state.board.zombies[0].garlic_counter = GARLIC_EAT_TICKS - 1;
+        let eaten = game.advance(InputFrame::default());
+        assert!(eaten.iter().any(|event| matches!(
+            event,
+            GameEvent::PlantDied { entity } if *entity == garlic
+        )));
+        assert!(game.state.board.plants.is_empty());
+
+        game.state.board.zombies[0].garlic_counter = GARLIC_ROW_CHANGE_TICKS - 1;
+        let diverted = game.advance(InputFrame::default());
+        assert!(diverted.iter().any(|event| matches!(
+            event,
+            GameEvent::ZombieRowChanged { entity, from, to }
+                if *entity == zombie && from != to
+        )));
+        assert_ne!(game.state.board.zombies[0].row, 2);
     }
 
     #[test]
