@@ -730,6 +730,7 @@ const PLANT_DEFINITIONS: [PlantDefinition; 53] = [
 #[derive(Clone, Copy, Debug, Deserialize, Eq, PartialEq, Serialize)]
 pub enum ZombieType {
     Normal,
+    Conehead,
 }
 
 #[derive(Clone, Copy, Debug, Deserialize, Eq, PartialEq, Serialize)]
@@ -3497,6 +3498,46 @@ impl Game {
         });
         id
     }
+
+    #[allow(dead_code)]
+    fn spawn_conehead_zombie(
+        &mut self,
+        row: u8,
+        wave: u32,
+        position_override: Option<i64>,
+        events: &mut Vec<GameEvent>,
+    ) -> EntityId {
+        let id = self.state.board.allocate_entity();
+        let position_x = position_override
+            .unwrap_or_else(|| i64::from(780 + self.rng.range(40)) * POSITION_SCALE);
+        let groan_counter = self.rng.range_inclusive(300, 400) as i32;
+        let speed = self.rng.fixed_range(230_000, 320_000);
+        self.state.board.zombies.push(ZombieState {
+            id,
+            zombie_type: ZombieType::Conehead,
+            row,
+            position_x,
+            speed,
+            health: 640,
+            max_health: 640,
+            age: 0,
+            groan_counter,
+            frozen_counter: 0,
+            chilled_counter: 0,
+            eating: false,
+            garlic_counter: 0,
+            garlic_target: None,
+            from_wave: wave,
+            hypnotized: false,
+        });
+        events.push(GameEvent::ZombieSpawned {
+            entity: id,
+            zombie_type: ZombieType::Conehead,
+            row,
+            wave,
+        });
+        id
+    }
 }
 
 fn spikeweed_hits(zombie_x: i64, column: u8) -> bool {
@@ -5094,6 +5135,34 @@ mod tests {
             game.state.board.plants[0].max_health
         );
         assert!(!game.state.board.zombies[0].eating);
+    }
+
+    #[test]
+    fn conehead_zombie_has_640_health_and_blocks_bites_like_normal() {
+        let mut game = Game::new(7, SceneKind::Day);
+        let mut setup = Vec::new();
+        let zombie = game.spawn_conehead_zombie(2, 0, Some(500 * POSITION_SCALE), &mut setup);
+
+        assert_eq!(
+            game.state
+                .board
+                .zombies
+                .iter()
+                .find(|z| z.id == zombie)
+                .unwrap()
+                .health,
+            640
+        );
+        assert_eq!(
+            game.state
+                .board
+                .zombies
+                .iter()
+                .find(|z| z.id == zombie)
+                .unwrap()
+                .zombie_type,
+            ZombieType::Conehead
+        );
     }
 
     #[test]
