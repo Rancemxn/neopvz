@@ -13217,14 +13217,21 @@ mod tests {
                 InputAction::Plant { row: 2, column: 2 },
             ],
         });
+        let find_plant_sun = |game: &Game| {
+            game.state
+                .board
+                .suns
+                .iter()
+                .find(|sun| matches!(sun.source, SunSource::Plant(_)))
+                .cloned()
+        };
         for _ in 0..3_000 {
             game.advance(InputFrame::default());
-            if !game.state.board.suns.is_empty() {
+            if find_plant_sun(&game).is_some() {
                 break;
             }
         }
-        let sun = game.state.board.suns[0].clone();
-        assert!(sun.velocity_y < 0, "plant suns launch upward");
+        let sun = find_plant_sun(&game).expect("the sunflower produces a sun");
         assert!(
             (-3_400_000..=-1_700_000).contains(&sun.velocity_y),
             "launch speed sits in the source band, got {}",
@@ -13233,11 +13240,11 @@ mod tests {
         let target = sun.target_y.expect("plant suns carry a ground stop");
 
         let mut ticks = 0;
-        while game.state.board.suns[0].target_y.is_some() && ticks < 400 {
+        while find_plant_sun(&game).is_some_and(|s| s.target_y.is_some()) && ticks < 400 {
             game.advance(InputFrame::default());
             ticks += 1;
         }
-        let landed = &game.state.board.suns[0];
+        let landed = find_plant_sun(&game).unwrap();
         assert_eq!(landed.position_y, target);
         assert_eq!(landed.velocity_y, 0, "landing clears the arc velocities");
     }
