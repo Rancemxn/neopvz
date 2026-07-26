@@ -173,8 +173,9 @@ const VASE_JACKBOX_POP_TICKS: u32 = 120;
 const JACKBOX_PLANT_RADIUS: i64 = 90;
 // Zombie_Init in 1.0.0.1051 gives Newspaper the 270-HP body plus a 150-HP
 // paper shield (420 lumped); Zombie_ResetSpeed runs the mad phase at 0.89-0.91.
-const NEWSPAPER_HEALTH: i32 = 420;
+const NEWSPAPER_PAPER_HEALTH: i32 = 150;
 const NEWSPAPER_MAD_SPEED: i64 = 900_000;
+const SCREEN_DOOR_SHIELD_HEALTH: i32 = 1_100;
 // Zombie_ResetSpeed in 1.0.0.1051: PHASE_DIGGER_TUNNELING moves at 0.66-0.68;
 // the surfaced PHASE_DIGGER_WALKING re-pick is 0.12, or 0.23 on I, Zombie
 // levels.
@@ -3705,7 +3706,8 @@ impl Game {
             // I, Zombie imps use the source 70-HP override; everywhere else imps are 270.
             ZombieType::Imp => 70,
             ZombieType::Conehead => 640,
-            ZombieType::Buckethead | ZombieType::ScreenDoor => 1_370,
+            ZombieType::Buckethead => 1_370,
+            ZombieType::ScreenDoor => 270,
             ZombieType::Football => 1_670,
             ZombieType::Digger => 370,
             ZombieType::Bungee => 450,
@@ -5801,6 +5803,18 @@ impl Game {
         zombie.health -= remaining;
     }
 
+    /// Fume, gloom, and spike damage carry DAMAGE_BYPASSES_SHIELD: doors,
+    /// paper, and ladders are skipped, but the Bobsled sled is a helm in the
+    /// source and still absorbs first.
+    fn damage_zombie_bypassing_shield(&mut self, zombie_index: usize, damage: i32) {
+        if self.state.board.zombies[zombie_index].zombie_type == ZombieType::Bobsled {
+            self.damage_zombie(zombie_index, damage);
+            return;
+        }
+        let zombie = &mut self.state.board.zombies[zombie_index];
+        zombie.health -= damage.max(0);
+    }
+
     fn update_zombies(&mut self, events: &mut Vec<GameEvent>) {
         let zombie_count = self.state.board.zombies.len() as u32;
         for zombie_index in 0..self.state.board.zombies.len() {
@@ -5995,6 +6009,9 @@ impl Game {
                     zombie.dancer_counter = zombie.dancer_counter.saturating_sub(1);
                     if zombie.dancer_counter == 0 {
                         zombie.dancer_summoned = true;
+                        // Zombie_ResetSpeed re-picks the fixed 0.45 dance walk
+                        // once the entrance finishes.
+                        zombie.speed = 450_000;
                         true
                     } else {
                         false
@@ -6153,8 +6170,7 @@ impl Game {
                     } else if zombie.yeti_running {
                         YETI_RUNNING_SPEED
                     } else if zombie.zombie_type == ZombieType::Newspaper
-                        && zombie.health > 0
-                        && zombie.health <= 270
+                        && zombie.shield_health == 0
                     {
                         // Zombie_ResetSpeed gives PHASE_NEWSPAPER_MAD 0.89-0.91.
                         NEWSPAPER_MAD_SPEED
@@ -6898,7 +6914,7 @@ impl Game {
             else {
                 continue;
             };
-            self.damage_zombie(zombie_index, projectile.damage);
+            self.damage_zombie_bypassing_shield(zombie_index, projectile.damage);
             let health_remaining = self.state.board.zombies[zombie_index].health;
             events.push(GameEvent::ProjectileHit {
                 projectile: projectile.id,
@@ -6940,7 +6956,7 @@ impl Game {
             else {
                 continue;
             };
-            self.damage_zombie(zombie_index, projectile.damage);
+            self.damage_zombie_bypassing_shield(zombie_index, projectile.damage);
             let health_remaining = self.state.board.zombies[zombie_index].health;
             events.push(GameEvent::ProjectileHit {
                 projectile: projectile.id,
@@ -7123,7 +7139,7 @@ impl Game {
             } else {
                 SPIKEWEED_DAMAGE
             };
-            self.damage_zombie(zombie_index, damage);
+            self.damage_zombie_bypassing_shield(zombie_index, damage);
             let health_remaining = self.state.board.zombies[zombie_index].health;
             events.push(GameEvent::PlantSpecialHit {
                 plant: plant_id,
@@ -8041,7 +8057,7 @@ impl Game {
     ) -> EntityId {
         self._spawn_zombie_inner(
             ZombieType::ScreenDoor,
-            1370,
+            270,
             row,
             wave,
             position_override,
@@ -8156,8 +8172,9 @@ impl Game {
             position_override,
             events,
         );
+        let football_speed = self.rng.fixed_range(660_000, 680_000);
         if let Some(zombie) = self.state.board.zombies.iter_mut().find(|z| z.id == id) {
-            zombie.speed = 660_000;
+            zombie.speed = football_speed;
         }
         id
     }
@@ -8172,7 +8189,7 @@ impl Game {
     ) -> EntityId {
         self._spawn_zombie_inner(
             ZombieType::Newspaper,
-            NEWSPAPER_HEALTH,
+            270,
             row,
             wave,
             position_override,
@@ -8277,10 +8294,8 @@ impl Game {
                 continue;
             }
             let stealable = match zombie.zombie_type {
-                ZombieType::Buckethead | ZombieType::Football | ZombieType::ScreenDoor => {
-                    zombie.health > 270
-                }
-                ZombieType::Ladder => zombie.shield_health > 0,
+                ZombieType::Buckethead | ZombieType::Football => zombie.health > 270,
+                ZombieType::ScreenDoor | ZombieType::Ladder => zombie.shield_health > 0,
                 ZombieType::Jackbox => zombie.jackbox_timer > 0,
                 ZombieType::Pogo | ZombieType::Digger => zombie.special_phase == 0,
                 _ => false,
@@ -8308,10 +8323,10 @@ impl Game {
             let zombie = &mut self.state.board.zombies[zombie_index];
             let entity = zombie.id;
             match zombie.zombie_type {
-                ZombieType::Buckethead | ZombieType::Football | ZombieType::ScreenDoor => {
+                ZombieType::Buckethead | ZombieType::Football => {
                     zombie.health = zombie.health.min(270);
                 }
-                ZombieType::Ladder => {
+                ZombieType::ScreenDoor | ZombieType::Ladder => {
                     zombie.shield_health = 0;
                 }
                 ZombieType::Jackbox => {
@@ -8481,8 +8496,19 @@ impl Game {
             position_override,
             events,
         );
+        // Zombie_UpdateJack: the pop fires after (450 + Rand(300)) distance
+        // units at the limp-doubled travel time, ~1323-2272 ticks at 0.66-0.68.
+        let pop_distance = 450 + i64::from(self.rng.range(301));
+        let jack_speed = self
+            .state
+            .board
+            .zombies
+            .iter()
+            .find(|z| z.id == id)
+            .map(|z| z.speed.max(1))
+            .unwrap_or(660_000);
         if let Some(zombie) = self.state.board.zombies.iter_mut().find(|z| z.id == id) {
-            zombie.jackbox_timer = self.rng.range_inclusive(500, 1500);
+            zombie.jackbox_timer = (pop_distance * 2 * POSITION_SCALE / jack_speed) as u32;
         }
         id
     }
@@ -8521,7 +8547,8 @@ impl Game {
     ) {
         let health = match zombie_type {
             ZombieType::Conehead => 640,
-            ZombieType::Buckethead | ZombieType::ScreenDoor => 1_370,
+            ZombieType::Buckethead => 1_370,
+            ZombieType::ScreenDoor => 270,
             ZombieType::Football => 1_670,
             ZombieType::PoleVaulter | ZombieType::Pogo | ZombieType::Dancer => 500,
             ZombieType::Jackbox => JACKBOX_HEALTH,
@@ -8682,12 +8709,16 @@ impl Game {
             imp_flight_ticks: 0,
             shield_health: match zombie_type {
                 ZombieType::Ladder => LADDER_SHIELD_HEALTH,
+                ZombieType::ScreenDoor => SCREEN_DOOR_SHIELD_HEALTH,
+                ZombieType::Newspaper => NEWSPAPER_PAPER_HEALTH,
                 ZombieType::WallnutHead => ZOMBOTANY_WALLNUT_HELM_HEALTH,
                 ZombieType::TallnutHead => ZOMBOTANY_TALLNUT_HELM_HEALTH,
                 _ => 0,
             },
             shield_max_health: match zombie_type {
                 ZombieType::Ladder => LADDER_SHIELD_HEALTH,
+                ZombieType::ScreenDoor => SCREEN_DOOR_SHIELD_HEALTH,
+                ZombieType::Newspaper => NEWSPAPER_PAPER_HEALTH,
                 ZombieType::WallnutHead => ZOMBOTANY_WALLNUT_HELM_HEALTH,
                 ZombieType::TallnutHead => ZOMBOTANY_TALLNUT_HELM_HEALTH,
                 _ => 0,
@@ -8824,11 +8855,12 @@ fn balloon_is_airborne(zombie: &ZombieState) -> bool {
 }
 
 fn zamboni_speed(position_x: i64) -> i64 {
+    // Zombie_UpdateZomboni only recomputes mVelX while mPosX > 400, so the
+    // curve value at x=400 (0.10) holds for the rest of the drive.
+    let position_x = position_x.max(400 * POSITION_SCALE);
     let min_x = 300 * POSITION_SCALE;
     let max_x = 700 * POSITION_SCALE;
-    if position_x <= min_x {
-        50_000
-    } else if position_x >= max_x {
+    if position_x >= max_x {
         250_000
     } else {
         50_000 + (position_x - min_x) * 200_000 / (max_x - min_x)
@@ -10530,30 +10562,67 @@ mod tests {
     }
 
     #[test]
-    fn screen_door_zombie_has_1370_health_and_type() {
+    fn screen_door_zombie_has_a_1100_shield_over_its_270_body() {
         let mut game = Game::new(7, SceneKind::Day);
         let mut setup = Vec::new();
         let zombie = game.spawn_screen_door_zombie(2, 0, Some(500 * POSITION_SCALE), &mut setup);
+        let state = game
+            .state
+            .board
+            .zombies
+            .iter()
+            .find(|z| z.id == zombie)
+            .unwrap();
+        assert_eq!(state.health, 270);
+        assert_eq!(state.shield_health, SCREEN_DOOR_SHIELD_HEALTH);
+        assert_eq!(state.zombie_type, ZombieType::ScreenDoor);
+    }
+
+    #[test]
+    fn fume_damage_bypasses_the_screen_door_shield() {
+        let mut game = Game::new(7, SceneKind::Night);
+        game.state.sun = 1_000;
+        game.advance(InputFrame {
+            actions: vec![
+                InputAction::SelectSeed { slot: 10 },
+                InputAction::Plant { row: 2, column: 2 },
+            ],
+        });
+        let mut setup = Vec::new();
+        let zombie =
+            game.spawn_screen_door_zombie(2, 0, Some(grid_x(2) + 100 * POSITION_SCALE), &mut setup);
+        game.state
+            .board
+            .zombies
+            .iter_mut()
+            .for_each(|z| z.speed = 0);
+
+        let mut hit = false;
+        for _ in 0..200 {
+            let events = game.advance(InputFrame::default());
+            if events.iter().any(|event| {
+                matches!(
+                    event,
+                    GameEvent::ProjectileHit { zombie: z, .. } if *z == zombie
+                )
+            }) {
+                hit = true;
+                break;
+            }
+        }
+        assert!(hit, "the fume-shroom reaches the door zombie");
+        let state = game
+            .state
+            .board
+            .zombies
+            .iter()
+            .find(|z| z.id == zombie)
+            .unwrap();
         assert_eq!(
-            game.state
-                .board
-                .zombies
-                .iter()
-                .find(|z| z.id == zombie)
-                .unwrap()
-                .health,
-            1370
+            state.shield_health, SCREEN_DOOR_SHIELD_HEALTH,
+            "fumes pass through the door"
         );
-        assert_eq!(
-            game.state
-                .board
-                .zombies
-                .iter()
-                .find(|z| z.id == zombie)
-                .unwrap()
-                .zombie_type,
-            ZombieType::ScreenDoor
-        );
+        assert!(state.health < 270, "the body takes the fume damage instead");
     }
 
     #[test]
@@ -10836,7 +10905,9 @@ mod tests {
             .unwrap();
         assert_eq!(zamboni_state.health, ZAMBONI_HEALTH);
         assert_eq!(zamboni_state.speed, zamboni_speed(zamboni_state.position_x));
-        assert_eq!(zamboni_state.speed, 50_000);
+        // The source stops recomputing mVelX below x=400: the 0.10 curve
+        // value at x=400 holds instead of tapering to 0.05.
+        assert_eq!(zamboni_state.speed, 100_000);
 
         game.state
             .board
@@ -11321,15 +11392,17 @@ mod tests {
                 .zombie_type,
             ZombieType::Football
         );
-        assert_eq!(
-            game.state
-                .board
-                .zombies
-                .iter()
-                .find(|z| z.id == zombie)
-                .unwrap()
-                .speed,
-            660_000
+        let football_speed = game
+            .state
+            .board
+            .zombies
+            .iter()
+            .find(|z| z.id == zombie)
+            .unwrap()
+            .speed;
+        assert!(
+            (660_000..=680_000).contains(&football_speed),
+            "Zombie_ResetSpeed gives Football the 0.66-0.68 band, got {football_speed}"
         );
     }
 
@@ -11339,32 +11412,24 @@ mod tests {
         let mut setup = Vec::new();
         let zombie = game.spawn_newspaper_zombie(2, 0, Some(500 * POSITION_SCALE), &mut setup);
 
-        // Zombie_Init: 270 body plus the 150-HP paper shield, 420 lumped.
-        assert_eq!(
-            game.state
+        // Zombie_Init: 270 body plus the 150-HP paper shield.
+        {
+            let state = game
+                .state
                 .board
                 .zombies
                 .iter()
                 .find(|z| z.id == zombie)
-                .unwrap()
-                .health,
-            NEWSPAPER_HEALTH
-        );
-        assert_eq!(
-            game.state
-                .board
-                .zombies
-                .iter()
-                .find(|z| z.id == zombie)
-                .unwrap()
-                .zombie_type,
-            ZombieType::Newspaper
-        );
+                .unwrap();
+            assert_eq!(state.health, 270);
+            assert_eq!(state.shield_health, NEWSPAPER_PAPER_HEALTH);
+            assert_eq!(state.zombie_type, ZombieType::Newspaper);
+        }
 
-        // Damage the zombie to below 270 HP (breaking the newspaper).
+        // Destroy the paper shield to trigger the mad phase.
         game.state.board.zombies.iter_mut().for_each(|z| {
             if z.id == zombie {
-                z.health = 260;
+                z.shield_health = 0;
             }
         });
         let pos_before = game
