@@ -166,6 +166,17 @@ const LADDER_SHIELD_HEALTH: i32 = 500;
 const BOSS_ADVENTURE_HEALTH: i32 = 40_000;
 const BOSS_CHALLENGE_HEALTH: i32 = 60_000;
 const BOSS_ATTACK_TICKS: u32 = 500;
+/// Zombie.cpp:9765 boss init and :9980 BossHeadAttack re-arm, plus the
+/// 500-tick head idle before the spit (Zombie.cpp:10401).
+const BOSS_HEAD_COUNTER_INITIAL: u32 = 5_000;
+const BOSS_HEAD_SPIT_DELAY: u32 = 500;
+/// Zombie.cpp:10118 BossHeadSpitContact and :10150 UpdateBossFireball.
+const BOSS_BALL_START_X: i64 = 455 * POSITION_SCALE;
+const BOSS_BALL_END_X: i64 = -180 * POSITION_SCALE;
+const BOSS_BALL_MOWER_REACH: i64 = 50 * POSITION_SCALE;
+/// The source speed rides the BOSS_FIREBALL reanim ground track; modeled
+/// at half a pixel per tick pending capture evidence.
+const BOSS_BALL_SPEED: i64 = POSITION_SCALE / 2;
 const ZOMBOTANY_HEAD_RELOAD_TICKS: u32 = 150;
 const ZOMBOTANY_WALLNUT_HELM_HEALTH: i32 = 1_100;
 const ZOMBOTANY_TALLNUT_HELM_HEALTH: i32 = 2_200;
@@ -2168,6 +2179,16 @@ pub struct ZombieState {
     #[serde(default)]
     pub imp_flight_ticks: u32,
     #[serde(default)]
+    pub boss_head_counter: u32,
+    #[serde(default)]
+    pub boss_ball_active: bool,
+    #[serde(default)]
+    pub boss_ball_fire: bool,
+    #[serde(default)]
+    pub boss_ball_row: u8,
+    #[serde(default)]
+    pub boss_ball_x: i64,
+    #[serde(default)]
     pub shield_health: i32,
     #[serde(default)]
     pub shield_max_health: i32,
@@ -2993,6 +3014,15 @@ pub enum GameEvent {
     ZombieShieldLost {
         entity: EntityId,
     },
+    BossAttackWindup {
+        entity: EntityId,
+        row: u8,
+        fire: bool,
+    },
+    BossProjectileDestroyed {
+        entity: EntityId,
+        fire: bool,
+    },
     PortalOpened {
         row: u8,
         column: u8,
@@ -3362,7 +3392,9 @@ impl Game {
                 self.update_mowers(&mut events);
                 self.update_projectiles(&mut events);
                 self.update_seed_packets();
-                if self.state.mode != ModeKind::IZombie {
+                // Board.cpp:1416: the sky-sun clock is only armed when the
+                // stage is not a night stage.
+                if self.state.mode != ModeKind::IZombie && !scene_is_night(self.state.scene) {
                     self.update_sun_spawning(&mut events);
                 }
                 self.update_wave_spawning(&mut events);
@@ -4705,8 +4737,7 @@ impl Game {
             self.rng.range_inclusive(0, launch_rate)
         };
         let max_health = effective_type.max_health();
-        let asleep = effective_type.is_nocturnal()
-            && !matches!(self.state.scene, SceneKind::Night | SceneKind::Fog);
+        let asleep = effective_type.is_nocturnal() && !scene_is_night(self.state.scene);
         let (special_counter, special_armed) = if imitater_type.is_some() {
             (IMITATER_MORPH_TICKS, false)
         } else if effective_type.is_instant_coffee() {
@@ -4773,8 +4804,7 @@ impl Game {
         } else {
             self.rng.range_inclusive(0, launch_rate)
         };
-        let asleep =
-            target.is_nocturnal() && !matches!(self.state.scene, SceneKind::Night | SceneKind::Fog);
+        let asleep = target.is_nocturnal() && !scene_is_night(self.state.scene);
         let (special_counter, special_armed) = if target.is_cob_cannon() {
             (COB_ARM_TICKS, false)
         } else if target.is_instant_coffee() {
@@ -5585,6 +5615,7 @@ impl Game {
 
         if plant_type.is_ice_shroom() {
             self.state.board.ice_counter = BOARD_ICE_TICKS;
+            self.destroy_boss_ball(true, None, events);
             let target_ids = self
                 .state
                 .board
@@ -5673,6 +5704,7 @@ impl Game {
             {
                 self.state.board.ice_timer[row_index] = JALAPENO_ICE_MELT_TICKS;
             }
+            self.destroy_boss_ball(false, Some(row), events);
         }
         let center_x = grid_x(column);
         let target_ids = self
@@ -6133,6 +6165,7 @@ impl Game {
     }
 
     fn update_boss_state(&mut self, zombie_index: usize, events: &mut Vec<GameEvent>) {
+        self.update_boss_head(zombie_index, events);
         let should_stomp = {
             let zombie = &mut self.state.board.zombies[zombie_index];
             zombie.special_counter = zombie.special_counter.saturating_sub(1);
@@ -6170,6 +6203,99 @@ impl Game {
             }
         }
         self.state.board.zombies[zombie_index].special_counter = BOSS_ATTACK_TICKS;
+    }
+
+    /// Zombie.cpp:9977-10202: the boss head cycle spits a fire or ice ball
+    /// down a random row; the ball drives over plants in its cell, squishes
+    /// mowers it passes, and leaves the lawn at x < -180.
+    fn update_boss_head(&mut self, zombie_index: usize, events: &mut Vec<GameEvent>) {
+        let (ball_active, ball_row, ball_x) = {
+            let zombie = &self.state.board.zombies[zombie_index];
+            (
+                zombie.boss_ball_active,
+                zombie.boss_ball_row,
+                zombie.boss_ball_x,
+            )
+        };
+        if ball_active {
+            let ball_x = ball_x - BOSS_BALL_SPEED;
+            if ball_x < BOSS_BALL_END_X {
+                self.state.board.zombies[zombie_index].boss_ball_active = false;
+            } else {
+                self.state.board.zombies[zombie_index].boss_ball_x = ball_x;
+                // Zombie.cpp:10156: drive-over squish at the ball center +75.
+                let column = ((ball_x + 75 * POSITION_SCALE - 40 * POSITION_SCALE)
+                    / (80 * POSITION_SCALE))
+                    .clamp(0, i64::from(self.state.board.columns.saturating_sub(1)))
+                    as u8;
+                let plant_ids = self
+                    .state
+                    .board
+                    .plants
+                    .iter()
+                    .filter(|plant| {
+                        plant.health > 0 && plant.row == ball_row && plant.column == column
+                    })
+                    .map(|plant| plant.id)
+                    .collect::<Vec<_>>();
+                for plant_id in plant_ids {
+                    if let Some(plant) = self
+                        .state
+                        .board
+                        .plants
+                        .iter_mut()
+                        .find(|plant| plant.id == plant_id)
+                    {
+                        plant.health = 0;
+                        events.push(GameEvent::PlantDied { entity: plant_id });
+                    }
+                }
+                // Zombie.cpp:10158-10166: the ball squishes mowers it passes
+                // instead of triggering them.
+                self.state.board.mowers.retain(|mower| {
+                    !(mower.row == ball_row
+                        && mower.position_x > ball_x
+                        && mower.position_x < ball_x + BOSS_BALL_MOWER_REACH)
+                });
+            }
+        }
+        let counter = self.state.board.zombies[zombie_index].boss_head_counter;
+        if counter > 1 {
+            self.state.board.zombies[zombie_index].boss_head_counter = counter - 1;
+        } else if counter == 1 {
+            // BossHeadSpit (Zombie.cpp:9987-10002): row 0-4, 50/50 fire.
+            let row = self.rng.range(u32::from(DAY_ROWS)) as u8;
+            let fire = self.rng.range(2) == 0;
+            let next = BOSS_HEAD_SPIT_DELAY + self.rng.range_inclusive(4_000, 5_000);
+            let entity = {
+                let zombie = &mut self.state.board.zombies[zombie_index];
+                zombie.boss_head_counter = next;
+                zombie.boss_ball_active = true;
+                zombie.boss_ball_fire = fire;
+                zombie.boss_ball_row = row;
+                zombie.boss_ball_x = BOSS_BALL_START_X;
+                zombie.id
+            };
+            events.push(GameEvent::BossAttackWindup { entity, row, fire });
+        }
+    }
+
+    /// Plant.cpp:4261-4265 (Ice-shroom kills the fire ball) and
+    /// Zombie.cpp:2345-2349 (a row burn kills the ice ball in its row).
+    fn destroy_boss_ball(&mut self, fire: bool, row: Option<u8>, events: &mut Vec<GameEvent>) {
+        for zombie in &mut self.state.board.zombies {
+            if zombie.zombie_type == ZombieType::Boss
+                && zombie.boss_ball_active
+                && zombie.boss_ball_fire == fire
+                && (row.is_none() || row == Some(zombie.boss_ball_row))
+            {
+                zombie.boss_ball_active = false;
+                events.push(GameEvent::BossProjectileDestroyed {
+                    entity: zombie.id,
+                    fire,
+                });
+            }
+        }
     }
 
     fn update_jalapeno_head(&mut self, zombie_index: usize, events: &mut Vec<GameEvent>) -> bool {
@@ -9763,6 +9889,15 @@ impl Game {
             bungee_held: false,
             imp_thrown: false,
             imp_flight_ticks: 0,
+            boss_head_counter: if zombie_type == ZombieType::Boss {
+                BOSS_HEAD_COUNTER_INITIAL + BOSS_HEAD_SPIT_DELAY
+            } else {
+                0
+            },
+            boss_ball_active: false,
+            boss_ball_fire: false,
+            boss_ball_row: 0,
+            boss_ball_x: 0,
             shield_health: match zombie_type {
                 ZombieType::Ladder => LADDER_SHIELD_HEALTH,
                 ZombieType::ScreenDoor => SCREEN_DOOR_SHIELD_HEALTH,
@@ -9817,6 +9952,12 @@ fn spikeweed_hits(zombie_x: i64, column: u8) -> bool {
 
 fn grid_x(column: u8) -> i64 {
     i64::from(column) * 80 * POSITION_SCALE + 40 * POSITION_SCALE
+}
+
+/// Board::StageIsNight (Board.cpp:8849-8857): the boss roof plays at night
+/// alongside the night and fog lawns.
+fn scene_is_night(scene: SceneKind) -> bool {
+    matches!(scene, SceneKind::Night | SceneKind::Fog | SceneKind::Boss)
 }
 
 fn is_ladder_target(plant_type: PlantType) -> bool {
@@ -13045,6 +13186,127 @@ mod tests {
                 "drops land on columns 4-8"
             );
         }
+    }
+
+    #[test]
+    fn boss_head_spits_a_rolling_ball_on_schedule() {
+        let mut game = Game::new_mode(3, ModeKind::MiniGame, 19);
+        let boss_index = game
+            .state
+            .board
+            .zombies
+            .iter()
+            .position(|zombie| zombie.zombie_type == ZombieType::Boss)
+            .expect("final boss spawns with the level");
+        assert_eq!(
+            game.state.board.zombies[boss_index].boss_head_counter,
+            BOSS_HEAD_COUNTER_INITIAL + BOSS_HEAD_SPIT_DELAY
+        );
+        game.state.board.zombies[boss_index].boss_head_counter = 1;
+        let events = game.advance(InputFrame::default());
+        let (row, fire) = events
+            .iter()
+            .find_map(|event| match event {
+                GameEvent::BossAttackWindup { row, fire, .. } => Some((*row, *fire)),
+                _ => None,
+            })
+            .expect("head spit emits a windup");
+        let boss = &game.state.board.zombies[boss_index];
+        assert!(boss.boss_ball_active);
+        assert_eq!(boss.boss_ball_row, row);
+        assert_eq!(boss.boss_ball_fire, fire);
+        assert!(row < DAY_ROWS);
+        assert_eq!(boss.boss_ball_x, BOSS_BALL_START_X);
+        game.advance(InputFrame::default());
+        assert!(game.state.board.zombies[boss_index].boss_ball_x < BOSS_BALL_START_X);
+
+        // The ball squishes a mower it passes without firing it (the boss
+        // level itself has none, so seed one).
+        game.state.board.mowers.push(MowerState {
+            row: 0,
+            position_x: -80 * POSITION_SCALE,
+            active: false,
+            spent: false,
+        });
+        {
+            let boss = &mut game.state.board.zombies[boss_index];
+            boss.boss_ball_row = 0;
+            boss.boss_ball_x = -85 * POSITION_SCALE;
+        }
+        game.advance(InputFrame::default());
+        assert!(game.state.board.mowers.is_empty());
+
+        // Off the lawn at x < -180 the ball ends.
+        {
+            let boss = &mut game.state.board.zombies[boss_index];
+            boss.boss_ball_x = BOSS_BALL_END_X;
+        }
+        game.advance(InputFrame::default());
+        assert!(!game.state.board.zombies[boss_index].boss_ball_active);
+    }
+
+    #[test]
+    fn opposite_elements_destroy_the_boss_ball() {
+        // FinalBoss conveyor: cabbage, jalapeno, cabbage, ice-shroom.
+        let mut game = Game::new_mode(3, ModeKind::MiniGame, 19);
+        {
+            let boss = game
+                .state
+                .board
+                .zombies
+                .iter_mut()
+                .find(|zombie| zombie.zombie_type == ZombieType::Boss)
+                .expect("boss");
+            boss.boss_ball_active = true;
+            boss.boss_ball_fire = false;
+            boss.boss_ball_row = 2;
+            boss.boss_ball_x = BOSS_BALL_START_X;
+        }
+        game.state.sun = 500;
+        let mut events = game.advance(InputFrame {
+            actions: vec![
+                InputAction::SelectSeed { slot: 1 },
+                InputAction::Plant { row: 2, column: 0 },
+            ],
+        });
+        for _ in 0..=INSTANT_PLANT_COUNTDOWN {
+            events.extend(game.advance(InputFrame::default()));
+        }
+        assert!(events.iter().any(|event| matches!(
+            event,
+            GameEvent::BossProjectileDestroyed { fire: false, .. }
+        )));
+
+        let mut game = Game::new_mode(3, ModeKind::MiniGame, 19);
+        {
+            let boss = game
+                .state
+                .board
+                .zombies
+                .iter_mut()
+                .find(|zombie| zombie.zombie_type == ZombieType::Boss)
+                .expect("boss");
+            boss.boss_ball_active = true;
+            boss.boss_ball_fire = true;
+            boss.boss_ball_row = 4;
+            boss.boss_ball_x = BOSS_BALL_START_X;
+        }
+        game.state.sun = 500;
+        let mut events = game.advance(InputFrame {
+            actions: vec![
+                InputAction::SelectSeed { slot: 3 },
+                InputAction::Plant { row: 0, column: 0 },
+            ],
+        });
+        for _ in 0..=INSTANT_PLANT_COUNTDOWN {
+            events.extend(game.advance(InputFrame::default()));
+        }
+        assert!(
+            events.iter().any(|event| matches!(
+                event,
+                GameEvent::BossProjectileDestroyed { fire: true, .. }
+            ))
+        );
     }
 
     #[test]
