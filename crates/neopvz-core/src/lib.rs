@@ -959,6 +959,18 @@ pub fn adventure_grave_count(level: u8) -> u8 {
     }
 }
 
+/// Board.cpp:1021-1035: first-time adventure 1-1 sods only row 2 and
+/// 1-2/1-3 rows 1-3; dirt rows reject planting (Board.cpp:1078), never
+/// host zombies (RowCanHaveZombies, Board.cpp:5951), and get no mower
+/// (Board.cpp:1652-1655).
+pub fn adventure_row_is_sodded(level: u8, row: u8) -> bool {
+    match level {
+        1 => row == 2,
+        2 | 3 => (1..=3).contains(&row),
+        _ => true,
+    }
+}
+
 /// Board::HasConveyorBeltSeedBank for adventure levels.
 pub fn adventure_level_is_conveyor(level: u8) -> bool {
     matches!(level, 5 | 10 | 20 | 25 | 30 | 40 | 45 | 50)
@@ -2353,6 +2365,7 @@ impl BoardState {
             SceneKind::Day | SceneKind::Night | SceneKind::Pool | SceneKind::Fog | SceneKind::Roof
         ) {
             (0..rows)
+                .filter(|&row| mode != ModeKind::Adventure || adventure_row_is_sodded(level, row))
                 .map(|row| MowerState {
                     row,
                     position_x: -80 * POSITION_SCALE,
@@ -4511,6 +4524,14 @@ impl Game {
             events.push(GameEvent::InputRejected {
                 action,
                 reason: InputRejectReason::OutsideBoard,
+            });
+            return;
+        }
+        if self.state.mode == ModeKind::Adventure && !adventure_row_is_sodded(self.state.level, row)
+        {
+            events.push(GameEvent::InputRejected {
+                action,
+                reason: InputRejectReason::InvalidTerrain,
             });
             return;
         }
@@ -9285,6 +9306,10 @@ impl Game {
     }
 
     fn row_can_have_zombie_type(&self, row: u8, zombie_type: ZombieType, wave: u32) -> bool {
+        if self.state.mode == ModeKind::Adventure && !adventure_row_is_sodded(self.state.level, row)
+        {
+            return false;
+        }
         if zombie_type == ZombieType::Bobsled
             && self
                 .state
@@ -9314,7 +9339,9 @@ impl Game {
                 return row;
             }
         }
-        0
+        (0..self.state.board.rows)
+            .find(|&row| self.row_can_have_zombie_type(row, zombie_type, wave))
+            .unwrap_or(0)
     }
 
     /// Board::PickZombieWaves for adventure: per-wave points budget, flag
@@ -13066,6 +13093,62 @@ mod tests {
         assert!(events.contains(&GameEvent::GameWon));
         // The wave clock stays parked the whole time.
         assert_eq!(game.state.board.wave.current, 0);
+    }
+
+    #[test]
+    fn adventure_first_run_sod_rows_gate_the_lawn() {
+        // 1-1: only row 2 is sodded (Board.cpp:1021-1029).
+        let mut game = Game::new_mode(7, ModeKind::Adventure, 1);
+        game.state.sun = 500;
+        assert_eq!(
+            game.state
+                .board
+                .mowers
+                .iter()
+                .map(|mower| mower.row)
+                .collect::<Vec<_>>(),
+            vec![2]
+        );
+        let events = game.advance(InputFrame {
+            actions: vec![
+                InputAction::SelectSeed { slot: 0 },
+                InputAction::Plant { row: 0, column: 1 },
+            ],
+        });
+        assert!(events.iter().any(|event| matches!(
+            event,
+            GameEvent::InputRejected {
+                reason: InputRejectReason::InvalidTerrain,
+                ..
+            }
+        )));
+        assert!(game.state.board.plants.is_empty());
+        let events = game.advance(InputFrame {
+            actions: vec![
+                InputAction::SelectSeed { slot: 0 },
+                InputAction::Plant { row: 2, column: 1 },
+            ],
+        });
+        assert!(
+            events
+                .iter()
+                .any(|event| matches!(event, GameEvent::PlantPlaced { .. }))
+        );
+        assert!(!game.row_can_have_zombie_type(0, ZombieType::Normal, 6));
+        assert!(game.row_can_have_zombie_type(2, ZombieType::Normal, 6));
+
+        // 1-2/1-3: rows 1-3 (Board.cpp:1030-1034).
+        let game = Game::new_mode(7, ModeKind::Adventure, 2);
+        assert_eq!(
+            game.state
+                .board
+                .mowers
+                .iter()
+                .map(|mower| mower.row)
+                .collect::<Vec<_>>(),
+            vec![1, 2, 3]
+        );
+        assert!(!game.row_can_have_zombie_type(4, ZombieType::Normal, 6));
     }
 
     #[test]
