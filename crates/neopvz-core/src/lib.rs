@@ -116,6 +116,8 @@ const THROWN_ZOMBIE_GRAVITY: i64 = POSITION_SCALE / 20;
 // Board::UpdateZombieSpawning: waves after the first arm at 2500 + Rand(600).
 // Zombie::ApplyButter 0x5326D0 immobilizes for 400 ticks.
 const BUTTER_TICKS: u32 = 400;
+// Coin.cpp:293-294 COIN_MOTION_FROM_SKY: sky suns fall at 0.67 per tick.
+const SUN_FALL_SPEED: i64 = 670_000;
 const ZOMBIE_NEXT_WAVE_COUNTDOWN: u32 = 2_500;
 const ZOMBIE_NEXT_WAVE_RANGE: u32 = 600;
 const ICE_START_X: i64 = 800 * POSITION_SCALE;
@@ -2198,6 +2200,8 @@ pub struct SunPickupState {
     pub value: u32,
     pub position_x: i64,
     pub position_y: i64,
+    #[serde(default)]
+    pub target_y: Option<i64>,
 }
 
 #[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
@@ -3279,6 +3283,7 @@ impl Game {
                 self.state.board.ice_counter = self.state.board.ice_counter.saturating_sub(1);
                 self.update_craters();
                 self.update_ice();
+                self.update_suns();
                 self.update_sky_drop(&mut events);
                 self.state.tick = self.state.tick.saturating_add(1);
                 self.state.wave = self.state.board.wave.current;
@@ -7548,7 +7553,24 @@ impl Game {
             + self.rng.range(SUN_COUNTDOWN_RANGE);
         let position_x = i64::from(self.rng.range_inclusive(100, 649)) * POSITION_SCALE;
         self.spawn_sun(SunSource::Sky, position_x, 60 * POSITION_SCALE, events);
-        let _ground_y = self.rng.range(250);
+        let ground_y = self.rng.range(250);
+        if let Some(sun) = self.state.board.suns.last_mut() {
+            // COIN_MOTION_FROM_SKY: the sun drifts down at 0.67 per tick to a
+            // ground stop in the randomized band.
+            sun.target_y = Some((300 + i64::from(ground_y)) * POSITION_SCALE);
+        }
+    }
+
+    fn update_suns(&mut self) {
+        for sun in &mut self.state.board.suns {
+            if let Some(target_y) = sun.target_y {
+                sun.position_y += SUN_FALL_SPEED;
+                if sun.position_y >= target_y {
+                    sun.position_y = target_y;
+                    sun.target_y = None;
+                }
+            }
+        }
     }
 
     fn update_wave_spawning(&mut self, events: &mut Vec<GameEvent>) {
@@ -8285,6 +8307,7 @@ impl Game {
             value,
             position_x,
             position_y,
+            target_y: None,
         });
         events.push(GameEvent::SunProduced {
             entity: id,
@@ -13154,6 +13177,31 @@ mod tests {
         assert_eq!(Game::new_mode(7, ModeKind::Adventure, 2).state().sun, 50);
         assert_eq!(Game::new_mode(7, ModeKind::Adventure, 15).state().sun, 0);
         assert_eq!(Game::new_mode(7, ModeKind::Adventure, 35).state().sun, 0);
+    }
+
+    #[test]
+    fn sky_suns_fall_to_their_ground_stop() {
+        let mut game = Game::new(7, SceneKind::Day);
+        for _ in 0..1_000 {
+            game.advance(InputFrame::default());
+            if !game.state.board.suns.is_empty() {
+                break;
+            }
+        }
+        let sun = game.state.board.suns[0].clone();
+        assert_eq!(sun.position_y, 60 * POSITION_SCALE + SUN_FALL_SPEED);
+        let target = sun.target_y.expect("sky suns carry a ground stop");
+        assert!((300..=549).contains(&(target / POSITION_SCALE)));
+
+        let mut ticks = 0;
+        while game.state.board.suns[0].target_y.is_some() && ticks < 1_200 {
+            game.advance(InputFrame::default());
+            ticks += 1;
+        }
+        assert_eq!(
+            game.state.board.suns[0].position_y, target,
+            "the sun stops exactly at its ground y"
+        );
     }
 
     #[test]
