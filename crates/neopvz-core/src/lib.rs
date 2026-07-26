@@ -1777,6 +1777,8 @@ pub struct ZombieState {
     #[serde(default)]
     pub blowing_away: bool,
     #[serde(default)]
+    pub departed: bool,
+    #[serde(default)]
     pub shield_health: i32,
     #[serde(default)]
     pub shield_max_health: i32,
@@ -5612,6 +5614,9 @@ impl Game {
     fn update_zombies(&mut self, events: &mut Vec<GameEvent>) {
         let zombie_count = self.state.board.zombies.len() as u32;
         for zombie_index in 0..self.state.board.zombies.len() {
+            if self.state.board.zombies[zombie_index].departed {
+                continue;
+            }
             if self.state.board.zombies[zombie_index].health <= 0 {
                 // Jack-in-the-Box: explode when killed by external damage.
                 if self.state.board.zombies[zombie_index].zombie_type == ZombieType::Jackbox
@@ -5646,7 +5651,7 @@ impl Game {
                 self.state.board.zombies[zombie_index].position_x += BLOWN_AWAY_SPEED;
                 if self.state.board.zombies[zombie_index].position_x > BLOWN_AWAY_EDGE {
                     self.emit_zombie_died(entity, events);
-                    self.state.board.zombies.remove(zombie_index);
+                    self.state.board.zombies[zombie_index].departed = true;
                 }
                 continue;
             }
@@ -6111,7 +6116,8 @@ impl Game {
                 .get(zombie_index)
                 .is_some_and(|zombie| zombie.yeti_running && zombie.position_x > YETI_FLEE_EDGE);
             if fled {
-                let entity = self.state.board.zombies.remove(zombie_index).id;
+                let entity = self.state.board.zombies[zombie_index].id;
+                self.state.board.zombies[zombie_index].departed = true;
                 events.push(GameEvent::ZombieFled { entity });
                 continue;
             }
@@ -6131,6 +6137,7 @@ impl Game {
                 break;
             }
         }
+        self.state.board.zombies.retain(|zombie| !zombie.departed);
     }
 
     fn apply_cob_explosion(
@@ -7946,6 +7953,7 @@ impl Game {
                 0
             },
             blowing_away: false,
+            departed: false,
             shield_health: match zombie_type {
                 ZombieType::Ladder => LADDER_SHIELD_HEALTH,
                 ZombieType::WallnutHead => ZOMBOTANY_WALLNUT_HELM_HEALTH,
@@ -10383,6 +10391,45 @@ mod tests {
                 .zombies
                 .iter()
                 .any(|zombie| zombie.id == balloon)
+        );
+    }
+
+    #[test]
+    fn balloon_departure_with_a_trailing_zombie_does_not_break_the_update_loop() {
+        let mut game = Game::new(7, SceneKind::Day);
+        game.state.sun = 100;
+        game.advance(InputFrame {
+            actions: vec![
+                InputAction::SelectSeed { slot: 27 },
+                InputAction::Plant { row: 2, column: 2 },
+            ],
+        });
+        game.state.board.plants[0].special_counter = 1;
+        let mut setup = Vec::new();
+        let balloon =
+            game.spawn_balloon_zombie(2, 0, Some(BLOWN_AWAY_EDGE - POSITION_SCALE), &mut setup);
+        let walker = game.spawn_normal_zombie(3, 0, Some(500 * POSITION_SCALE), &mut setup);
+
+        let events = game.advance(InputFrame::default());
+
+        assert!(events.iter().any(|event| matches!(
+            event,
+            GameEvent::ZombieDied { entity } if *entity == balloon
+        )));
+        assert!(
+            !game
+                .state
+                .board
+                .zombies
+                .iter()
+                .any(|zombie| zombie.id == balloon)
+        );
+        assert!(
+            game.state
+                .board
+                .zombies
+                .iter()
+                .any(|zombie| zombie.id == walker)
         );
     }
 
