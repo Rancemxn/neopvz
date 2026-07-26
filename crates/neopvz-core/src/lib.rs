@@ -861,6 +861,46 @@ pub fn adventure_level_is_conveyor(level: u8) -> bool {
     matches!(level, 5 | 10 | 20 | 25 | 30 | 40 | 45 | 50)
 }
 
+/// Board::IsFlagWave for adventure levels.
+pub fn adventure_is_flag_wave(level: u8, replay: bool, wave_index: u32) -> bool {
+    if !replay && level == 1 {
+        return false;
+    }
+    let waves = adventure_wave_count(level, replay);
+    let per_flag = if !replay && waves < 10 { waves } else { 10 };
+    wave_index % per_flag == per_flag - 1
+}
+
+// Enum order used by PickZombieType and PutInMissingZombies for the types
+// reachable in adventure waves.
+const ADVENTURE_PICK_ORDER: [ZombieType; 20] = [
+    ZombieType::Normal,
+    ZombieType::Conehead,
+    ZombieType::PoleVaulter,
+    ZombieType::Buckethead,
+    ZombieType::Newspaper,
+    ZombieType::ScreenDoor,
+    ZombieType::Football,
+    ZombieType::Dancer,
+    ZombieType::Snorkel,
+    ZombieType::Zamboni,
+    ZombieType::Bobsled,
+    ZombieType::DolphinRider,
+    ZombieType::Jackbox,
+    ZombieType::Balloon,
+    ZombieType::Digger,
+    ZombieType::Pogo,
+    ZombieType::Bungee,
+    ZombieType::Ladder,
+    ZombieType::Catapult,
+    ZombieType::Gargantuar,
+];
+
+fn put_zombie_in_wave(wave: &mut Vec<ZombieType>, points: &mut i32, zombie_type: ZombieType) {
+    wave.push(zombie_type);
+    *points -= zombie_wave_stats(zombie_type).0 as i32;
+}
+
 /// Board::GetNumWavesPerFlag / IsFlagWave: first-run level 1 has no flag
 /// waves at all; short first-run levels flag only on their final wave;
 /// everything else flags every 10 waves.
@@ -8625,6 +8665,110 @@ impl Game {
         0
     }
 
+    /// Board::PickZombieWaves for adventure: per-wave points budget, flag
+    /// extras, level multipliers, intro spawns, the level-50 extra
+    /// Gargantuar, PutInMissingZombies on the final wave, and the weighted
+    /// fill. The Yeti intro requires a finished profile; `replay` stands in
+    /// for CanSpawnYetis here.
+    pub fn pick_adventure_waves(&mut self, level: u8, replay: bool) -> Vec<Vec<ZombieType>> {
+        let total_waves = adventure_wave_count(level, replay);
+        let intro = adventure_introduced_zombie(level);
+        let mut saw_yeti = false;
+        let mut waves = Vec::with_capacity(total_waves as usize);
+        for wave_index in 0..total_waves {
+            let mut wave: Vec<ZombieType> = Vec::new();
+            let is_final = wave_index + 1 == total_waves;
+            let is_flag = adventure_is_flag_wave(level, replay, wave_index);
+            let mut points: i32 = if replay && level != 5 {
+                (wave_index * 2 / 5 + 1) as i32
+            } else {
+                (wave_index / 3 + 1) as i32
+            };
+            if level == 45 && is_flag && !is_final {
+                for _ in 0..5 {
+                    put_zombie_in_wave(&mut wave, &mut points, ZombieType::Bungee);
+                }
+                waves.push(wave);
+                continue;
+            }
+            if is_flag {
+                let plain = points.min(8);
+                points = (points as f32 * 2.5) as i32;
+                for _ in 0..plain {
+                    put_zombie_in_wave(&mut wave, &mut points, ZombieType::Normal);
+                }
+                put_zombie_in_wave(&mut wave, &mut points, ZombieType::Flag);
+            }
+            points = match level {
+                5 | 25 => points * 4,
+                10 | 20 | 30 | 40 => points * 3,
+                45 => points * 2,
+                _ => points,
+            };
+            if let Some(intro_type) = intro {
+                let spawns = match intro_type {
+                    ZombieType::Digger | ZombieType::Balloon => wave_index == 6 || is_final,
+                    ZombieType::Yeti => {
+                        let hit = replay && wave_index == total_waves / 2 && !saw_yeti;
+                        if hit {
+                            saw_yeti = true;
+                        }
+                        hit
+                    }
+                    ZombieType::Boss => false,
+                    _ => wave_index == total_waves / 2 || is_final,
+                };
+                if spawns {
+                    put_zombie_in_wave(&mut wave, &mut points, intro_type);
+                }
+            }
+            if level == 50 && is_final {
+                put_zombie_in_wave(&mut wave, &mut points, ZombieType::Gargantuar);
+            }
+            if is_final {
+                for zombie_type in ADVENTURE_PICK_ORDER {
+                    if !wave.contains(&zombie_type) && adventure_zombie_allowed(zombie_type, level)
+                    {
+                        put_zombie_in_wave(&mut wave, &mut points, zombie_type);
+                    }
+                }
+            }
+            while points > 0 && wave.len() < 50 {
+                let zombie_type = self.pick_adventure_wave_type(level, wave_index, points);
+                put_zombie_in_wave(&mut wave, &mut points, zombie_type);
+            }
+            waves.push(wave);
+        }
+        waves
+    }
+
+    fn pick_adventure_wave_type(&mut self, level: u8, wave_index: u32, points: i32) -> ZombieType {
+        let mut total = 0u32;
+        let mut candidates: Vec<(ZombieType, u32)> = Vec::new();
+        for zombie_type in ADVENTURE_PICK_ORDER {
+            if !adventure_zombie_allowed(zombie_type, level) {
+                continue;
+            }
+            let (value, _, first_allowed_wave, weight) = zombie_wave_stats(zombie_type);
+            if wave_index + 1 < first_allowed_wave || points < value as i32 {
+                continue;
+            }
+            candidates.push((zombie_type, weight));
+            total += weight;
+        }
+        if total == 0 {
+            return ZombieType::Normal;
+        }
+        let mut roll = self.rng.range(total) as i64;
+        for (zombie_type, weight) in candidates {
+            roll -= i64::from(weight);
+            if roll < 0 {
+                return zombie_type;
+            }
+        }
+        ZombieType::Normal
+    }
+
     fn pick_bobsled_row(&mut self) -> Option<u8> {
         let can_add = self
             .state
@@ -12246,6 +12390,60 @@ mod tests {
             adventure_introduced_zombie(21).is_none(),
             "the ducky tube introduction is preview-only"
         );
+    }
+
+    #[test]
+    fn adventure_wave_composition_follows_the_source_rules() {
+        let mut game = Game::new(7, SceneKind::Day);
+
+        // First-run level 1: four all-normal waves, no flags.
+        let waves = game.pick_adventure_waves(1, false);
+        assert_eq!(waves.len(), 4);
+        assert_eq!(waves[0], vec![ZombieType::Normal]);
+        assert!(
+            waves.iter().flatten().all(|z| *z == ZombieType::Normal),
+            "level 1 only knows normal zombies"
+        );
+
+        // First-run level 3: intro Conehead at the half-way wave and the
+        // final wave; the final short-level wave is also the flag wave.
+        let waves = game.pick_adventure_waves(3, false);
+        assert_eq!(waves.len(), 8);
+        assert!(waves[4].contains(&ZombieType::Conehead));
+        assert!(waves[7].contains(&ZombieType::Flag));
+        assert!(waves[7].contains(&ZombieType::Conehead));
+        assert!(
+            waves.iter().flatten().all(|z| matches!(
+                z,
+                ZombieType::Normal | ZombieType::Conehead | ZombieType::Flag
+            )),
+            "level 3 draws only from its allow-list"
+        );
+
+        // Bungee Blitz flag waves are exactly five bungees.
+        let waves = game.pick_adventure_waves(45, false);
+        assert_eq!(waves[9], vec![ZombieType::Bungee; 5]);
+
+        // The level-50 final wave carries the extra Gargantuar and one of
+        // every level-legal missing type.
+        let waves = game.pick_adventure_waves(50, false);
+        let last = waves.last().unwrap();
+        for required in [
+            ZombieType::Gargantuar,
+            ZombieType::Buckethead,
+            ZombieType::Jackbox,
+            ZombieType::Bungee,
+            ZombieType::Ladder,
+            ZombieType::Catapult,
+        ] {
+            assert!(last.contains(&required), "final wave misses {required:?}");
+        }
+
+        // Replay waves are larger than first-run waves at the same level.
+        let first_last = game.pick_adventure_waves(12, false).len();
+        let replay_last = game.pick_adventure_waves(12, true).len();
+        assert_eq!(first_last, 20);
+        assert_eq!(replay_last, 30);
     }
 
     #[test]
