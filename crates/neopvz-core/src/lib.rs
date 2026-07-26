@@ -2871,6 +2871,9 @@ pub enum GameEvent {
     RakeTriggered {
         zombie: EntityId,
     },
+    ZombieThawed {
+        entity: EntityId,
+    },
     MetalStolen {
         plant: EntityId,
         zombie: Option<EntityId>,
@@ -6270,6 +6273,10 @@ impl Game {
                 }
                 if zombie.bungee_held {
                     continue;
+                }
+                // PARTICLE_ICE_TRAP_RELEASE fires the tick the freeze expires.
+                if zombie.frozen_counter == 1 {
+                    events.push(GameEvent::ZombieThawed { entity: zombie.id });
                 }
             }
             {
@@ -12947,6 +12954,32 @@ mod tests {
         assert_eq!(Game::new_mode(7, ModeKind::Adventure, 2).state().sun, 50);
         assert_eq!(Game::new_mode(7, ModeKind::Adventure, 15).state().sun, 0);
         assert_eq!(Game::new_mode(7, ModeKind::Adventure, 35).state().sun, 0);
+    }
+
+    #[test]
+    fn thawing_zombies_emit_the_ice_trap_release_event() {
+        let mut game = Game::new(7, SceneKind::Day);
+        let mut setup = Vec::new();
+        let zombie = game.spawn_normal_zombie(2, 0, Some(500 * POSITION_SCALE), &mut setup);
+        game.state
+            .board
+            .zombies
+            .iter_mut()
+            .for_each(|z| z.frozen_counter = 3);
+
+        let mut thaw_ticks = Vec::new();
+        for tick in 0..5 {
+            let events = game.advance(InputFrame::default());
+            if events.iter().any(|e| {
+                matches!(
+                    e,
+                    GameEvent::ZombieThawed { entity } if *entity == zombie
+                )
+            }) {
+                thaw_ticks.push(tick);
+            }
+        }
+        assert_eq!(thaw_ticks.len(), 1, "the thaw event fires exactly once");
     }
 
     #[test]
