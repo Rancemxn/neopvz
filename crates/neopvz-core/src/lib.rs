@@ -133,6 +133,13 @@ const ZOMBOTANY_SQUASH_FALL_TICKS: u32 = 10;
 const ZOMBOTANY_SQUASH_DONE_TICKS: u32 = 100;
 const ZOMBOTANY_SQUASH_DAMAGE: i32 = 1_800;
 const GIGAGARGANTUAR_HEALTH: i32 = 6_000;
+// Zombie_Init in 1.0.0.1051 gives Jack-in-the-Box a 500-HP body, and
+// Zombie_UpdateJack pops it 110 updates after its run phase ends; on Scary
+// Potter levels the run phase counter is forced to 10.
+const JACKBOX_HEALTH: i32 = 500;
+const VASE_JACKBOX_POP_TICKS: u32 = 120;
+// KillAllPlantsInRadius uses JackInTheBoxPlantRadius (90); zombies use 115.
+const JACKBOX_PLANT_RADIUS: i64 = 90;
 // Zombie_UpdateDolphin in the target build uses a 120-tick jump and the
 // source's 0.9/0.5/0.3 walk-speed phases.
 const DOLPHIN_JUMP_TIME: u32 = 120;
@@ -5201,7 +5208,8 @@ impl Game {
 
         let explosion_radius = 115 * POSITION_SCALE;
 
-        // Damage plants within 115 unit radius, same row ±1 row.
+        // KillAllPlantsInRadius uses the smaller 90-unit plant radius, ±1 row.
+        let plant_radius = JACKBOX_PLANT_RADIUS * POSITION_SCALE;
         let mut plant_targets = Vec::new();
         for (i, plant) in self.state.board.plants.iter().enumerate() {
             if plant.health <= 0 {
@@ -5213,7 +5221,7 @@ impl Game {
             }
             let px = grid_x(plant.column);
             let dx = (px - zx).unsigned_abs();
-            if dx > explosion_radius as u64 {
+            if dx > plant_radius as u64 {
                 continue;
             }
             plant_targets.push(i);
@@ -5644,13 +5652,8 @@ impl Game {
                 continue;
             }
             if self.state.board.zombies[zombie_index].health <= 0 {
-                // Jack-in-the-Box: explode when killed by external damage.
-                if self.state.board.zombies[zombie_index].zombie_type == ZombieType::Jackbox
-                    && self.state.board.zombies[zombie_index].jackbox_timer > 0
-                {
-                    self.state.board.zombies[zombie_index].jackbox_timer = 0;
-                    self.apply_jackbox_explosion(zombie_index, events);
-                }
+                // Zombie_UpdateJack only detonates when the pop phase finishes;
+                // a Jack killed by damage never explodes.
                 continue;
             }
             self.update_balloon_state(zombie_index);
@@ -7876,7 +7879,7 @@ impl Game {
     ) -> EntityId {
         let id = self._spawn_zombie_inner(
             ZombieType::Jackbox,
-            270,
+            JACKBOX_HEALTH,
             row,
             wave,
             position_override,
@@ -7924,13 +7927,28 @@ impl Game {
             ZombieType::Buckethead | ZombieType::ScreenDoor => 1_370,
             ZombieType::Football => 1_670,
             ZombieType::PoleVaulter | ZombieType::Pogo => 500,
+            ZombieType::Jackbox => JACKBOX_HEALTH,
             ZombieType::Gargantuar => 3_000,
             ZombieType::Gigagargantuar => GIGAGARGANTUAR_HEALTH,
             ZombieType::JalapenoHead => ZOMBOTANY_JALAPENO_HEALTH,
             ZombieType::Boss => BOSS_ADVENTURE_HEALTH,
             _ => 270,
         };
-        self._spawn_zombie_inner(zombie_type, health, row, 0, Some(grid_x(column)), events);
+        let entity =
+            self._spawn_zombie_inner(zombie_type, health, row, 0, Some(grid_x(column)), events);
+        if zombie_type == ZombieType::Jackbox {
+            // Zombie_Init forces the Scary Potter run counter to 10, so a
+            // vase-released Jack pops after ~10 running + 110 popping updates.
+            if let Some(zombie) = self
+                .state
+                .board
+                .zombies
+                .iter_mut()
+                .find(|zombie| zombie.id == entity)
+            {
+                zombie.jackbox_timer = VASE_JACKBOX_POP_TICKS;
+            }
+        }
     }
 
     #[allow(dead_code)]
@@ -7965,6 +7983,9 @@ impl Game {
             zamboni_speed(position_x)
         } else if zombie_type == ZombieType::Boss {
             0
+        } else if zombie_type == ZombieType::Jackbox {
+            // Zombie_ResetSpeed in 1.0.0.1051 runs Jack-in-the-Box at 0.66-0.68.
+            self.rng.fixed_range(660_000, 680_000)
         } else {
             self.rng.fixed_range(230_000, 320_000)
         };
@@ -10781,6 +10802,69 @@ mod tests {
             .filter(|e| matches!(e, GameEvent::ZombieDied { entity: eid } if *eid == zombie))
             .collect();
         assert!(!died.is_empty(), "ZombieDied should be emitted for Jackbox");
+    }
+
+    #[test]
+    fn vase_jackbox_pops_quickly_and_a_damage_killed_jack_does_not_explode() {
+        // Zombie_Init forces the Scary Potter run counter to 10, so vase Jacks
+        // pop after ~120 updates; Zombie_UpdateJack never detonates on death.
+        let mut game = Game::new(7, SceneKind::Day);
+        game.state.sun = 100;
+        game.advance(InputFrame {
+            actions: vec![
+                InputAction::SelectSeed { slot: 0 },
+                InputAction::Plant { row: 2, column: 5 },
+            ],
+        });
+        let plant_id = game.state.board.plants[0].id;
+        let mut setup = Vec::new();
+        game.spawn_vase_zombie(ZombieType::Jackbox, 2, 5, &mut setup);
+        let jack = game
+            .state
+            .board
+            .zombies
+            .iter()
+            .find(|zombie| zombie.zombie_type == ZombieType::Jackbox)
+            .unwrap();
+        assert_eq!(jack.health, JACKBOX_HEALTH);
+        assert_eq!(jack.jackbox_timer, VASE_JACKBOX_POP_TICKS);
+        let events = (0..VASE_JACKBOX_POP_TICKS)
+            .flat_map(|_| game.advance(InputFrame::default()))
+            .collect::<Vec<_>>();
+        assert!(
+            events.iter().any(|event| matches!(
+                event,
+                GameEvent::PlantDied { entity } if *entity == plant_id
+            )),
+            "the vase Jack should pop and destroy the adjacent plant"
+        );
+
+        let mut other = Game::new(7, SceneKind::Day);
+        other.state.sun = 100;
+        other.advance(InputFrame {
+            actions: vec![
+                InputAction::SelectSeed { slot: 0 },
+                InputAction::Plant { row: 2, column: 5 },
+            ],
+        });
+        let other_plant = other.state.board.plants[0].id;
+        let mut setup = Vec::new();
+        let zombie = other.spawn_jackbox_zombie(2, 0, Some(grid_x(5)), &mut setup);
+        other.state.board.zombies.iter_mut().for_each(|candidate| {
+            if candidate.id == zombie {
+                candidate.health = 0;
+            }
+        });
+        other.advance(InputFrame::default());
+        assert!(
+            other
+                .state
+                .board
+                .plants
+                .iter()
+                .any(|plant| plant.id == other_plant && plant.health > 0),
+            "a Jack killed by damage must not explode"
+        );
     }
 
     #[test]
