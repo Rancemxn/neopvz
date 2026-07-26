@@ -7,6 +7,7 @@ license.workspace = true
 [dependencies]
 clap.workspace = true
 image.workspace = true
+neopvz-audio = { path = "../neopvz-audio" }
 neopvz-core = { path = "../neopvz-core" }
 neopvz-data = { path = "../neopvz-data" }
 neopvz-render = { path = "../neopvz-render" }

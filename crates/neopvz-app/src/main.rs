@@ -7,27 +7,34 @@ use std::{
 };
 
 use clap::{Parser, ValueEnum};
-use neopvz_core::{Game, InputAction, InputFrame, SaveError, SaveProfile, SceneKind};
+use neopvz_audio::{AudioBackend, AudioKind, KiraAudioBackend};
+use neopvz_core::{
+    Game, GameEvent, GardenServiceKind, InputAction, InputFrame, ModeKind, SaveError, SaveProfile,
+    SceneKind, mode_level_name, mode_level_names,
+};
 use neopvz_data::{AssetLayout, ResourceProvider};
 use neopvz_render::{
-    CRAZY_DAVE_BEARD_IMAGE_ID, CRAZY_DAVE_BODY_IMAGE_ID, CRAZY_DAVE_EYE_IMAGE_ID,
-    CRAZY_DAVE_EYEBROW_IMAGE_ID, CRAZY_DAVE_HEAD_IMAGE_ID, CRAZY_DAVE_INNER_ARM_IMAGE_ID,
-    CRAZY_DAVE_INNER_FINGER1_IMAGE_ID, CRAZY_DAVE_INNER_FINGER2_IMAGE_ID,
-    CRAZY_DAVE_INNER_FINGER3_IMAGE_ID, CRAZY_DAVE_INNER_FINGER4_IMAGE_ID,
-    CRAZY_DAVE_INNER_HAND_IMAGE_ID, CRAZY_DAVE_MOUTH_IMAGE_ID, CRAZY_DAVE_OUTER_ARM_IMAGE_ID,
-    CRAZY_DAVE_OUTER_FINGER1_IMAGE_ID, CRAZY_DAVE_OUTER_FINGER2_IMAGE_ID,
-    CRAZY_DAVE_OUTER_FINGER3_IMAGE_ID, CRAZY_DAVE_OUTER_FINGER4_IMAGE_ID,
-    CRAZY_DAVE_OUTER_HAND_IMAGE_ID, CRAZY_DAVE_POT_IMAGE_ID, DAY_BACKGROUND_IMAGE_ID, GpuRenderer,
-    ImageAsset, LogicalViewport, RenderFrame, SCREEN_PIXEL_IMAGE_ID, SEED_CHOOSER_BUTTON_IMAGE_ID,
-    SEED_CHOOSER_IMAGE_ID, SEED_CHOOSER_TITLE_IMAGE_ID, SEED_PACKET_NORMAL_IMAGE_ID,
-    SEED_PACKET_SILHOUETTE_IMAGE_ID, SEED_PEASHOOTER_IMAGE_ID, SEED_SUNFLOWER_IMAGE_ID,
-    SELECTOR_ADVENTURE_IMAGE_ID, SELECTOR_ALMANAC_IMAGE_ID, SELECTOR_BASE_IMAGE_ID,
-    SELECTOR_CENTER_IMAGE_ID, SELECTOR_CHALLENGES_IMAGE_ID, SELECTOR_HELP_IMAGE_ID,
-    SELECTOR_LEAVES_IMAGE_ID, SELECTOR_LEFT_IMAGE_ID, SELECTOR_OPTIONS_IMAGE_ID,
-    SELECTOR_QUIT_IMAGE_ID, SELECTOR_RIGHT_IMAGE_ID, SELECTOR_STORE_IMAGE_ID,
-    SELECTOR_SURVIVAL_IMAGE_ID, SELECTOR_TROPHY_IMAGE_ID, SELECTOR_VASEBREAKER_IMAGE_ID,
-    SELECTOR_WOODSIGN1_IMAGE_ID, SELECTOR_WOODSIGN2_IMAGE_ID, SELECTOR_WOODSIGN3_IMAGE_ID,
-    SELECTOR_ZEN_GARDEN_IMAGE_ID, SpriteCommand, TITLE_IMAGE_ID, TITLE_LOGO_IMAGE_ID,
+    BOSS_BACKGROUND_IMAGE_ID, CHALLENGE_THUMBNAIL_BASE_IMAGE_ID, CRAZY_DAVE_BEARD_IMAGE_ID,
+    CRAZY_DAVE_BODY_IMAGE_ID, CRAZY_DAVE_EYE_IMAGE_ID, CRAZY_DAVE_EYEBROW_IMAGE_ID,
+    CRAZY_DAVE_HEAD_IMAGE_ID, CRAZY_DAVE_INNER_ARM_IMAGE_ID, CRAZY_DAVE_INNER_FINGER1_IMAGE_ID,
+    CRAZY_DAVE_INNER_FINGER2_IMAGE_ID, CRAZY_DAVE_INNER_FINGER3_IMAGE_ID,
+    CRAZY_DAVE_INNER_FINGER4_IMAGE_ID, CRAZY_DAVE_INNER_HAND_IMAGE_ID, CRAZY_DAVE_MOUTH_IMAGE_ID,
+    CRAZY_DAVE_OUTER_ARM_IMAGE_ID, CRAZY_DAVE_OUTER_FINGER1_IMAGE_ID,
+    CRAZY_DAVE_OUTER_FINGER2_IMAGE_ID, CRAZY_DAVE_OUTER_FINGER3_IMAGE_ID,
+    CRAZY_DAVE_OUTER_FINGER4_IMAGE_ID, CRAZY_DAVE_OUTER_HAND_IMAGE_ID, CRAZY_DAVE_POT_IMAGE_ID,
+    DAY_BACKGROUND_IMAGE_ID, FOG_BACKGROUND_IMAGE_ID, GpuRenderer, ImageAsset, LogicalViewport,
+    MODE_SELECT_BACKGROUND_IMAGE_ID, MODE_SELECT_BLANK_IMAGE_ID, MODE_SELECT_WINDOW_IMAGE_ID,
+    NIGHT_BACKGROUND_IMAGE_ID, POOL_BACKGROUND_IMAGE_ID, ROOF_BACKGROUND_IMAGE_ID, RenderFrame,
+    SCREEN_PIXEL_IMAGE_ID, SEED_CHOOSER_BUTTON_IMAGE_ID, SEED_CHOOSER_IMAGE_ID,
+    SEED_CHOOSER_TITLE_IMAGE_ID, SEED_PACKET_NORMAL_IMAGE_ID, SEED_PACKET_SILHOUETTE_IMAGE_ID,
+    SEED_PEASHOOTER_IMAGE_ID, SEED_SUNFLOWER_IMAGE_ID, SELECTOR_ADVENTURE_IMAGE_ID,
+    SELECTOR_ALMANAC_IMAGE_ID, SELECTOR_BASE_IMAGE_ID, SELECTOR_CENTER_IMAGE_ID,
+    SELECTOR_CHALLENGES_IMAGE_ID, SELECTOR_HELP_IMAGE_ID, SELECTOR_LEAVES_IMAGE_ID,
+    SELECTOR_LEFT_IMAGE_ID, SELECTOR_OPTIONS_IMAGE_ID, SELECTOR_QUIT_IMAGE_ID,
+    SELECTOR_RIGHT_IMAGE_ID, SELECTOR_STORE_IMAGE_ID, SELECTOR_SURVIVAL_IMAGE_ID,
+    SELECTOR_TROPHY_IMAGE_ID, SELECTOR_VASEBREAKER_IMAGE_ID, SELECTOR_WOODSIGN1_IMAGE_ID,
+    SELECTOR_WOODSIGN2_IMAGE_ID, SELECTOR_WOODSIGN3_IMAGE_ID, SELECTOR_ZEN_GARDEN_IMAGE_ID,
+    SURVIVAL_THUMBNAIL_BASE_IMAGE_ID, SpriteCommand, TITLE_IMAGE_ID, TITLE_LOGO_IMAGE_ID,
     TUTORIAL_BUBBLE_IMAGE_ID, TUTORIAL_CONTINUE_IMAGE_ID, TUTORIAL_TEXT1_IMAGE_ID,
     TUTORIAL_TEXT2_IMAGE_ID, UI_PIXEL_IMAGE_ID, logical_position,
 };
@@ -37,7 +44,7 @@ use winit::{
     event::{ElementState, MouseButton, WindowEvent},
     event_loop::{ActiveEventLoop, ControlFlow, EventLoop},
     keyboard::{KeyCode, PhysicalKey},
-    window::{Window, WindowId},
+    window::{Fullscreen, Window, WindowId},
 };
 
 #[derive(Debug, Parser)]
@@ -51,6 +58,8 @@ struct Cli {
     profile: Option<PathBuf>,
     #[arg(long, hide = true, value_name = "SCENE")]
     checkpoint: Option<Checkpoint>,
+    #[arg(long, help = "Start in borderless fullscreen")]
+    fullscreen: bool,
 }
 
 #[derive(Clone, Copy, Debug, ValueEnum)]
@@ -59,6 +68,7 @@ enum Checkpoint {
     AdventureSelect,
     AdventureTutorial,
     SeedChooser,
+    ModeSelect,
     Day,
 }
 
@@ -69,6 +79,7 @@ impl From<Checkpoint> for SceneKind {
             Checkpoint::AdventureSelect => Self::AdventureSelect,
             Checkpoint::AdventureTutorial => Self::AdventureTutorial,
             Checkpoint::SeedChooser => Self::SeedChooser,
+            Checkpoint::ModeSelect => Self::ModeSelect,
             Checkpoint::Day => Self::Day,
         }
     }
@@ -152,6 +163,13 @@ fn main() -> ExitCode {
             return ExitCode::FAILURE;
         }
     };
+    let audio = match KiraAudioBackend::new() {
+        Ok(audio) => Some(audio),
+        Err(error) => {
+            tracing::warn!(%error, "audio backend unavailable; continuing without audio");
+            None
+        }
+    };
 
     let event_loop = match EventLoop::new() {
         Ok(event_loop) => event_loop,
@@ -161,7 +179,7 @@ fn main() -> ExitCode {
         }
     };
     event_loop.set_control_flow(ControlFlow::Poll);
-    let mut app = App::new(assets, initial_scene);
+    let mut app = App::new(assets, resources, audio, initial_scene, cli.fullscreen);
     let run_result = event_loop.run_app(&mut app);
 
     if let Err(error) = run_result {
@@ -448,7 +466,65 @@ fn load_assets(resources: &ResourceProvider) -> Result<Vec<ImageAsset>, String> 
             18,
         )?,
         load_image(resources, DAY_BACKGROUND_IMAGE_ID, "images/background1.jpg")?,
+        load_image(
+            resources,
+            MODE_SELECT_BACKGROUND_IMAGE_ID,
+            "images/Challenge_Background.jpg",
+        )?,
+        load_image(
+            resources,
+            MODE_SELECT_WINDOW_IMAGE_ID,
+            "images/Challenge_Window.png",
+        )?,
+        load_image(
+            resources,
+            MODE_SELECT_BLANK_IMAGE_ID,
+            "images/Challenge_Blank.png",
+        )?,
+        load_image(
+            resources,
+            NIGHT_BACKGROUND_IMAGE_ID,
+            "images/background2.jpg",
+        )?,
+        load_image(
+            resources,
+            POOL_BACKGROUND_IMAGE_ID,
+            "images/background3.jpg",
+        )?,
+        load_image(resources, FOG_BACKGROUND_IMAGE_ID, "images/background4.jpg")?,
+        load_image(
+            resources,
+            ROOF_BACKGROUND_IMAGE_ID,
+            "images/background5.jpg",
+        )?,
+        load_image(
+            resources,
+            BOSS_BACKGROUND_IMAGE_ID,
+            "images/background6.jpg",
+        )?,
     ];
+    for index in 0..22 {
+        assets.push(load_cropped_image(
+            resources,
+            CHALLENGE_THUMBNAIL_BASE_IMAGE_ID + index,
+            "images/Challenge_Thumbnails.jpg",
+            index * 80,
+            0,
+            80,
+            65,
+        )?);
+    }
+    for index in 0..11 {
+        assets.push(load_cropped_image(
+            resources,
+            SURVIVAL_THUMBNAIL_BASE_IMAGE_ID + index,
+            "images/Survival_Thumbnails.jpg",
+            index * 80,
+            0,
+            80,
+            65,
+        )?);
+    }
     assets.push(
         ImageAsset::new(UI_PIXEL_IMAGE_ID, 1, 1, vec![70, 180, 80, 255])
             .map_err(|error| error.to_string())?,
@@ -809,6 +885,8 @@ mod windows_text {
 struct App {
     renderer: Option<GpuRenderer>,
     assets: Vec<ImageAsset>,
+    resources: ResourceProvider,
+    audio: Option<KiraAudioBackend>,
     game: Game,
     pending_input: Vec<InputAction>,
     last_update: Option<Instant>,
@@ -816,13 +894,24 @@ struct App {
     cursor_position: Option<PhysicalPosition<f64>>,
     tutorial_page: u8,
     seed_chooser_selection: [bool; 2],
+    selected_mode: ModeKind,
+    selected_level: u8,
+    fullscreen: bool,
 }
 
 impl App {
-    fn new(assets: Vec<ImageAsset>, initial_scene: SceneKind) -> Self {
+    fn new(
+        assets: Vec<ImageAsset>,
+        resources: ResourceProvider,
+        audio: Option<KiraAudioBackend>,
+        initial_scene: SceneKind,
+        fullscreen: bool,
+    ) -> Self {
         Self {
             renderer: None,
             assets,
+            resources,
+            audio,
             game: Game::new(0, initial_scene),
             pending_input: Vec::new(),
             last_update: None,
@@ -830,6 +919,9 @@ impl App {
             cursor_position: None,
             tutorial_page: 0,
             seed_chooser_selection: [false; 2],
+            selected_mode: ModeKind::MiniGame,
+            selected_level: 0,
+            fullscreen,
         }
     }
 
@@ -853,6 +945,9 @@ impl App {
                 return;
             }
         };
+        if self.fullscreen {
+            window.set_fullscreen(Some(Fullscreen::Borderless(window.current_monitor())));
+        }
         let mut renderer = match pollster::block_on(GpuRenderer::new(window)) {
             Ok(renderer) => renderer,
             Err(error) => {
@@ -879,31 +974,75 @@ impl App {
         };
 
         match key {
+            KeyCode::Escape if self.game.state().scene == SceneKind::ModeSelect => {
+                self.start_scene(SceneKind::AdventureSelect)
+            }
+            KeyCode::Escape if self.game.state().scene == SceneKind::Garden => {
+                self.pending_input.push(InputAction::GardenLeave);
+            }
             KeyCode::Escape => event_loop.exit(),
+            KeyCode::F11 => self.toggle_fullscreen(),
             KeyCode::Enter => match self.game.state().scene {
                 SceneKind::Title => self.start_scene(SceneKind::AdventureSelect),
                 SceneKind::AdventureSelect => self.start_scene(SceneKind::AdventureTutorial),
                 SceneKind::AdventureTutorial => self.advance_tutorial(),
+                SceneKind::ModeSelect => self.start_selected_mode(),
+                SceneKind::SeedChooser if self.game.state().mode == ModeKind::Survival => {
+                    self.pending_input.push(InputAction::ConfirmSurvivalRepick)
+                }
                 SceneKind::SeedChooser
                     if self.seed_chooser_selection.iter().all(|selected| *selected) =>
                 {
                     self.start_scene(SceneKind::Day)
                 }
+                SceneKind::Garden => self.pending_input.push(InputAction::GardenLeave),
                 _ => {}
             },
+            KeyCode::ArrowLeft if self.game.state().scene == SceneKind::ModeSelect => {
+                self.select_mode_level(-1)
+            }
+            KeyCode::ArrowRight if self.game.state().scene == SceneKind::ModeSelect => {
+                self.select_mode_level(1)
+            }
+            KeyCode::ArrowUp if self.game.state().scene == SceneKind::ModeSelect => {
+                self.select_mode_level(-5)
+            }
+            KeyCode::ArrowDown if self.game.state().scene == SceneKind::ModeSelect => {
+                self.select_mode_level(5)
+            }
+            KeyCode::KeyI if self.game.state().scene == SceneKind::ModeSelect => {
+                self.selected_mode = ModeKind::IZombie;
+                self.selected_level = 0;
+            }
+            KeyCode::KeyM if self.game.state().scene == SceneKind::ModeSelect => {
+                self.selected_mode = ModeKind::MiniGame;
+                self.selected_level = 0;
+            }
+            KeyCode::KeyS if self.game.state().scene == SceneKind::ModeSelect => {
+                self.selected_mode = ModeKind::Survival;
+                self.selected_level = 0;
+            }
+            KeyCode::KeyV if self.game.state().scene == SceneKind::ModeSelect => {
+                self.selected_mode = ModeKind::Vasebreaker;
+                self.selected_level = 0;
+            }
+            KeyCode::KeyG if self.game.state().scene == SceneKind::ModeSelect => {
+                self.selected_mode = ModeKind::ZenGarden;
+                self.selected_level = 0;
+            }
             KeyCode::Digit1 if self.game.state().scene == SceneKind::SeedChooser => {
                 self.seed_chooser_selection[0] = !self.seed_chooser_selection[0];
             }
             KeyCode::Digit2 if self.game.state().scene == SceneKind::SeedChooser => {
                 self.seed_chooser_selection[1] = !self.seed_chooser_selection[1];
             }
-            KeyCode::Digit1 if self.game.state().scene == SceneKind::Day => {
+            KeyCode::Digit1 if is_board_scene(self.game.state().scene) => {
                 self.pending_input.push(InputAction::SelectSeed { slot: 0 });
             }
-            KeyCode::Digit2 if self.game.state().scene == SceneKind::Day => {
+            KeyCode::Digit2 if is_board_scene(self.game.state().scene) => {
                 self.pending_input.push(InputAction::SelectSeed { slot: 1 });
             }
-            KeyCode::Space if self.game.state().scene == SceneKind::Day => {
+            KeyCode::Space if is_board_scene(self.game.state().scene) => {
                 let action = if self.game.state().paused {
                     InputAction::Resume
                 } else {
@@ -919,12 +1058,87 @@ impl App {
             {
                 self.pending_input.push(InputAction::Restart);
             }
-            KeyCode::KeyP if self.game.state().scene == SceneKind::Day => {
+            KeyCode::KeyZ
+                if self.game.state().mode == ModeKind::IZombie
+                    && is_board_scene(self.game.state().scene) =>
+            {
+                self.pending_input.push(InputAction::DeployZombie {
+                    zombie_type: neopvz_core::ZombieType::Normal,
+                    row: 2,
+                    column: 0,
+                });
+            }
+            KeyCode::KeyP if is_board_scene(self.game.state().scene) => {
                 self.pending_input
                     .push(InputAction::Plant { row: 2, column: 2 });
             }
+            KeyCode::KeyC
+                if is_board_scene(self.game.state().scene)
+                    && self.game.state().board.plants.iter().any(|plant| {
+                        matches!(plant.plant_type, neopvz_core::PlantType::Other(47))
+                            && plant.special_armed
+                    }) =>
+            {
+                if let Some(cob) = self.game.state().board.plants.iter().find(|plant| {
+                    matches!(plant.plant_type, neopvz_core::PlantType::Other(47))
+                        && plant.special_armed
+                }) {
+                    self.pending_input.push(InputAction::FireCobCannon {
+                        entity: cob.id,
+                        row: 2,
+                        column: 4,
+                    });
+                }
+            }
+            KeyCode::KeyB
+                if self.game.state().mode == ModeKind::Vasebreaker
+                    && is_board_scene(self.game.state().scene) =>
+            {
+                self.pending_input
+                    .push(InputAction::BreakVase { row: 2, column: 2 });
+            }
+            KeyCode::KeyL
+                if self.game.state().challenge.kind == neopvz_core::ChallengeKind::SlotMachine
+                    && is_board_scene(self.game.state().scene) =>
+            {
+                self.pending_input.push(InputAction::ChallengeSpin);
+            }
+            KeyCode::KeyC
+                if self.game.state().challenge.kind == neopvz_core::ChallengeKind::Beghouled
+                    && is_board_scene(self.game.state().scene) =>
+            {
+                self.pending_input
+                    .push(InputAction::ChallengeMatch { length: 3 });
+            }
+            KeyCode::KeyF
+                if self.game.state().challenge.kind == neopvz_core::ChallengeKind::Zombiquarium
+                    && is_board_scene(self.game.state().scene) =>
+            {
+                self.pending_input
+                    .push(InputAction::ChallengeFeed { x: 400, y: 250 });
+            }
+            KeyCode::KeyH
+                if self.game.state().challenge.kind == neopvz_core::ChallengeKind::WhackAZombie
+                    && is_board_scene(self.game.state().scene) =>
+            {
+                self.pending_input
+                    .push(InputAction::ChallengeWhack { row: 2, column: 2 });
+            }
             _ => {}
         }
+    }
+
+    fn toggle_fullscreen(&mut self) {
+        let Some(renderer) = &self.renderer else {
+            return;
+        };
+        let window = renderer.window();
+        self.fullscreen = !self.fullscreen;
+        window.set_fullscreen(if self.fullscreen {
+            Some(Fullscreen::Borderless(window.current_monitor()))
+        } else {
+            None
+        });
     }
 
     fn start_scene(&mut self, scene: SceneKind) {
@@ -934,6 +1148,33 @@ impl App {
         self.simulation_accumulator = Duration::ZERO;
         self.last_update = Some(Instant::now());
         self.seed_chooser_selection = [false; 2];
+        self.selected_mode = ModeKind::MiniGame;
+        self.selected_level = 0;
+    }
+
+    fn start_mode_select(&mut self, mode: ModeKind) {
+        self.game = Game::new(0, SceneKind::ModeSelect);
+        self.pending_input.clear();
+        self.simulation_accumulator = Duration::ZERO;
+        self.last_update = Some(Instant::now());
+        self.selected_mode = mode;
+        self.selected_level = 0;
+    }
+
+    fn start_selected_mode(&mut self) {
+        if mode_level_name(self.selected_mode, self.selected_level).is_none() {
+            return;
+        }
+        self.game = Game::new_mode(0, self.selected_mode, self.selected_level);
+        self.pending_input.clear();
+        self.simulation_accumulator = Duration::ZERO;
+        self.last_update = Some(Instant::now());
+    }
+
+    fn select_mode_level(&mut self, delta: i32) {
+        let count = mode_level_names(self.selected_mode).len();
+        let max = i32::try_from(count.saturating_sub(1)).unwrap_or(i32::MAX);
+        self.selected_level = (i32::from(self.selected_level) + delta).clamp(0, max) as u8;
     }
 
     fn advance_tutorial(&mut self) {
@@ -944,13 +1185,15 @@ impl App {
         }
     }
 
-    fn handle_mouse_click(&mut self) {
+    fn handle_mouse_click(&mut self, button: MouseButton) {
         let scene = self.game.state().scene;
         if scene != SceneKind::Title
-            && scene != SceneKind::Day
             && scene != SceneKind::AdventureSelect
             && scene != SceneKind::AdventureTutorial
             && scene != SceneKind::SeedChooser
+            && scene != SceneKind::ModeSelect
+            && scene != SceneKind::Garden
+            && !is_board_scene(scene)
         {
             return;
         }
@@ -977,6 +1220,14 @@ impl App {
         if scene == SceneKind::AdventureSelect {
             if (400.0..730.0).contains(&x) && (55.0..175.0).contains(&y) {
                 self.start_scene(SceneKind::AdventureTutorial);
+            } else if (400.0..730.0).contains(&x) && (173.0..257.0).contains(&y) {
+                self.start_mode_select(ModeKind::Survival);
+            } else if (400.0..730.0).contains(&x) && (257.0..328.0).contains(&y) {
+                self.start_mode_select(ModeKind::MiniGame);
+            } else if (400.0..730.0).contains(&x) && (328.0..410.0).contains(&y) {
+                self.start_mode_select(ModeKind::Vasebreaker);
+            } else if (150.0..330.0).contains(&x) && (385.0..485.0).contains(&y) {
+                self.start_mode_select(ModeKind::ZenGarden);
             }
             return;
         }
@@ -984,6 +1235,34 @@ impl App {
             if (285.0..565.0).contains(&x) && (20.0..190.0).contains(&y) {
                 self.advance_tutorial();
             }
+            return;
+        }
+        if scene == SceneKind::ModeSelect {
+            if (0.0..200.0).contains(&x) && (0.0..50.0).contains(&y) {
+                self.selected_mode = ModeKind::MiniGame;
+                self.selected_level = 0;
+                return;
+            }
+            if (200.0..400.0).contains(&x) && (0.0..50.0).contains(&y) {
+                self.selected_mode = ModeKind::IZombie;
+                self.selected_level = 0;
+                return;
+            }
+            if (400.0..600.0).contains(&x) && (0.0..50.0).contains(&y) {
+                self.selected_mode = ModeKind::Survival;
+                self.selected_level = 0;
+                return;
+            }
+            if (600.0..800.0).contains(&x) && (0.0..50.0).contains(&y) {
+                self.selected_mode = ModeKind::Vasebreaker;
+                self.selected_level = 0;
+                return;
+            }
+            let Some(index) = mode_level_at(self.selected_mode, x, y) else {
+                return;
+            };
+            self.selected_level = index;
+            self.start_selected_mode();
             return;
         }
         if scene == SceneKind::SeedChooser {
@@ -1007,13 +1286,76 @@ impl App {
             }
             return;
         }
+        if scene == SceneKind::Garden {
+            if button == MouseButton::Left {
+                if self.game.state().garden_service == Some(GardenServiceKind::TreeOfWisdom) {
+                    self.pending_input.push(InputAction::GardenFeedTree);
+                } else {
+                    self.pending_input
+                        .push(InputAction::GardenWater { plant: 0 });
+                }
+            } else if button == MouseButton::Right {
+                self.pending_input
+                    .push(InputAction::GardenFertilize { plant: 0 });
+            }
+            return;
+        }
         if !(80.0..800.0).contains(&x) || !(120.0..570.0).contains(&y) {
             return;
         }
-        self.pending_input.push(InputAction::Plant {
-            row: ((y - 120.0) / 90.0) as u8,
-            column: ((x - 80.0) / 80.0) as u8,
-        });
+        let row = ((y - 120.0) / 90.0) as u8;
+        let column = ((x - 80.0) / 80.0) as u8;
+        if button == MouseButton::Left
+            && self.game.state().board.selected_seed.is_none()
+            && let Some(cob) = self.game.state().board.plants.iter().find(|plant| {
+                matches!(plant.plant_type, neopvz_core::PlantType::Other(47)) && plant.special_armed
+            })
+        {
+            self.pending_input.push(InputAction::FireCobCannon {
+                entity: cob.id,
+                row,
+                column,
+            });
+            return;
+        }
+        if self.game.state().mode == ModeKind::IZombie {
+            if button == MouseButton::Left {
+                self.pending_input.push(InputAction::DeployZombie {
+                    zombie_type: neopvz_core::ZombieType::Normal,
+                    row,
+                    column,
+                });
+            }
+            return;
+        }
+        if self.game.state().mode == ModeKind::Vasebreaker {
+            if button == MouseButton::Left {
+                self.pending_input
+                    .push(InputAction::BreakVase { row, column });
+            }
+            return;
+        }
+        match self.game.state().challenge.kind {
+            neopvz_core::ChallengeKind::Zombiquarium if button == MouseButton::Left => {
+                self.pending_input.push(InputAction::ChallengeFeed {
+                    x: x as u16,
+                    y: y as u16,
+                });
+                return;
+            }
+            neopvz_core::ChallengeKind::WhackAZombie if button == MouseButton::Left => {
+                self.pending_input
+                    .push(InputAction::ChallengeWhack { row, column });
+                return;
+            }
+            _ => {}
+        }
+        let action = match button {
+            MouseButton::Left => InputAction::Plant { row, column },
+            MouseButton::Right => InputAction::Shovel { row, column },
+            _ => return,
+        };
+        self.pending_input.push(action);
     }
 
     fn advance_simulation(&mut self) {
@@ -1031,8 +1373,26 @@ impl App {
             let input = InputFrame {
                 actions: std::mem::take(&mut self.pending_input),
             };
-            self.game.advance(input);
+            let events = self.game.advance(input);
+            self.play_audio(&events);
             self.simulation_accumulator -= SIMULATION_STEP;
+        }
+    }
+
+    fn play_audio(&mut self, events: &[GameEvent]) {
+        for event in events {
+            let Some((kind, path)) = audio_for_event(event) else {
+                continue;
+            };
+            let Some(bytes) = self.resources.read(path).ok() else {
+                tracing::debug!(path, "audio resource is unavailable");
+                continue;
+            };
+            if let Some(audio) = &mut self.audio
+                && let Err(error) = audio.play_bytes(kind, path, bytes)
+            {
+                tracing::warn!(%error, path, "audio playback failed");
+            }
         }
     }
 
@@ -1087,6 +1447,53 @@ impl App {
             21,
         );
         Self::push_tutorial_sprite(frame, TUTORIAL_CONTINUE_IMAGE_ID, 365.0, 151.0, 21);
+    }
+
+    fn render_mode_select(&self, frame: &mut RenderFrame) {
+        frame.sprites.push(SpriteCommand {
+            resource_id: MODE_SELECT_BACKGROUND_IMAGE_ID,
+            x: 0.0,
+            y: 0.0,
+            z: 0,
+            scale: 1.0,
+            alpha: 1.0,
+        });
+        let thumbnail_base = match self.selected_mode {
+            ModeKind::Survival => SURVIVAL_THUMBNAIL_BASE_IMAGE_ID,
+            _ => CHALLENGE_THUMBNAIL_BASE_IMAGE_ID,
+        };
+        for index in 0..mode_level_names(self.selected_mode).len() {
+            let column = index % 5;
+            let row = index / 5;
+            let x = 30.0 + column as f32 * 150.0;
+            let y = 55.0 + row as f32 * 135.0;
+            frame.sprites.push(SpriteCommand {
+                resource_id: MODE_SELECT_WINDOW_IMAGE_ID,
+                x,
+                y,
+                z: 1,
+                scale: 1.0,
+                alpha: if index == usize::from(self.selected_level) {
+                    1.0
+                } else {
+                    0.72
+                },
+            });
+            frame.sprites.push(SpriteCommand {
+                resource_id: if self.selected_mode != ModeKind::ZenGarden
+                    && (self.selected_mode == ModeKind::Survival || index < 22)
+                {
+                    thumbnail_base + index as u32
+                } else {
+                    MODE_SELECT_BLANK_IMAGE_ID
+                },
+                x: x + 19.0,
+                y: y + 22.0,
+                z: 2,
+                scale: 1.0,
+                alpha: 1.0,
+            });
+        }
     }
 
     fn render_frame(&self) -> RenderFrame {
@@ -1182,6 +1589,7 @@ impl App {
                 }
             }
             SceneKind::AdventureTutorial => self.render_tutorial(&mut frame),
+            SceneKind::ModeSelect => self.render_mode_select(&mut frame),
             SceneKind::SeedChooser => {
                 frame.sprites.push(SpriteCommand {
                     resource_id: SCREEN_PIXEL_IMAGE_ID,
@@ -1273,15 +1681,72 @@ impl App {
                     },
                 });
             }
-            SceneKind::Day => {
+            SceneKind::Garden => {
                 frame.sprites.push(SpriteCommand {
-                    resource_id: DAY_BACKGROUND_IMAGE_ID,
+                    resource_id: SCREEN_PIXEL_IMAGE_ID,
+                    x: 0.0,
+                    y: 0.0,
+                    z: 0,
+                    scale: 800.0,
+                    alpha: 1.0,
+                });
+                for (index, plant) in self.game.state().garden.plants.iter().enumerate() {
+                    frame.sprites.push(SpriteCommand {
+                        resource_id: UI_PIXEL_IMAGE_ID,
+                        x: 250.0 + index as f32 * 120.0,
+                        y: 300.0,
+                        z: 2,
+                        scale: 64.0 + (plant.age_ticks.min(100) as f32 * 0.2),
+                        alpha: if plant.watered { 1.0 } else { 0.75 },
+                    });
+                }
+                if self.game.state().garden_service == Some(GardenServiceKind::TreeOfWisdom) {
+                    frame.sprites.push(SpriteCommand {
+                        resource_id: UI_PIXEL_IMAGE_ID,
+                        x: 360.0,
+                        y: 120.0,
+                        z: 2,
+                        scale: 80.0 + f32::from(self.game.state().tree_height),
+                        alpha: 1.0,
+                    });
+                }
+            }
+            scene @ (SceneKind::Day
+            | SceneKind::Night
+            | SceneKind::Pool
+            | SceneKind::Fog
+            | SceneKind::Roof
+            | SceneKind::Boss) => {
+                frame.sprites.push(SpriteCommand {
+                    resource_id: board_background_id(scene),
                     x: 0.0,
                     y: 0.0,
                     z: 0,
                     scale: 1.0,
                     alpha: 1.0,
                 });
+                for vase in &self.game.state().board.vases {
+                    frame.sprites.push(SpriteCommand {
+                        resource_id: UI_PIXEL_IMAGE_ID,
+                        x: 80.0 + f32::from(vase.column) * 80.0 + 20.0,
+                        y: 120.0 + f32::from(vase.row) * 90.0 + 20.0,
+                        z: 9,
+                        scale: 40.0,
+                        alpha: 0.9,
+                    });
+                }
+                for brain in &self.game.state().board.brains {
+                    if !brain.squished {
+                        frame.sprites.push(SpriteCommand {
+                            resource_id: UI_PIXEL_IMAGE_ID,
+                            x: 20.0,
+                            y: 120.0 + f32::from(brain.row) * 90.0 + 20.0,
+                            z: 9,
+                            scale: 40.0,
+                            alpha: 0.8,
+                        });
+                    }
+                }
                 for plant in &self.game.state().board.plants {
                     frame.sprites.push(SpriteCommand {
                         resource_id: UI_PIXEL_IMAGE_ID,
@@ -1309,6 +1774,60 @@ impl App {
     }
 }
 
+fn is_board_scene(scene: SceneKind) -> bool {
+    matches!(
+        scene,
+        SceneKind::Day
+            | SceneKind::Night
+            | SceneKind::Pool
+            | SceneKind::Fog
+            | SceneKind::Roof
+            | SceneKind::Boss
+    )
+}
+
+fn board_background_id(scene: SceneKind) -> u32 {
+    match scene {
+        SceneKind::Night => NIGHT_BACKGROUND_IMAGE_ID,
+        SceneKind::Pool => POOL_BACKGROUND_IMAGE_ID,
+        SceneKind::Fog => FOG_BACKGROUND_IMAGE_ID,
+        SceneKind::Roof => ROOF_BACKGROUND_IMAGE_ID,
+        SceneKind::Boss => BOSS_BACKGROUND_IMAGE_ID,
+        _ => DAY_BACKGROUND_IMAGE_ID,
+    }
+}
+
+fn mode_level_at(mode: ModeKind, x: f32, y: f32) -> Option<u8> {
+    if !(30.0..780.0).contains(&x) || !(55.0..595.0).contains(&y) {
+        return None;
+    }
+    let column = ((x - 30.0) / 150.0) as usize;
+    let row = ((y - 55.0) / 135.0) as usize;
+    let index = row.checked_mul(5)?.checked_add(column)?;
+    (index < mode_level_names(mode).len())
+        .then(|| u8::try_from(index).ok())
+        .flatten()
+}
+
+fn audio_for_event(event: &GameEvent) -> Option<(AudioKind, &'static str)> {
+    match event {
+        GameEvent::PlantPlaced { .. } => Some((AudioKind::Effect, "sounds/plant.ogg")),
+        GameEvent::PlantShoveled { .. } => Some((AudioKind::Effect, "sounds/shovel.ogg")),
+        GameEvent::SunCollected { .. } | GameEvent::CoinCollected { .. } => {
+            Some((AudioKind::Effect, "sounds/points.ogg"))
+        }
+        GameEvent::ProjectileHit { .. } | GameEvent::ProjectileSplashHit { .. } => {
+            Some((AudioKind::Effect, "sounds/splat.ogg"))
+        }
+        GameEvent::ZombieDied { .. } => Some((AudioKind::Effect, "sounds/splat2.ogg")),
+        GameEvent::MowerTriggered { .. } => Some((AudioKind::Effect, "sounds/lawnmower.ogg")),
+        GameEvent::Paused | GameEvent::Resumed => Some((AudioKind::Effect, "sounds/pause.ogg")),
+        GameEvent::GameLost { .. } => Some((AudioKind::Music, "sounds/losemusic.ogg")),
+        GameEvent::GameWon => Some((AudioKind::Music, "sounds/winmusic.ogg")),
+        _ => None,
+    }
+}
+
 impl ApplicationHandler for App {
     fn resumed(&mut self, event_loop: &ActiveEventLoop) {
         self.initialize(event_loop);
@@ -1327,9 +1846,9 @@ impl ApplicationHandler for App {
             }
             WindowEvent::MouseInput {
                 state: ElementState::Pressed,
-                button: MouseButton::Left,
+                button,
                 ..
-            } => self.handle_mouse_click(),
+            } => self.handle_mouse_click(button),
             WindowEvent::KeyboardInput { event, .. }
                 if event.state == ElementState::Pressed && !event.repeat =>
             {
@@ -1356,5 +1875,23 @@ impl ApplicationHandler for App {
             }
             _ => {}
         }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn maps_terminal_and_player_events_to_audio_resources() {
+        assert_eq!(
+            audio_for_event(&GameEvent::PlantShoveled { entity: 1 }),
+            Some((AudioKind::Effect, "sounds/shovel.ogg"))
+        );
+        assert_eq!(
+            audio_for_event(&GameEvent::GameWon),
+            Some((AudioKind::Music, "sounds/winmusic.ogg"))
+        );
+        assert_eq!(audio_for_event(&GameEvent::StateChanged), None);
     }
 }

@@ -1,4 +1,4 @@
-use std::path::Path;
+use std::{io::Cursor, path::Path};
 
 use kira::sound::static_sound::{StaticSoundData, StaticSoundHandle};
 use kira::track::{TrackBuilder, TrackHandle};
@@ -25,6 +25,8 @@ pub enum AudioKind {
 
 pub trait AudioBackend {
     fn play(&mut self, kind: AudioKind, path: &Path) -> Result<(), AudioError>;
+    fn play_bytes(&mut self, kind: AudioKind, path: &str, bytes: Vec<u8>)
+    -> Result<(), AudioError>;
     fn stop_music(&mut self);
     fn set_volume(&mut self, kind: AudioKind, decibels: f32);
 }
@@ -57,23 +59,16 @@ impl KiraAudioBackend {
 
 impl AudioBackend for KiraAudioBackend {
     fn play(&mut self, kind: AudioKind, path: &Path) -> Result<(), AudioError> {
-        let data = load_sound(path)?;
-        match kind {
-            AudioKind::Effect => {
-                self.effects
-                    .play(data)
-                    .map_err(|error| AudioError::Backend(error.to_string()))?;
-            }
-            AudioKind::Music => {
-                self.stop_music();
-                self.music_handle = Some(
-                    self.music
-                        .play(data)
-                        .map_err(|error| AudioError::Backend(error.to_string()))?,
-                );
-            }
-        }
-        Ok(())
+        self.play_data(kind, load_sound(path)?)
+    }
+
+    fn play_bytes(
+        &mut self,
+        kind: AudioKind,
+        path: &str,
+        bytes: Vec<u8>,
+    ) -> Result<(), AudioError> {
+        self.play_data(kind, load_sound_bytes(path, bytes)?)
     }
 
     fn stop_music(&mut self) {
@@ -91,12 +86,40 @@ impl AudioBackend for KiraAudioBackend {
     }
 }
 
+impl KiraAudioBackend {
+    fn play_data(&mut self, kind: AudioKind, data: StaticSoundData) -> Result<(), AudioError> {
+        match kind {
+            AudioKind::Effect => {
+                self.effects
+                    .play(data)
+                    .map_err(|error| AudioError::Backend(error.to_string()))?;
+            }
+            AudioKind::Music => {
+                self.stop_music();
+                self.music_handle = Some(
+                    self.music
+                        .play(data)
+                        .map_err(|error| AudioError::Backend(error.to_string()))?,
+                );
+            }
+        }
+        Ok(())
+    }
+}
+
 fn load_sound(path: &Path) -> Result<StaticSoundData, AudioError> {
     if !path.is_file() {
         return Err(AudioError::MissingAsset(path.display().to_string()));
     }
     StaticSoundData::from_file(path).map_err(|error| AudioError::Decode {
         path: path.display().to_string(),
+        reason: error.to_string(),
+    })
+}
+
+fn load_sound_bytes(path: &str, bytes: Vec<u8>) -> Result<StaticSoundData, AudioError> {
+    StaticSoundData::from_cursor(Cursor::new(bytes)).map_err(|error| AudioError::Decode {
+        path: path.to_owned(),
         reason: error.to_string(),
     })
 }
@@ -109,5 +132,14 @@ mod tests {
     fn rejects_missing_audio_before_decoding() {
         let result = load_sound(Path::new("definitely-missing-neopvz-audio.ogg"));
         assert!(matches!(result, Err(AudioError::MissingAsset(_))));
+    }
+
+    #[test]
+    fn rejects_invalid_resource_audio_with_its_path() {
+        let result = load_sound_bytes("sounds/click.ogg", b"not audio".to_vec());
+        assert!(matches!(
+            result,
+            Err(AudioError::Decode { path, .. }) if path == "sounds/click.ogg"
+        ));
     }
 }
