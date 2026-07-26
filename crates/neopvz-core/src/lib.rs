@@ -709,8 +709,64 @@ pub fn mode_level_scene(mode: ModeKind, level: u8) -> SceneKind {
         }
         ModeKind::IZombie => SceneKind::Night,
         ModeKind::ZenGarden => SceneKind::Garden,
+        ModeKind::Adventure => adventure_level_scene(level),
         _ => SceneKind::Day,
     }
+}
+
+// gZombieWaves in 1.0.0.1051 (Challenge.cpp:33-39); level 15's entry is dead
+// because the Whack-a-Zombie branch forces 8 waves.
+const ADVENTURE_WAVES: [u32; 50] = [
+    4, 6, 8, 10, 8, 10, 20, 10, 20, 20, // 1-10
+    10, 20, 10, 20, 10, 10, 20, 10, 20, 20, // 11-20
+    10, 20, 20, 30, 20, 20, 30, 20, 30, 30, // 21-30
+    10, 20, 10, 20, 20, 10, 20, 10, 20, 20, // 31-40
+    10, 20, 20, 30, 20, 20, 30, 20, 30, 30, // 41-50
+];
+
+/// Board::PickBackground: Vasebreaker level 35 is checked before the fog
+/// range and plays on a night board.
+pub fn adventure_level_scene(level: u8) -> SceneKind {
+    match level {
+        1..=10 => SceneKind::Day,
+        11..=20 | 35 => SceneKind::Night,
+        21..=30 => SceneKind::Pool,
+        31..=40 => SceneKind::Fog,
+        41..=49 => SceneKind::Roof,
+        50 => SceneKind::Boss,
+        _ => SceneKind::Day,
+    }
+}
+
+/// Board::PickZombieWaves: Whack-a-Zombie (15) is always 8; replays bump
+/// every non-mini-boss level (<10 becomes 20, otherwise +10).
+pub fn adventure_wave_count(level: u8, replay: bool) -> u32 {
+    if level == 15 {
+        return 8;
+    }
+    let base = ADVENTURE_WAVES[usize::from(level.clamp(1, 50)) - 1];
+    if replay && !matches!(level, 10 | 20 | 30) {
+        if base < 10 { 20 } else { base + 10 }
+    } else {
+        base
+    }
+}
+
+/// Board::HasConveyorBeltSeedBank for adventure levels.
+pub fn adventure_level_is_conveyor(level: u8) -> bool {
+    matches!(level, 5 | 10 | 20 | 25 | 30 | 40 | 45 | 50)
+}
+
+/// Board::GetNumWavesPerFlag / IsFlagWave: first-run level 1 has no flag
+/// waves at all; short first-run levels flag only on their final wave;
+/// everything else flags every 10 waves.
+pub fn adventure_flag_wave_count(level: u8, replay: bool) -> u32 {
+    if !replay && level == 1 {
+        return 0;
+    }
+    let waves = adventure_wave_count(level, replay);
+    let per_flag = if !replay && waves < 10 { waves } else { 10 };
+    waves / per_flag
 }
 
 fn mode_wave_config(mode: ModeKind, level: u8) -> (u32, bool) {
@@ -739,6 +795,9 @@ fn mode_wave_config(mode: ModeKind, level: u8) -> (u32, bool) {
             ChallengeKind::FinalBoss => (40, false),
             _ => (1, false),
         },
+        ModeKind::Adventure if (1..=50).contains(&level) => {
+            (adventure_wave_count(level, false), false)
+        }
         _ => (1, false),
     }
 }
@@ -11982,6 +12041,61 @@ mod tests {
                 "drops land on columns 4-8"
             );
         }
+    }
+
+    #[test]
+    fn adventure_level_table_matches_the_source() {
+        // Scene routing, including the level-35 night override.
+        assert_eq!(adventure_level_scene(1), SceneKind::Day);
+        assert_eq!(adventure_level_scene(11), SceneKind::Night);
+        assert_eq!(adventure_level_scene(21), SceneKind::Pool);
+        assert_eq!(adventure_level_scene(31), SceneKind::Fog);
+        assert_eq!(adventure_level_scene(35), SceneKind::Night);
+        assert_eq!(adventure_level_scene(40), SceneKind::Fog);
+        assert_eq!(adventure_level_scene(41), SceneKind::Roof);
+        assert_eq!(adventure_level_scene(50), SceneKind::Boss);
+
+        // gZombieWaves identity plus the Whack-a-Zombie override.
+        let first: Vec<u32> = (1..=50).map(|l| adventure_wave_count(l, false)).collect();
+        assert_eq!(
+            first,
+            vec![
+                4, 6, 8, 10, 8, 10, 20, 10, 20, 20, 10, 20, 10, 20, 8, 10, 20, 10, 20, 20, 10, 20,
+                20, 30, 20, 20, 30, 20, 30, 30, 10, 20, 10, 20, 20, 10, 20, 10, 20, 20, 10, 20, 20,
+                30, 20, 20, 30, 20, 30, 30,
+            ]
+        );
+
+        // Replay bumps every non-mini-boss level; Whack-a-Zombie stays at 8.
+        assert_eq!(adventure_wave_count(1, true), 20);
+        assert_eq!(adventure_wave_count(7, true), 30);
+        assert_eq!(adventure_wave_count(10, true), 20);
+        assert_eq!(adventure_wave_count(15, true), 8);
+        assert_eq!(adventure_wave_count(24, true), 40);
+        assert_eq!(adventure_wave_count(30, true), 30);
+
+        // Flag identity: first-run level 1 has none; short levels flag once;
+        // replay always flags every ten waves (level 15 replay has zero).
+        assert_eq!(adventure_flag_wave_count(1, false), 0);
+        assert_eq!(adventure_flag_wave_count(2, false), 1);
+        assert_eq!(adventure_flag_wave_count(7, false), 2);
+        assert_eq!(adventure_flag_wave_count(15, true), 0);
+        assert_eq!(adventure_flag_wave_count(24, false), 3);
+        assert_eq!(adventure_flag_wave_count(50, false), 3);
+
+        // Conveyor-belt levels.
+        let conveyors: Vec<u8> = (1..=50)
+            .filter(|l| adventure_level_is_conveyor(*l))
+            .collect();
+        assert_eq!(conveyors, vec![5, 10, 20, 25, 30, 40, 45, 50]);
+
+        // Mode wiring uses the table.
+        let game = Game::new_mode(7, ModeKind::Adventure, 35);
+        assert_eq!(game.state().scene, SceneKind::Night);
+        assert_eq!(game.state().board.wave.total, 20);
+        let roof = Game::new_mode(7, ModeKind::Adventure, 41);
+        assert_eq!(roof.state().scene, SceneKind::Roof);
+        assert_eq!(roof.state().board.wave.total, 10);
     }
 
     #[test]
