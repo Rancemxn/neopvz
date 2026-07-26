@@ -120,6 +120,8 @@ const BUTTER_TICKS: u32 = 400;
 // plant suns launch upward and fall under the 0.09 gravity (Coin.cpp:487).
 const SUN_FALL_SPEED: i64 = 670_000;
 const SUN_GRAVITY: i64 = 90_000;
+// Coin.cpp:491: dropped coins fall under the heavier 0.15 gravity.
+const COIN_GRAVITY: i64 = 150_000;
 const ZOMBIE_NEXT_WAVE_COUNTDOWN: u32 = 2_500;
 const ZOMBIE_NEXT_WAVE_RANGE: u32 = 600;
 const ICE_START_X: i64 = 800 * POSITION_SCALE;
@@ -2221,6 +2223,10 @@ pub struct CoinPickupState {
     pub plant_type: Option<PlantType>,
     #[serde(default)]
     pub usable_seed_type: Option<PlantType>,
+    #[serde(default)]
+    pub target_y: Option<i64>,
+    #[serde(default)]
+    pub velocity_y: i64,
 }
 
 #[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
@@ -7597,6 +7603,17 @@ impl Game {
                 }
             }
         }
+        for coin in &mut self.state.board.coins {
+            if let Some(target_y) = coin.target_y {
+                coin.position_y += coin.velocity_y;
+                coin.velocity_y += COIN_GRAVITY;
+                if coin.velocity_y > 0 && coin.position_y >= target_y {
+                    coin.position_y = target_y;
+                    coin.target_y = None;
+                    coin.velocity_y = 0;
+                }
+            }
+        }
     }
 
     fn update_wave_spawning(&mut self, events: &mut Vec<GameEvent>) {
@@ -8352,6 +8369,14 @@ impl Game {
         events: &mut Vec<GameEvent>,
     ) {
         self.spawn_pickup(coin_type, position_x, position_y, events);
+        // COIN_MOTION_COIN (Coin.cpp:306): dropped coins pop up in the
+        // -1.7..-3.4 band and fall back under the 0.15 gravity.
+        let launch = self.rng.next();
+        let ground_offset = self.rng.range(20);
+        if let Some(coin) = self.state.board.coins.last_mut() {
+            coin.velocity_y = -1_700_000 - (i64::from(launch) % 1_700_001);
+            coin.target_y = Some(coin.position_y + i64::from(ground_offset) * POSITION_SCALE);
+        }
     }
 
     fn spawn_pickup(
@@ -8383,6 +8408,8 @@ impl Game {
             position_y,
             plant_type,
             usable_seed_type,
+            target_y: None,
+            velocity_y: 0,
         });
         events.push(GameEvent::CoinProduced {
             entity: id,
@@ -13205,6 +13232,31 @@ mod tests {
         assert_eq!(Game::new_mode(7, ModeKind::Adventure, 2).state().sun, 50);
         assert_eq!(Game::new_mode(7, ModeKind::Adventure, 15).state().sun, 0);
         assert_eq!(Game::new_mode(7, ModeKind::Adventure, 35).state().sun, 0);
+    }
+
+    #[test]
+    fn dropped_coins_arc_and_settle() {
+        let mut game = Game::new(7, SceneKind::Day);
+        let mut events = Vec::new();
+        game.spawn_coin(
+            CoinType::Silver,
+            300 * POSITION_SCALE,
+            280 * POSITION_SCALE,
+            &mut events,
+        );
+        let coin = game.state.board.coins[0].clone();
+        assert!(coin.velocity_y <= -1_700_000, "coins launch upward");
+        let target = coin.target_y.expect("dropped coins carry a ground stop");
+
+        for _ in 0..200 {
+            game.advance(InputFrame::default());
+            if game.state.board.coins[0].target_y.is_none() {
+                break;
+            }
+        }
+        let landed = &game.state.board.coins[0];
+        assert_eq!(landed.position_y, target, "the coin settles at its stop");
+        assert_eq!(landed.velocity_y, 0);
     }
 
     #[test]
