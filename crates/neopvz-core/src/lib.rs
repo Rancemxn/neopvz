@@ -3244,6 +3244,20 @@ impl Game {
                 if won {
                     self.state.scene = SceneKind::Complete;
                     events.push(GameEvent::GameWon);
+                    // Zombie::TrySpawnLevelAward: adventure completion drops
+                    // the level award (the trophy on 5-10, a seed packet
+                    // elsewhere; item levels keep their award identity in
+                    // adventure_award).
+                    if self.state.mode == ModeKind::Adventure
+                        && (1..=50).contains(&self.state.level)
+                    {
+                        let coin_type = if self.state.level == 50 {
+                            CoinType::AwardSilverSunflower
+                        } else {
+                            CoinType::FinalSeedPacket
+                        };
+                        self.spawn_pickup(coin_type, grid_x(4), grid_y(2), &mut events);
+                    }
                 }
                 events.push(GameEvent::StateChanged);
             }
@@ -12842,6 +12856,23 @@ mod tests {
                 .iter()
                 .all(|z| matches!(z.row, 2 | 3) && z.position_x < grid_x(8)),
             "pool emerges use the source cell block"
+        );
+    }
+
+    #[test]
+    fn adventure_completion_drops_the_level_award() {
+        let mut game = Game::new_mode(7, ModeKind::Adventure, 1);
+        game.state.board.wave.current = game.state.board.wave.total;
+        game.state.board.zombies.clear();
+        let events = game.advance(InputFrame::default());
+        assert!(events.iter().any(|e| matches!(e, GameEvent::GameWon)));
+        assert!(
+            game.state
+                .board
+                .coins
+                .iter()
+                .any(|coin| coin.coin_type == CoinType::FinalSeedPacket),
+            "finishing an adventure level drops its award packet"
         );
     }
 
