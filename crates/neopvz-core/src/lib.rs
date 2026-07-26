@@ -108,6 +108,21 @@ const IMP_THROW_SPAWN_OFFSET: i64 = 133 * POSITION_SCALE;
 const IMP_THROW_SPEED_X: i64 = 3 * POSITION_SCALE;
 const IMP_THROW_START_ALTITUDE: i64 = 88 * POSITION_SCALE;
 const THROWN_ZOMBIE_GRAVITY: i64 = POSITION_SCALE / 20;
+// Zomboni ice trail: per-row Board state in the source (mIceMinX/mIceTimer),
+// laid at posX + 118 (clamped to 25, roof 500), refreshed to 3000 ticks while
+// the front is left of 800; Jalapeno sets the row timer to 20. Bobsleds only
+// spawn on iced rows, keep their row's timer at >= 500, and the leader takes
+// 6 damage per tick past the ice end until the 300 HP sled breaks.
+const ICE_START_X: i64 = 800 * POSITION_SCALE;
+const ICE_LAY_OFFSET: i64 = 118 * POSITION_SCALE;
+const ICE_LAY_MIN_X: i64 = 25 * POSITION_SCALE;
+const ICE_LAY_MIN_X_ROOF: i64 = 500 * POSITION_SCALE;
+const ICE_TIMER_TICKS: u32 = 3_000;
+const JALAPENO_ICE_MELT_TICKS: u32 = 20;
+const SPIKE_VEHICLE_DAMAGE: i32 = 1_800;
+const SPIKEROCK_VEHICLE_SELF_DAMAGE: i32 = 50;
+const BOBSLED_ICE_KEEPALIVE_TICKS: u32 = 500;
+const BOBSLED_ICE_END_DAMAGE: i32 = 6;
 const DANCER_SUMMON_TICKS: u32 = 300;
 const BACKUP_DANCER_COUNT: usize = 4;
 const DIGGER_RISE_TICKS: u32 = 130;
@@ -1602,6 +1617,7 @@ pub enum InputRejectReason {
     InvalidTerrain,
     Occupied,
     Crater,
+    Ice,
     NotEnoughSun,
     NotReady,
     MissingEntity,
@@ -1936,6 +1952,10 @@ pub struct BoardState {
     #[serde(default)]
     pub ladders: Vec<LadderState>,
     #[serde(default)]
+    pub ice_min_x: Vec<i64>,
+    #[serde(default)]
+    pub ice_timer: Vec<u32>,
+    #[serde(default)]
     pub vases: Vec<VaseState>,
     #[serde(default)]
     pub brains: Vec<BrainState>,
@@ -2019,6 +2039,8 @@ impl BoardState {
             craters: Vec::new(),
             graves: Vec::new(),
             ladders: Vec::new(),
+            ice_min_x: vec![ICE_START_X; usize::from(rows)],
+            ice_timer: vec![0; usize::from(rows)],
             vases,
             brains,
             mowers,
@@ -2822,6 +2844,7 @@ impl Game {
                 self.update_challenge(&mut events);
                 self.state.board.ice_counter = self.state.board.ice_counter.saturating_sub(1);
                 self.update_craters();
+                self.update_ice();
                 self.state.tick = self.state.tick.saturating_add(1);
                 self.state.wave = self.state.board.wave.current;
 
@@ -4048,6 +4071,13 @@ impl Game {
             });
             return;
         }
+        if self.is_ice_at(row, column) {
+            events.push(GameEvent::InputRejected {
+                action,
+                reason: InputRejectReason::Ice,
+            });
+            return;
+        }
 
         let packet_slot = self
             .state
@@ -4380,6 +4410,9 @@ impl Game {
     fn update_plants(&mut self, events: &mut Vec<GameEvent>) {
         let plant_count = self.state.board.plants.len();
         for index in 0..plant_count {
+            if index >= self.state.board.plants.len() {
+                break;
+            }
             let asleep = {
                 let plant = &mut self.state.board.plants[index];
                 if plant.wake_up_counter > 0 {
@@ -4763,7 +4796,10 @@ impl Game {
                 });
             }
             if spikeweed_hit {
-                self.apply_spikeweed_damage(id, row, column, events);
+                let vehicle_hit = self.apply_spikeweed_damage(id, row, column, events);
+                if vehicle_hit && self.pop_spiky_plant(id, events) {
+                    continue;
+                }
             }
             if special {
                 self.trigger_plant_special(id, plant_type, row, column, events);
@@ -5035,6 +5071,14 @@ impl Game {
         } else {
             (115 * POSITION_SCALE, 1, false)
         };
+        if plant_type.is_jalapeno() {
+            let row_index = usize::from(row);
+            if row_index < self.state.board.ice_timer.len()
+                && self.state.board.ice_timer[row_index] > 0
+            {
+                self.state.board.ice_timer[row_index] = JALAPENO_ICE_MELT_TICKS;
+            }
+        }
         let center_x = grid_x(column);
         let target_ids = self
             .state
@@ -5392,10 +5436,71 @@ impl Game {
     }
 
     fn update_zamboni_state(&mut self, zombie_index: usize) {
-        let zombie = &mut self.state.board.zombies[zombie_index];
-        if zombie.zombie_type == ZombieType::Zamboni {
+        let (row, position_x) = {
+            let zombie = &mut self.state.board.zombies[zombie_index];
+            if zombie.zombie_type != ZombieType::Zamboni {
+                return;
+            }
             zombie.speed = zamboni_speed(zombie.position_x);
+            (zombie.row, zombie.position_x)
+        };
+        let lay_min = if self.state.scene == SceneKind::Roof {
+            ICE_LAY_MIN_X_ROOF
+        } else {
+            ICE_LAY_MIN_X
+        };
+        let ice_x = (position_x + ICE_LAY_OFFSET).max(lay_min);
+        let row_index = usize::from(row);
+        if row_index >= self.state.board.ice_timer.len() {
+            return;
         }
+        if ice_x < self.state.board.ice_min_x[row_index] {
+            self.state.board.ice_min_x[row_index] = ice_x;
+        }
+        if ice_x < ICE_START_X {
+            self.state.board.ice_timer[row_index] =
+                if self.state.challenge.kind == ChallengeKind::BobsledBonanza {
+                    u32::MAX
+                } else {
+                    ICE_TIMER_TICKS
+                };
+        }
+    }
+
+    fn update_ice(&mut self) {
+        for row in 0..self.state.board.ice_timer.len() {
+            if self.state.board.ice_timer[row] > 0 {
+                self.state.board.ice_timer[row] -= 1;
+                if self.state.board.ice_timer[row] == 0 {
+                    self.state.board.ice_min_x[row] = ICE_START_X;
+                }
+            }
+        }
+    }
+
+    fn is_ice_at(&self, row: u8, column: u8) -> bool {
+        let row_index = usize::from(row);
+        let timer = self
+            .state
+            .board
+            .ice_timer
+            .get(row_index)
+            .copied()
+            .unwrap_or(0);
+        let min_x = self
+            .state
+            .board
+            .ice_min_x
+            .get(row_index)
+            .copied()
+            .unwrap_or(ICE_START_X);
+        if timer == 0 || min_x > 750 * POSITION_SCALE {
+            return false;
+        }
+        let ice_column =
+            ((min_x + 12 * POSITION_SCALE - 40 * POSITION_SCALE) / (80 * POSITION_SCALE))
+                .clamp(0, i64::from(self.state.board.columns.saturating_sub(1))) as u8;
+        column >= ice_column
     }
 
     fn update_balloon_state(&mut self, zombie_index: usize) {
@@ -5672,6 +5777,57 @@ impl Game {
                 self.state.board.zombies[zombie_index].speed =
                     self.rng.fixed_range(230_000, 320_000);
             }
+            {
+                let (sliding, sled_row, is_leader, leader_x) = {
+                    let zombie = &self.state.board.zombies[zombie_index];
+                    (
+                        zombie.zombie_type == ZombieType::Bobsled && zombie.bobsled_sliding,
+                        zombie.row,
+                        zombie.bobsled_leader,
+                        zombie.position_x,
+                    )
+                };
+                if sliding {
+                    let row_index = usize::from(sled_row);
+                    if row_index < self.state.board.ice_timer.len() {
+                        let timer = self.state.board.ice_timer[row_index];
+                        self.state.board.ice_timer[row_index] =
+                            timer.max(BOBSLED_ICE_KEEPALIVE_TICKS);
+                    }
+                    let ice_min = self
+                        .state
+                        .board
+                        .ice_min_x
+                        .get(row_index)
+                        .copied()
+                        .unwrap_or(ICE_START_X);
+                    if is_leader && leader_x + 10 * POSITION_SCALE < ice_min {
+                        self.damage_zombie(zombie_index, BOBSLED_ICE_END_DAMAGE);
+                        if self.state.board.zombies[zombie_index].shield_health == 0 {
+                            let team: Vec<usize> = self
+                                .state
+                                .board
+                                .zombies
+                                .iter()
+                                .enumerate()
+                                .filter(|(_, z)| {
+                                    z.zombie_type == ZombieType::Bobsled
+                                        && z.bobsled_sliding
+                                        && z.row == sled_row
+                                })
+                                .map(|(index, _)| index)
+                                .collect();
+                            for teammate in team {
+                                let speed = self.rng.fixed_range(230_000, 320_000);
+                                let zombie = &mut self.state.board.zombies[teammate];
+                                zombie.bobsled_sliding = false;
+                                zombie.bobsled_counter = 0;
+                                zombie.speed = speed;
+                            }
+                        }
+                    }
+                }
+            }
             if self.state.board.zombies[zombie_index].blowing_away {
                 let entity = self.state.board.zombies[zombie_index].id;
                 self.state.board.zombies[zombie_index].position_x += BLOWN_AWAY_SPEED;
@@ -5873,10 +6029,13 @@ impl Game {
                         && zombie.dolphin_phase == 2)
                     || (zombie.zombie_type == ZombieType::Balloon
                         && zombie.balloon_phase == BALLOON_POPPING_PHASE)
-                    || (zombie.zombie_type == ZombieType::Bobsled && zombie.bobsled_sliding)
                     || zombie.zombie_type == ZombieType::Bungee)
                 {
-                    let base_speed = if zombie.yeti_running {
+                    let sledding =
+                        zombie.zombie_type == ZombieType::Bobsled && zombie.bobsled_sliding;
+                    let base_speed = if sledding {
+                        BOBSLED_SPEED
+                    } else if zombie.yeti_running {
                         YETI_RUNNING_SPEED
                     } else if zombie.zombie_type == ZombieType::Newspaper
                         && zombie.health > 0
@@ -5886,7 +6045,7 @@ impl Game {
                     } else {
                         zombie.speed
                     };
-                    let speed = if zombie.chilled_counter == 0 {
+                    let speed = if zombie.chilled_counter == 0 || sledding {
                         base_speed
                     } else {
                         base_speed * 2 / 5
@@ -6726,7 +6885,13 @@ impl Game {
         let row = self.rng.range(u32::from(self.state.board.rows)) as u8;
         match self.state.challenge.kind {
             ChallengeKind::BobsledBonanza => {
-                self.spawn_bobsled_zombie(row, wave, None, events);
+                // Bobsleds only spawn on iced rows; the source wave list leads
+                // with Zombonis, whose Bonanza trails never expire.
+                if let Some(ice_row) = self.pick_bobsled_row() {
+                    self.spawn_bobsled_zombie(ice_row, wave, None, events);
+                } else {
+                    self.spawn_zamboni_zombie(row, wave, None, events);
+                }
             }
             ChallengeKind::PogoParty => {
                 self.spawn_pogo_zombie(row, wave, None, events);
@@ -6772,7 +6937,8 @@ impl Game {
         row: u8,
         column: u8,
         events: &mut Vec<GameEvent>,
-    ) {
+    ) -> bool {
+        let mut vehicle_hit = false;
         let mut zombie_index = 0;
         while zombie_index < self.state.board.zombies.len() {
             let zombie = &self.state.board.zombies[zombie_index];
@@ -6782,12 +6948,23 @@ impl Game {
                 continue;
             }
             let zombie_id = zombie.id;
-            self.damage_zombie(zombie_index, SPIKEWEED_DAMAGE);
+            // Spike damage against the Zomboni and Catapult vehicles is raised to
+            // 1800 and pops the tires; the spiky plant pays for it below.
+            let damage = if matches!(
+                zombie.zombie_type,
+                ZombieType::Zamboni | ZombieType::Catapult
+            ) {
+                vehicle_hit = true;
+                SPIKE_VEHICLE_DAMAGE
+            } else {
+                SPIKEWEED_DAMAGE
+            };
+            self.damage_zombie(zombie_index, damage);
             let health_remaining = self.state.board.zombies[zombie_index].health;
             events.push(GameEvent::PlantSpecialHit {
                 plant: plant_id,
                 zombie: zombie_id,
-                damage: SPIKEWEED_DAMAGE,
+                damage,
                 health_remaining,
             });
             if health_remaining <= 0 {
@@ -6796,6 +6973,41 @@ impl Game {
             } else {
                 zombie_index += 1;
             }
+        }
+        vehicle_hit
+    }
+
+    /// Applies the vehicle-pop cost to a spiky plant. Returns true when the
+    /// plant was removed so the caller can stop using its plant index.
+    fn pop_spiky_plant(&mut self, plant_id: EntityId, events: &mut Vec<GameEvent>) -> bool {
+        let Some(plant_index) = self
+            .state
+            .board
+            .plants
+            .iter()
+            .position(|plant| plant.id == plant_id)
+        else {
+            return true;
+        };
+        let is_spikerock = self.state.board.plants[plant_index].plant_type.slot() == 46;
+        if is_spikerock {
+            self.state.board.plants[plant_index].health -= SPIKEROCK_VEHICLE_SELF_DAMAGE;
+            let health_remaining = self.state.board.plants[plant_index].health;
+            events.push(GameEvent::PlantDamaged {
+                entity: plant_id,
+                damage: SPIKEROCK_VEHICLE_SELF_DAMAGE,
+                health_remaining,
+            });
+            if health_remaining <= 0 {
+                self.state.board.plants.remove(plant_index);
+                events.push(GameEvent::PlantDied { entity: plant_id });
+                return true;
+            }
+            false
+        } else {
+            self.state.board.plants.remove(plant_index);
+            events.push(GameEvent::PlantDied { entity: plant_id });
+            true
         }
     }
 
@@ -7864,6 +8076,24 @@ impl Game {
             zombie.imp_flight_ticks = flight_ticks;
         }
         events.push(GameEvent::ImpThrown { gargantuar, imp });
+    }
+
+    fn pick_bobsled_row(&mut self) -> Option<u8> {
+        let can_add = self
+            .state
+            .board
+            .ice_timer
+            .iter()
+            .zip(&self.state.board.ice_min_x)
+            .any(|(timer, min_x)| *timer > 0 && *min_x < 700 * POSITION_SCALE);
+        if !can_add {
+            return None;
+        }
+        let iced_rows: Vec<u8> = (0..self.state.board.rows)
+            .filter(|row| self.state.board.ice_timer[usize::from(*row)] > 0)
+            .collect();
+        let pick = self.rng.range(iced_rows.len() as u32) as usize;
+        Some(iced_rows[pick])
     }
 
     #[allow(dead_code)]
@@ -10745,6 +10975,177 @@ mod tests {
     }
 
     #[test]
+    fn zomboni_lays_ice_that_blocks_planting_and_jalapeno_melts_it() {
+        let mut game = Game::new(7, SceneKind::Day);
+        game.state.sun = 1_000;
+        let mut setup = Vec::new();
+        game.spawn_zamboni_zombie(2, 0, Some(500 * POSITION_SCALE), &mut setup);
+
+        game.advance(InputFrame::default());
+        assert!(
+            game.state.board.ice_timer[2] > 0,
+            "the trail timer refreshes"
+        );
+        assert!(
+            game.state.board.ice_min_x[2] <= 618 * POSITION_SCALE,
+            "ice starts 118 px ahead of the zomboni"
+        );
+
+        let events = game.advance(InputFrame {
+            actions: vec![
+                InputAction::SelectSeed { slot: 0 },
+                InputAction::Plant { row: 2, column: 8 },
+            ],
+        });
+        assert!(
+            events.iter().any(|event| matches!(
+                event,
+                GameEvent::InputRejected {
+                    reason: InputRejectReason::Ice,
+                    ..
+                }
+            )),
+            "iced cells reject planting"
+        );
+        let events = game.advance(InputFrame {
+            actions: vec![
+                InputAction::SelectSeed { slot: 0 },
+                InputAction::Plant { row: 2, column: 3 },
+            ],
+        });
+        assert!(
+            events
+                .iter()
+                .any(|event| matches!(event, GameEvent::PlantPlaced { .. })),
+            "cells left of the trail stay plantable"
+        );
+
+        game.advance(InputFrame {
+            actions: vec![
+                InputAction::SelectSeed { slot: 20 },
+                InputAction::Plant { row: 2, column: 0 },
+            ],
+        });
+        for _ in 0..300 {
+            if game
+                .state
+                .board
+                .zombies
+                .iter()
+                .all(|zombie| zombie.zombie_type != ZombieType::Zamboni)
+            {
+                break;
+            }
+            game.advance(InputFrame::default());
+        }
+        assert!(
+            game.state.board.ice_timer[2] <= JALAPENO_ICE_MELT_TICKS,
+            "jalapeno drops the row ice timer to the melt window"
+        );
+        for _ in 0..=JALAPENO_ICE_MELT_TICKS {
+            game.advance(InputFrame::default());
+        }
+        assert_eq!(game.state.board.ice_timer[2], 0);
+        assert_eq!(game.state.board.ice_min_x[2], ICE_START_X);
+        let events = game.advance(InputFrame {
+            actions: vec![
+                InputAction::SelectSeed { slot: 1 },
+                InputAction::Plant { row: 2, column: 8 },
+            ],
+        });
+        assert!(
+            events
+                .iter()
+                .any(|event| matches!(event, GameEvent::PlantPlaced { .. })),
+            "melted rows are plantable again"
+        );
+    }
+
+    #[test]
+    fn spikeweed_pops_the_zamboni_and_dies_doing_it() {
+        let mut game = Game::new(7, SceneKind::Day);
+        game.state.sun = 1_000;
+        game.advance(InputFrame {
+            actions: vec![
+                InputAction::SelectSeed { slot: 21 },
+                InputAction::Plant { row: 2, column: 5 },
+            ],
+        });
+        let mut setup = Vec::new();
+        let zamboni = game.spawn_zamboni_zombie(2, 0, Some(grid_x(5)), &mut setup);
+
+        let mut popped = false;
+        let mut spikeweed_died = false;
+        for _ in 0..200 {
+            let events = game.advance(InputFrame::default());
+            for event in &events {
+                if matches!(
+                    event,
+                    GameEvent::PlantSpecialHit {
+                        zombie,
+                        damage: SPIKE_VEHICLE_DAMAGE,
+                        ..
+                    } if *zombie == zamboni
+                ) {
+                    popped = true;
+                }
+                if matches!(event, GameEvent::PlantDied { .. }) {
+                    spikeweed_died = true;
+                }
+            }
+            if popped && spikeweed_died {
+                break;
+            }
+        }
+        assert!(popped, "spike contact deals the 1800 vehicle damage");
+        assert!(spikeweed_died, "the spikeweed is destroyed by the vehicle");
+        assert!(
+            game.state
+                .board
+                .zombies
+                .iter()
+                .all(|zombie| zombie.id != zamboni),
+            "1800 spike damage kills the 1350 HP zomboni"
+        );
+    }
+
+    #[test]
+    fn bobsled_team_crashes_into_walkers_past_the_ice_end() {
+        let mut game = Game::new(7, SceneKind::Day);
+        game.state.board.ice_timer[2] = 400;
+        game.state.board.ice_min_x[2] = 600 * POSITION_SCALE;
+        let mut setup = Vec::new();
+        game.spawn_bobsled_zombie(2, 0, Some(700 * POSITION_SCALE), &mut setup);
+
+        game.advance(InputFrame::default());
+        assert!(
+            (498..=500).contains(&game.state.board.ice_timer[2]),
+            "a sliding team keeps its row ice alive at 500 ticks"
+        );
+
+        for _ in 0..320 {
+            game.advance(InputFrame::default());
+        }
+        let team: Vec<&ZombieState> = game
+            .state
+            .board
+            .zombies
+            .iter()
+            .filter(|zombie| zombie.zombie_type == ZombieType::Bobsled)
+            .collect();
+        assert_eq!(team.len(), 4, "the crash leaves all four zombies alive");
+        assert!(
+            team.iter().all(|zombie| !zombie.bobsled_sliding),
+            "the team dismounts once the sled breaks past the ice end"
+        );
+        assert!(
+            team.iter()
+                .all(|zombie| !zombie.bobsled_leader || zombie.shield_health == 0),
+            "the leader's 300 HP sled is consumed by the 6-per-tick overrun damage"
+        );
+    }
+
+    #[test]
     fn jackbox_zombie_explodes_after_timer_and_damages_nearby_plants() {
         let mut game = Game::new(7, SceneKind::Day);
         let mut setup = Vec::new();
@@ -12267,16 +12668,36 @@ mod tests {
 
         let events = bobsled.advance(InputFrame::default());
         assert_eq!(bobsled.state().board.wave.current, 1);
+        // No row has an ice trail yet, so the wave leads with a Zomboni.
         assert_eq!(
+            events
+                .iter()
+                .filter(|event| matches!(
+                    event,
+                    GameEvent::ZombieSpawned {
+                        zombie_type: ZombieType::Zamboni,
+                        wave: 0,
+                        ..
+                    }
+                ))
+                .count(),
+            1
+        );
+        assert!(
             bobsled
                 .state()
                 .board
                 .zombies
                 .iter()
-                .filter(|zombie| zombie.zombie_type == ZombieType::Bobsled)
-                .count(),
-            4
+                .all(|zombie| zombie.zombie_type != ZombieType::Bobsled)
         );
+
+        // With a live trail the next wave spawns the four-zombie team on the
+        // iced row.
+        bobsled.state.board.ice_timer[1] = u32::MAX;
+        bobsled.state.board.ice_min_x[1] = 400 * POSITION_SCALE;
+        bobsled.state.board.wave.countdown = 1;
+        let events = bobsled.advance(InputFrame::default());
         assert_eq!(
             events
                 .iter()
@@ -12284,12 +12705,21 @@ mod tests {
                     event,
                     GameEvent::ZombieSpawned {
                         zombie_type: ZombieType::Bobsled,
-                        wave: 0,
+                        wave: 1,
                         ..
                     }
                 ))
                 .count(),
             4
+        );
+        assert!(
+            bobsled
+                .state()
+                .board
+                .zombies
+                .iter()
+                .filter(|zombie| zombie.zombie_type == ZombieType::Bobsled)
+                .all(|zombie| zombie.row == 1)
         );
 
         let mut pogo = Game::new_mode(7, ModeKind::MiniGame, 18);
