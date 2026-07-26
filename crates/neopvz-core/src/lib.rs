@@ -2138,6 +2138,8 @@ pub struct ZombieState {
     #[serde(default)]
     pub in_pool: bool,
     #[serde(default)]
+    pub armor_intact: bool,
+    #[serde(default)]
     pub bungee_held: bool,
     #[serde(default)]
     pub imp_thrown: bool,
@@ -2885,6 +2887,12 @@ pub enum GameEvent {
         entity: EntityId,
     },
     DiggerSurfaced {
+        entity: EntityId,
+    },
+    ZombieArmorLost {
+        entity: EntityId,
+    },
+    ZombieShieldLost {
         entity: EntityId,
     },
     MetalStolen {
@@ -6297,6 +6305,28 @@ impl Game {
                 if zombie.frozen_counter == 1 {
                     events.push(GameEvent::ZombieThawed { entity: zombie.id });
                 }
+                // DropHelm / DropShield anchors: armor loss is observed at the
+                // tick boundary so every damage source routes through one site.
+                if zombie.armor_intact {
+                    let helm = matches!(
+                        zombie.zombie_type,
+                        ZombieType::Buckethead | ZombieType::Football | ZombieType::Conehead
+                    );
+                    let lost = if helm {
+                        zombie.health <= 270
+                    } else {
+                        zombie.shield_health == 0
+                    };
+                    if lost {
+                        zombie.armor_intact = false;
+                        let entity = zombie.id;
+                        if helm {
+                            events.push(GameEvent::ZombieArmorLost { entity });
+                        } else {
+                            events.push(GameEvent::ZombieShieldLost { entity });
+                        }
+                    }
+                }
             }
             {
                 let (delivering, phase, counter, held) = {
@@ -9424,6 +9454,15 @@ impl Game {
             blowing_away: false,
             departed: false,
             in_pool: false,
+            armor_intact: matches!(
+                zombie_type,
+                ZombieType::Buckethead
+                    | ZombieType::Football
+                    | ZombieType::Conehead
+                    | ZombieType::ScreenDoor
+                    | ZombieType::Newspaper
+                    | ZombieType::Ladder
+            ),
             bungee_held: false,
             imp_thrown: false,
             imp_flight_ticks: 0,
@@ -13008,6 +13047,43 @@ mod tests {
         assert_eq!(Game::new_mode(7, ModeKind::Adventure, 2).state().sun, 50);
         assert_eq!(Game::new_mode(7, ModeKind::Adventure, 15).state().sun, 0);
         assert_eq!(Game::new_mode(7, ModeKind::Adventure, 35).state().sun, 0);
+    }
+
+    #[test]
+    fn armor_and_shield_loss_emit_their_drop_anchors() {
+        let mut game = Game::new(7, SceneKind::Day);
+        let mut setup = Vec::new();
+        let bucket = game.spawn_buckethead_zombie(2, 0, Some(600 * POSITION_SCALE), &mut setup);
+        let door = game.spawn_screen_door_zombie(3, 0, Some(600 * POSITION_SCALE), &mut setup);
+        for zombie in &mut game.state.board.zombies {
+            zombie.speed = 0;
+        }
+        game.state.board.zombies.iter_mut().for_each(|z| {
+            if z.id == bucket {
+                z.health = 270;
+            }
+            if z.id == door {
+                z.shield_health = 0;
+            }
+        });
+
+        let events = game.advance(InputFrame::default());
+        assert!(events.iter().any(|e| matches!(
+            e,
+            GameEvent::ZombieArmorLost { entity } if *entity == bucket
+        )));
+        assert!(events.iter().any(|e| matches!(
+            e,
+            GameEvent::ZombieShieldLost { entity } if *entity == door
+        )));
+        let events = game.advance(InputFrame::default());
+        assert!(
+            !events.iter().any(|e| matches!(
+                e,
+                GameEvent::ZombieArmorLost { .. } | GameEvent::ZombieShieldLost { .. }
+            )),
+            "the drop anchors fire exactly once"
+        );
     }
 
     #[test]
