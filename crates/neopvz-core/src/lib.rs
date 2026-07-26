@@ -2877,6 +2877,13 @@ pub enum GameEvent {
     PotatoMineArmed {
         entity: EntityId,
     },
+    JumpBlocked {
+        zombie: EntityId,
+        plant: EntityId,
+    },
+    PogoStickLost {
+        entity: EntityId,
+    },
     MetalStolen {
         plant: EntityId,
         zombie: Option<EntityId>,
@@ -6632,7 +6639,21 @@ impl Game {
                         } else if ztype == ZombieType::Pogo
                             && self.state.board.zombies[zombie_index].special_phase == 0
                         {
-                            if !pogo_bouncing {
+                            // PARTICLE_TALL_NUT_BLOCK + PogoBreak: a Tall-nut
+                            // stops the bounce and costs the pogo its stick.
+                            if self.state.board.plants[plant_index].plant_type.slot() == 23 {
+                                let zombie = &mut self.state.board.zombies[zombie_index];
+                                zombie.special_phase = 1;
+                                zombie.pogo_counter = 0;
+                                zombie.pogo_target_x = None;
+                                zombie.pogo_velocity_x = 0;
+                                zombie.eating = false;
+                                events.push(GameEvent::JumpBlocked {
+                                    zombie: entity,
+                                    plant: plant_id,
+                                });
+                                events.push(GameEvent::PogoStickLost { entity });
+                            } else if !pogo_bouncing {
                                 let target_x = grid_x(self.state.board.plants[plant_index].column)
                                     - 80 * POSITION_SCALE;
                                 let zombie = &mut self.state.board.zombies[zombie_index];
@@ -6680,9 +6701,20 @@ impl Game {
                             }
                             self.state.board.zombies[zombie_index].eating = false;
                         } else if ztype == ZombieType::PoleVaulter && !has_vaulted {
-                            self.state.board.zombies[zombie_index].has_vaulted = true;
-                            self.state.board.zombies[zombie_index].eating = false;
-                            events.push(GameEvent::ZombieVaulted { entity });
+                            if self.state.board.plants[plant_index].plant_type.slot() == 23 {
+                                // A Tall-nut blocks the vault; the pole is spent
+                                // and the vaulter falls back to walking.
+                                self.state.board.zombies[zombie_index].has_vaulted = true;
+                                self.state.board.zombies[zombie_index].eating = false;
+                                events.push(GameEvent::JumpBlocked {
+                                    zombie: entity,
+                                    plant: plant_id,
+                                });
+                            } else {
+                                self.state.board.zombies[zombie_index].has_vaulted = true;
+                                self.state.board.zombies[zombie_index].eating = false;
+                                events.push(GameEvent::ZombieVaulted { entity });
+                            }
                         } else if self.state.board.plants[plant_index]
                             .plant_type
                             .is_hypno_shroom()
@@ -12963,6 +12995,53 @@ mod tests {
         assert_eq!(Game::new_mode(7, ModeKind::Adventure, 2).state().sun, 50);
         assert_eq!(Game::new_mode(7, ModeKind::Adventure, 15).state().sun, 0);
         assert_eq!(Game::new_mode(7, ModeKind::Adventure, 35).state().sun, 0);
+    }
+
+    #[test]
+    fn tallnut_blocks_jumpers_and_breaks_the_pogo_stick() {
+        let mut game = Game::new(7, SceneKind::Day);
+        game.state.sun = 1_000;
+        game.advance(InputFrame {
+            actions: vec![
+                InputAction::SelectSeed { slot: 23 },
+                InputAction::Plant { row: 2, column: 5 },
+            ],
+        });
+        let mut setup = Vec::new();
+        let pogo = game.spawn_pogo_zombie(2, 0, Some(grid_x(5) + 40 * POSITION_SCALE), &mut setup);
+
+        let mut blocked = false;
+        let mut stick_lost = false;
+        for _ in 0..300 {
+            let events = game.advance(InputFrame::default());
+            for event in &events {
+                if matches!(event, GameEvent::JumpBlocked { zombie, .. } if *zombie == pogo) {
+                    blocked = true;
+                }
+                if matches!(event, GameEvent::PogoStickLost { entity } if *entity == pogo) {
+                    stick_lost = true;
+                }
+            }
+            if blocked && stick_lost {
+                break;
+            }
+        }
+        assert!(blocked, "the tallnut blocks the pogo bounce");
+        assert!(stick_lost, "the blocked pogo loses its stick");
+        assert_eq!(
+            game.state
+                .board
+                .zombies
+                .iter()
+                .find(|z| z.id == pogo)
+                .unwrap()
+                .special_phase,
+            1
+        );
+        assert!(
+            !game.state.board.plants.is_empty(),
+            "the tallnut survives the block"
+        );
     }
 
     #[test]
