@@ -3667,11 +3667,12 @@ impl Game {
         let health = match zombie_type {
             // I, Zombie imps use the source 70-HP override; everywhere else imps are 270.
             ZombieType::Imp => 70,
+            ZombieType::Conehead => 640,
             ZombieType::Buckethead | ZombieType::ScreenDoor => 1_370,
             ZombieType::Football => 1_670,
             ZombieType::Digger => 370,
             ZombieType::Bungee => 450,
-            ZombieType::PoleVaulter | ZombieType::Pogo => 500,
+            ZombieType::PoleVaulter | ZombieType::Pogo | ZombieType::Dancer => 500,
             ZombieType::Ladder => LADDER_HEALTH,
             ZombieType::Bobsled => BOBSLED_HEALTH,
             ZombieType::Gargantuar => 3_000,
@@ -8163,9 +8164,10 @@ impl Game {
         events: &mut Vec<GameEvent>,
     ) {
         let health = match zombie_type {
+            ZombieType::Conehead => 640,
             ZombieType::Buckethead | ZombieType::ScreenDoor => 1_370,
             ZombieType::Football => 1_670,
-            ZombieType::PoleVaulter | ZombieType::Pogo => 500,
+            ZombieType::PoleVaulter | ZombieType::Pogo | ZombieType::Dancer => 500,
             ZombieType::Jackbox => JACKBOX_HEALTH,
             ZombieType::Gargantuar => 3_000,
             ZombieType::Gigagargantuar => GIGAGARGANTUAR_HEALTH,
@@ -8211,6 +8213,9 @@ impl Game {
             || zombie_type == ZombieType::BackupDancer
         {
             450_000
+        } else if zombie_type == ZombieType::Imp && self.state.mode == ModeKind::IZombie {
+            // Zombie_ResetSpeed in 1.0.0.1051 runs the I, Zombie Imp at 0.9.
+            900_000
         } else if zombie_type == ZombieType::Digger {
             120_000
         } else if zombie_type == ZombieType::Bungee {
@@ -13465,6 +13470,43 @@ mod tests {
                 )),
                 "{zombie_type:?} on level {level} should cost {cost} sun"
             );
+        }
+    }
+
+    #[test]
+    fn izombie_deploys_use_the_source_conehead_dancer_and_imp_profiles() {
+        // Zombie_Init in 1.0.0.1051: Conehead carries a 370-HP cone over the
+        // 270-HP body and the Dancer body is 500; Zombie_ResetSpeed runs the
+        // I, Zombie Imp at 0.9.
+        let cases: [(u8, ZombieType, i32); 3] = [
+            (7, ZombieType::Conehead, 640),
+            (6, ZombieType::Dancer, 500),
+            (7, ZombieType::Imp, 70),
+        ];
+        for (level, zombie_type, health) in cases {
+            let mut game = Game::new_mode(7, ModeKind::IZombie, level);
+            game.state.sun = 1_000;
+            game.advance(InputFrame {
+                actions: vec![InputAction::DeployZombie {
+                    zombie_type,
+                    row: 0,
+                    column: 0,
+                }],
+            });
+            let zombie = game
+                .state()
+                .board
+                .zombies
+                .iter()
+                .find(|zombie| zombie.zombie_type == zombie_type)
+                .expect("deployed zombie must exist");
+            assert_eq!(
+                zombie.health, health,
+                "{zombie_type:?} deployed on level {level} should have {health} HP"
+            );
+            if zombie_type == ZombieType::Imp {
+                assert_eq!(zombie.speed, 900_000);
+            }
         }
     }
 
