@@ -2915,6 +2915,10 @@ pub enum GameEvent {
     ZombieButtered {
         entity: EntityId,
     },
+    UmbrellaDeflected {
+        plant: EntityId,
+        zombie: EntityId,
+    },
     MetalStolen {
         plant: EntityId,
         zombie: Option<EntityId>,
@@ -6522,8 +6526,32 @@ impl Game {
                     .max_by_key(|(_, plant)| (plant.row, plant.column))
                     .map(|(index, _)| index)
                 {
-                    let plant_id = self.state.board.plants.remove(plant_index).id;
-                    events.push(GameEvent::PlantDied { entity: plant_id });
+                    let (target_row, target_column) = {
+                        let plant = &self.state.board.plants[plant_index];
+                        (plant.row, plant.column)
+                    };
+                    // Plant::FindUmbrellaPlant: an Umbrella Leaf within one
+                    // cell bounces the bungee before the grab.
+                    let umbrella = self
+                        .state
+                        .board
+                        .plants
+                        .iter()
+                        .find(|plant| {
+                            plant.plant_type.slot() == 37
+                                && plant.row.abs_diff(target_row) <= 1
+                                && plant.column.abs_diff(target_column) <= 1
+                        })
+                        .map(|plant| plant.id);
+                    if let Some(umbrella_id) = umbrella {
+                        events.push(GameEvent::UmbrellaDeflected {
+                            plant: umbrella_id,
+                            zombie: zombie_id,
+                        });
+                    } else {
+                        let plant_id = self.state.board.plants.remove(plant_index).id;
+                        events.push(GameEvent::PlantDied { entity: plant_id });
+                    }
                 }
                 self.state.board.zombies[zombie_index].health = 0;
                 self.emit_zombie_died(zombie_id, events);
@@ -13126,6 +13154,44 @@ mod tests {
         assert_eq!(Game::new_mode(7, ModeKind::Adventure, 2).state().sun, 50);
         assert_eq!(Game::new_mode(7, ModeKind::Adventure, 15).state().sun, 0);
         assert_eq!(Game::new_mode(7, ModeKind::Adventure, 35).state().sun, 0);
+    }
+
+    #[test]
+    fn umbrella_leaf_bounces_the_bungee_steal() {
+        let mut game = Game::new(7, SceneKind::Day);
+        game.state.sun = 1_000;
+        game.advance(InputFrame {
+            actions: vec![
+                InputAction::SelectSeed { slot: 1 },
+                InputAction::Plant { row: 2, column: 2 },
+            ],
+        });
+        game.advance(InputFrame {
+            actions: vec![
+                InputAction::SelectSeed { slot: 37 },
+                InputAction::Plant { row: 2, column: 3 },
+            ],
+        });
+        let mut setup = Vec::new();
+        let bungee = game.spawn_bungee_zombie(2, 0, None, &mut setup);
+        game.state
+            .board
+            .zombies
+            .iter_mut()
+            .for_each(|z| z.bungee_counter = 1);
+
+        let events = game.advance(InputFrame::default());
+        assert!(
+            events.iter().any(
+                |e| matches!(e, GameEvent::UmbrellaDeflected { zombie, .. } if *zombie == bungee)
+            ),
+            "the umbrella bounces the grab"
+        );
+        assert_eq!(game.state.board.plants.len(), 2, "no plant is stolen");
+        assert!(
+            !game.state.board.zombies.iter().any(|z| z.id == bungee),
+            "the bounced bungee still departs"
+        );
     }
 
     #[test]
