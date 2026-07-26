@@ -155,6 +155,10 @@ const JACKBOX_HEALTH: i32 = 500;
 const VASE_JACKBOX_POP_TICKS: u32 = 120;
 // KillAllPlantsInRadius uses JackInTheBoxPlantRadius (90); zombies use 115.
 const JACKBOX_PLANT_RADIUS: i64 = 90;
+// Zombie_Init in 1.0.0.1051 gives Newspaper the 270-HP body plus a 150-HP
+// paper shield (420 lumped); Zombie_ResetSpeed runs the mad phase at 0.89-0.91.
+const NEWSPAPER_HEALTH: i32 = 420;
+const NEWSPAPER_MAD_SPEED: i64 = 900_000;
 // Zombie_UpdateDolphin in the target build uses a 120-tick jump and the
 // source's 0.9/0.5/0.3 walk-speed phases.
 const DOLPHIN_JUMP_TIME: u32 = 120;
@@ -6053,7 +6057,8 @@ impl Game {
                         && zombie.health > 0
                         && zombie.health <= 270
                     {
-                        660_000
+                        // Zombie_ResetSpeed gives PHASE_NEWSPAPER_MAD 0.89-0.91.
+                        NEWSPAPER_MAD_SPEED
                     } else {
                         zombie.speed
                     };
@@ -8020,7 +8025,7 @@ impl Game {
     ) -> EntityId {
         self._spawn_zombie_inner(
             ZombieType::Newspaper,
-            540,
+            NEWSPAPER_HEALTH,
             row,
             wave,
             position_override,
@@ -10894,7 +10899,7 @@ mod tests {
         let mut setup = Vec::new();
         let zombie = game.spawn_newspaper_zombie(2, 0, Some(500 * POSITION_SCALE), &mut setup);
 
-        // Verify starting health is 540.
+        // Zombie_Init: 270 body plus the 150-HP paper shield, 420 lumped.
         assert_eq!(
             game.state
                 .board
@@ -10903,7 +10908,7 @@ mod tests {
                 .find(|z| z.id == zombie)
                 .unwrap()
                 .health,
-            540
+            NEWSPAPER_HEALTH
         );
         assert_eq!(
             game.state
@@ -10939,11 +10944,12 @@ mod tests {
             .find(|z| z.id == zombie)
             .unwrap()
             .position_x;
-        // With newspaper speed (660,000) the zombie should move at least 100,000 units.
-        assert!(
-            pos_before - pos_after >= 100_000,
-            "newspaper zombie at 260 HP should move fast; moved {}",
-            pos_before - pos_after
+        // Zombie_ResetSpeed gives the mad phase 0.89-0.91; the lumped model
+        // uses the fixed NEWSPAPER_MAD_SPEED once the paper is gone.
+        assert_eq!(
+            pos_before - pos_after,
+            NEWSPAPER_MAD_SPEED,
+            "newspaper zombie at 260 HP should run at the source mad speed"
         );
     }
 
