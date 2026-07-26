@@ -2287,6 +2287,8 @@ pub struct BoardState {
     #[serde(default)]
     pub ladders: Vec<LadderState>,
     #[serde(default)]
+    pub rake: Option<(u8, u8)>,
+    #[serde(default)]
     pub wave_plan: Vec<Vec<ZombieType>>,
     #[serde(default)]
     pub huge_wave_countdown: u32,
@@ -2382,6 +2384,7 @@ impl BoardState {
             craters: Vec::new(),
             graves: Vec::new(),
             ladders: Vec::new(),
+            rake: None,
             wave_plan: Vec::new(),
             huge_wave_countdown: 0,
             wave_health_threshold: -1,
@@ -2864,6 +2867,9 @@ pub enum GameEvent {
     ImpThrown {
         gargantuar: EntityId,
         imp: EntityId,
+    },
+    RakeTriggered {
+        zombie: EntityId,
     },
     MetalStolen {
         plant: EntityId,
@@ -6805,6 +6811,19 @@ impl Game {
                 }
             }
 
+            // GridItem rake: the first zombie that steps on it dies and
+            // consumes it.
+            if let Some((rake_row, rake_column)) = self.state.board.rake
+                && rake_row == row
+                && position_x <= grid_x(rake_column) + 30 * POSITION_SCALE
+                && self.state.board.zombies[zombie_index].health > 0
+            {
+                self.state.board.rake = None;
+                events.push(GameEvent::RakeTriggered { zombie: entity });
+                self.emit_zombie_died(entity, events);
+                self.state.board.zombies[zombie_index].departed = true;
+                continue;
+            }
             let mower_covering_row = self
                 .state
                 .board
@@ -12928,6 +12947,41 @@ mod tests {
         assert_eq!(Game::new_mode(7, ModeKind::Adventure, 2).state().sun, 50);
         assert_eq!(Game::new_mode(7, ModeKind::Adventure, 15).state().sun, 0);
         assert_eq!(Game::new_mode(7, ModeKind::Adventure, 35).state().sun, 0);
+    }
+
+    #[test]
+    fn rake_kills_the_first_zombie_and_is_consumed() {
+        let mut game = Game::new(7, SceneKind::Day);
+        game.state.board.rake = Some((2, 5));
+        let mut setup = Vec::new();
+        let first =
+            game.spawn_normal_zombie(2, 0, Some(grid_x(5) + 20 * POSITION_SCALE), &mut setup);
+        let mut raked = false;
+        for _ in 0..200 {
+            let events = game.advance(InputFrame::default());
+            if events.iter().any(|e| {
+                matches!(
+                    e,
+                    GameEvent::RakeTriggered { zombie } if *zombie == first
+                )
+            }) {
+                raked = true;
+                break;
+            }
+        }
+        assert!(raked, "the first zombie steps on the rake and dies");
+        assert!(game.state.board.rake.is_none(), "the rake is single-use");
+        assert!(game.state.board.zombies.iter().all(|z| z.id != first));
+
+        let second =
+            game.spawn_normal_zombie(2, 0, Some(grid_x(5) + 20 * POSITION_SCALE), &mut setup);
+        for _ in 0..120 {
+            game.advance(InputFrame::default());
+        }
+        assert!(
+            game.state.board.zombies.iter().any(|z| z.id == second),
+            "later zombies walk past the spent rake"
+        );
     }
 
     #[test]
