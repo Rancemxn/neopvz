@@ -752,6 +752,110 @@ pub fn adventure_wave_count(level: u8, replay: bool) -> u32 {
     }
 }
 
+/// gZombieDefs wave-composition stats: (value, starting level, first allowed
+/// wave, pick weight). The wave check is 1-based against waveIndex + 1.
+pub fn zombie_wave_stats(zombie_type: ZombieType) -> (u32, u8, u32, u32) {
+    match zombie_type {
+        ZombieType::Normal => (1, 1, 1, 4_000),
+        ZombieType::Flag => (1, 1, 1, 0),
+        ZombieType::Conehead => (2, 3, 1, 4_000),
+        ZombieType::PoleVaulter => (2, 6, 5, 2_000),
+        ZombieType::Buckethead => (4, 8, 1, 3_000),
+        ZombieType::Newspaper => (2, 11, 1, 1_000),
+        ZombieType::ScreenDoor => (4, 13, 5, 3_500),
+        ZombieType::Football => (7, 16, 5, 2_000),
+        ZombieType::Dancer => (5, 18, 5, 1_000),
+        ZombieType::BackupDancer => (1, 18, 1, 0),
+        ZombieType::DuckyTube => (1, 21, 5, 0),
+        ZombieType::Snorkel => (3, 23, 10, 2_000),
+        ZombieType::Zamboni => (7, 26, 10, 2_000),
+        ZombieType::Bobsled => (3, 26, 10, 2_000),
+        ZombieType::DolphinRider => (3, 28, 10, 1_500),
+        ZombieType::Jackbox => (3, 31, 10, 1_000),
+        ZombieType::Balloon => (2, 33, 10, 2_000),
+        ZombieType::Digger => (4, 36, 10, 1_000),
+        ZombieType::Pogo => (4, 38, 10, 1_000),
+        ZombieType::Yeti => (4, 40, 1, 1),
+        ZombieType::Bungee => (3, 41, 10, 1_000),
+        ZombieType::Ladder => (4, 43, 10, 1_000),
+        ZombieType::Catapult => (5, 46, 10, 1_500),
+        ZombieType::Gargantuar => (10, 48, 15, 1_500),
+        ZombieType::Imp => (10, 48, 1, 0),
+        ZombieType::Boss => (10, 50, 1, 0),
+        ZombieType::PeaHead => (1, 99, 1, 4_000),
+        ZombieType::WallnutHead => (4, 99, 1, 3_000),
+        ZombieType::JalapenoHead => (3, 99, 10, 1_000),
+        ZombieType::GatlingHead => (3, 99, 10, 2_000),
+        ZombieType::SquashHead => (3, 99, 10, 2_000),
+        ZombieType::TallnutHead => (4, 99, 10, 2_000),
+        ZombieType::Gigagargantuar => (10, 48, 15, 6_000),
+    }
+}
+
+/// gZombieAllowedLevels bitmap for adventure (Challenge.cpp:41-259). Yetis
+/// route through CanSpawnYetis instead and are never in the random pool.
+pub fn adventure_zombie_allowed(zombie_type: ZombieType, level: u8) -> bool {
+    let (_, starting_level, _, pick_weight) = zombie_wave_stats(zombie_type);
+    if pick_weight == 0 || level < starting_level {
+        return false;
+    }
+    match zombie_type {
+        ZombieType::Normal => true,
+        ZombieType::Conehead => level != 11,
+        ZombieType::PoleVaulter => matches!(level, 6 | 7 | 9 | 10 | 14 | 15 | 24 | 29 | 42),
+        ZombieType::Buckethead => matches!(
+            level,
+            8 | 9 | 10 | 12 | 15 | 22 | 24 | 27 | 29 | 30 | 37 | 39 | 40 | 42 | 45 | 49 | 50
+        ),
+        ZombieType::Newspaper => matches!(level, 11 | 12 | 15 | 22 | 24),
+        ZombieType::ScreenDoor => matches!(level, 13 | 14 | 17 | 19 | 20),
+        ZombieType::Football => matches!(level, 16 | 17 | 20 | 22 | 25 | 32 | 44),
+        ZombieType::Dancer => matches!(level, 18..=20),
+        ZombieType::Snorkel => matches!(level, 23 | 24 | 25 | 27 | 30),
+        ZombieType::Zamboni | ZombieType::Bobsled => matches!(level, 26 | 27 | 29 | 30),
+        ZombieType::DolphinRider => matches!(level, 28 | 29 | 30 | 34),
+        ZombieType::Jackbox => matches!(level, 31 | 32 | 37 | 40 | 49 | 50),
+        ZombieType::Balloon => matches!(level, 33 | 34 | 39 | 40),
+        ZombieType::Digger => matches!(level, 36 | 37 | 40),
+        ZombieType::Pogo => matches!(level, 38 | 39 | 40 | 44),
+        ZombieType::Bungee => matches!(level, 41 | 42 | 47 | 49 | 50),
+        ZombieType::Ladder => matches!(level, 43 | 44 | 45 | 47 | 49 | 50),
+        ZombieType::Catapult => matches!(level, 46 | 47 | 49 | 50),
+        ZombieType::Gargantuar => matches!(level, 48..=50),
+        _ => false,
+    }
+}
+
+/// Board::GetIntroducedZombieType: the first enum-order type whose starting
+/// level matches; never level 1 and never the preview-only Ducky Tube.
+pub fn adventure_introduced_zombie(level: u8) -> Option<ZombieType> {
+    if level <= 1 {
+        return None;
+    }
+    match level {
+        3 => Some(ZombieType::Conehead),
+        6 => Some(ZombieType::PoleVaulter),
+        8 => Some(ZombieType::Buckethead),
+        11 => Some(ZombieType::Newspaper),
+        13 => Some(ZombieType::ScreenDoor),
+        16 => Some(ZombieType::Football),
+        18 => Some(ZombieType::Dancer),
+        23 => Some(ZombieType::Snorkel),
+        26 => Some(ZombieType::Zamboni),
+        28 => Some(ZombieType::DolphinRider),
+        31 => Some(ZombieType::Jackbox),
+        33 => Some(ZombieType::Balloon),
+        36 => Some(ZombieType::Digger),
+        38 => Some(ZombieType::Pogo),
+        41 => Some(ZombieType::Bungee),
+        43 => Some(ZombieType::Ladder),
+        46 => Some(ZombieType::Catapult),
+        48 => Some(ZombieType::Gargantuar),
+        50 => Some(ZombieType::Boss),
+        _ => None,
+    }
+}
+
 /// Board::HasConveyorBeltSeedBank for adventure levels.
 pub fn adventure_level_is_conveyor(level: u8) -> bool {
     matches!(level, 5 | 10 | 20 | 25 | 30 | 40 | 45 | 50)
@@ -12096,6 +12200,52 @@ mod tests {
         let roof = Game::new_mode(7, ModeKind::Adventure, 41);
         assert_eq!(roof.state().scene, SceneKind::Roof);
         assert_eq!(roof.state().board.wave.total, 10);
+    }
+
+    #[test]
+    fn adventure_wave_stats_and_allow_lists_match_the_source() {
+        assert_eq!(zombie_wave_stats(ZombieType::Normal), (1, 1, 1, 4_000));
+        assert_eq!(zombie_wave_stats(ZombieType::ScreenDoor), (4, 13, 5, 3_500));
+        assert_eq!(
+            zombie_wave_stats(ZombieType::Gargantuar),
+            (10, 48, 15, 1_500)
+        );
+        assert_eq!(zombie_wave_stats(ZombieType::Yeti), (4, 40, 1, 1));
+        assert_eq!(
+            zombie_wave_stats(ZombieType::Flag).3,
+            0,
+            "flags are never picked"
+        );
+        assert_eq!(zombie_wave_stats(ZombieType::DuckyTube).3, 0);
+
+        assert!(adventure_zombie_allowed(ZombieType::Normal, 1));
+        assert!(adventure_zombie_allowed(ZombieType::Conehead, 12));
+        assert!(
+            !adventure_zombie_allowed(ZombieType::Conehead, 11),
+            "cones sit out the newspaper introduction level"
+        );
+        assert!(adventure_zombie_allowed(ZombieType::PoleVaulter, 42));
+        assert!(!adventure_zombie_allowed(ZombieType::PoleVaulter, 8));
+        assert!(adventure_zombie_allowed(ZombieType::Buckethead, 50));
+        assert!(!adventure_zombie_allowed(ZombieType::Dancer, 21));
+        assert!(
+            !adventure_zombie_allowed(ZombieType::Yeti, 40),
+            "yetis spawn only through the intro path"
+        );
+        assert!(!adventure_zombie_allowed(ZombieType::Gigagargantuar, 50));
+        assert!(!adventure_zombie_allowed(ZombieType::Boss, 50));
+
+        let intros: Vec<(u8, ZombieType)> = (1..=50)
+            .filter_map(|l| adventure_introduced_zombie(l).map(|z| (l, z)))
+            .collect();
+        assert_eq!(intros.len(), 19);
+        assert_eq!(intros[0], (3, ZombieType::Conehead));
+        assert_eq!(intros[6], (18, ZombieType::Dancer));
+        assert_eq!(intros[18], (50, ZombieType::Boss));
+        assert!(
+            adventure_introduced_zombie(21).is_none(),
+            "the ducky tube introduction is preview-only"
+        );
     }
 
     #[test]
