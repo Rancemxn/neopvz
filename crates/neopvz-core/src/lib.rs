@@ -2874,6 +2874,9 @@ pub enum GameEvent {
     ZombieThawed {
         entity: EntityId,
     },
+    PotatoMineArmed {
+        entity: EntityId,
+    },
     MetalStolen {
         plant: EntityId,
         zombie: Option<EntityId>,
@@ -4970,6 +4973,7 @@ impl Game {
             let mut tangle_grab_target = None;
             let mut tangle_started = false;
             let mut gold_magnet_coin = None;
+            let mut potato_armed_now = false;
             {
                 let plant = &mut self.state.board.plants[index];
                 if plant_type.is_cob_cannon() {
@@ -5028,6 +5032,8 @@ impl Game {
                         plant.special_counter = plant.special_counter.saturating_sub(1);
                         if plant.special_counter == 0 {
                             plant.special_armed = true;
+                            // PARTICLE_POTATO_MINE_RISE anchor.
+                            potato_armed_now = true;
                         }
                     }
                 } else if plant_type.is_squash() {
@@ -5212,6 +5218,9 @@ impl Game {
                     entity: id,
                     plant_type,
                 });
+            }
+            if potato_armed_now {
+                events.push(GameEvent::PotatoMineArmed { entity: id });
             }
             if spikeweed_hit {
                 let vehicle_hit = self.apply_spikeweed_damage(id, row, column, events);
@@ -12954,6 +12963,29 @@ mod tests {
         assert_eq!(Game::new_mode(7, ModeKind::Adventure, 2).state().sun, 50);
         assert_eq!(Game::new_mode(7, ModeKind::Adventure, 15).state().sun, 0);
         assert_eq!(Game::new_mode(7, ModeKind::Adventure, 35).state().sun, 0);
+    }
+
+    #[test]
+    fn potato_mines_emit_the_rise_event_when_armed() {
+        let mut game = Game::new(7, SceneKind::Day);
+        game.state.sun = 1_000;
+        game.advance(InputFrame {
+            actions: vec![
+                InputAction::SelectSeed { slot: 4 },
+                InputAction::Plant { row: 2, column: 3 },
+            ],
+        });
+        game.state.board.plants[0].special_counter = 2;
+        let mut armed_ticks = 0;
+        for _ in 0..4 {
+            let events = game.advance(InputFrame::default());
+            armed_ticks += events
+                .iter()
+                .filter(|e| matches!(e, GameEvent::PotatoMineArmed { .. }))
+                .count();
+        }
+        assert_eq!(armed_ticks, 1, "the rise event fires exactly once");
+        assert!(game.state.board.plants[0].special_armed);
     }
 
     #[test]
