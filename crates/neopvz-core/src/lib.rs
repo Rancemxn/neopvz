@@ -159,6 +159,11 @@ const JACKBOX_PLANT_RADIUS: i64 = 90;
 // paper shield (420 lumped); Zombie_ResetSpeed runs the mad phase at 0.89-0.91.
 const NEWSPAPER_HEALTH: i32 = 420;
 const NEWSPAPER_MAD_SPEED: i64 = 900_000;
+// Zombie_ResetSpeed in 1.0.0.1051: PHASE_DIGGER_TUNNELING moves at 0.66-0.68;
+// the surfaced PHASE_DIGGER_WALKING re-pick is 0.12, or 0.23 on I, Zombie
+// levels.
+const DIGGER_WALK_SPEED: i64 = 120_000;
+const DIGGER_IZOMBIE_WALK_SPEED: i64 = 230_000;
 // Zombie_UpdateDolphin in the target build uses a 120-tick jump and the
 // source's 0.9/0.5/0.3 walk-speed phases.
 const DOLPHIN_JUMP_TIME: u32 = 120;
@@ -5936,11 +5941,19 @@ impl Game {
                 }
             }
             {
+                let mode = self.state.mode;
                 let zombie = &mut self.state.board.zombies[zombie_index];
                 if zombie.zombie_type == ZombieType::Digger {
                     if zombie.digger_underground && zombie.position_x <= 10 * POSITION_SCALE {
                         zombie.digger_underground = false;
                         zombie.digger_counter = DIGGER_RISE_TICKS;
+                        // Zombie_ResetSpeed: the surfaced walk is 0.12, or
+                        // 0.23 on I, Zombie levels.
+                        zombie.speed = if mode == ModeKind::IZombie {
+                            DIGGER_IZOMBIE_WALK_SPEED
+                        } else {
+                            DIGGER_WALK_SPEED
+                        };
                     } else if zombie.digger_counter > 0 {
                         zombie.digger_counter = zombie.digger_counter.saturating_sub(1);
                     }
@@ -8226,7 +8239,8 @@ impl Game {
             // Zombie_ResetSpeed in 1.0.0.1051 runs the I, Zombie Imp at 0.9.
             900_000
         } else if zombie_type == ZombieType::Digger {
-            120_000
+            // Diggers spawn tunneling; Zombie_ResetSpeed gives 0.66-0.68.
+            self.rng.fixed_range(660_000, 680_000)
         } else if zombie_type == ZombieType::Bungee {
             0
         } else if zombie_type == ZombieType::Bobsled {
@@ -14038,6 +14052,62 @@ mod tests {
         assert!(!digger_state.digger_underground);
         assert_eq!(digger_state.digger_counter, 0);
         assert_eq!(game.state.board.plants[0].health, 300);
+    }
+
+    #[test]
+    fn digger_tunnels_fast_and_walks_slow_after_rising() {
+        // Zombie_ResetSpeed: PHASE_DIGGER_TUNNELING moves at 0.66-0.68 and the
+        // surfaced walk re-picks 0.12, or 0.23 on I, Zombie levels.
+        let mut game = Game::new(7, SceneKind::Day);
+        let mut setup = Vec::new();
+        let digger = game.spawn_digger_zombie(2, 0, Some(500 * POSITION_SCALE), &mut setup);
+        let tunneling = game
+            .state
+            .board
+            .zombies
+            .iter()
+            .find(|candidate| candidate.id == digger)
+            .unwrap()
+            .speed;
+        assert!(
+            (660_000..=680_000).contains(&tunneling),
+            "tunneling speed {tunneling} should be in the 0.66-0.68 band"
+        );
+
+        game.state.board.zombies[0].position_x = 5 * POSITION_SCALE;
+        game.advance(InputFrame::default());
+        let surfaced = game
+            .state
+            .board
+            .zombies
+            .iter()
+            .find(|candidate| candidate.id == digger)
+            .unwrap();
+        assert!(!surfaced.digger_underground);
+        assert_eq!(surfaced.speed, DIGGER_WALK_SPEED);
+
+        let mut izombie = Game::new_mode(7, ModeKind::IZombie, 2);
+        izombie.state.sun = 1_000;
+        izombie.advance(InputFrame {
+            actions: vec![InputAction::DeployZombie {
+                zombie_type: ZombieType::Digger,
+                row: 0,
+                column: 0,
+            }],
+        });
+        let index = izombie
+            .state
+            .board
+            .zombies
+            .iter()
+            .position(|candidate| candidate.zombie_type == ZombieType::Digger)
+            .unwrap();
+        izombie.state.board.zombies[index].position_x = 5 * POSITION_SCALE;
+        izombie.advance(InputFrame::default());
+        assert_eq!(
+            izombie.state.board.zombies[index].speed,
+            DIGGER_IZOMBIE_WALK_SPEED
+        );
     }
 
     #[test]
