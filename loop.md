@@ -22,6 +22,11 @@
   1.0.0.1051 resource directory or PAK; all required GUI, visual, audio,
   progression, and deterministic replay evidence exists in the ignored local
   verification area; and all required GitHub issues are closed.
+- **Current-run build-gate override:** For this run only, the user's explicit
+  authorization accepts local stable `fmt --check`, locked Clippy, locked
+  workspace tests, and a locked non-release workspace debug build in place of
+  waiting for GitHub Actions. Do not run a release build. This does not weaken
+  the repository's CI requirements for later merges.
 - **Deterministic success signal:** With the same build, resource version,
   initial save, random seed, and input sequence, damage, cooldowns, resources,
   waves, entity state, event order, and input results are identical, including
