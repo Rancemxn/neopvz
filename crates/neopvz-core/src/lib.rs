@@ -98,6 +98,16 @@ const I_ZOMBIE_BRAIN_TICKS: u32 = 70;
 const ZOMBIE_PEA_HEAD_RELOAD_TICKS: u32 = 150;
 const POGO_BOUNCE_TICKS: u32 = 80;
 const GARGANTUAR_SPIKEROCK_DAMAGE: i32 = 20;
+// Source throw geometry: distance = posX - 360 (roof -180, floor -140; floor 40
+// elsewhere; > 140 loses a random 0-100), imp leaves at posX - 133 with
+// velZ = 0.5 * (distance / 3) * 0.05 from altitude 88, integrating
+// velZ -= 0.05 / altitude += velZ / posX -= 3 per tick.
+const GARGANTUAR_THROW_BASE_X: i64 = 360 * POSITION_SCALE;
+const GARGANTUAR_THROW_MIN_DISTANCE: i64 = 40 * POSITION_SCALE;
+const IMP_THROW_SPAWN_OFFSET: i64 = 133 * POSITION_SCALE;
+const IMP_THROW_SPEED_X: i64 = 3 * POSITION_SCALE;
+const IMP_THROW_START_ALTITUDE: i64 = 88 * POSITION_SCALE;
+const THROWN_ZOMBIE_GRAVITY: i64 = POSITION_SCALE / 20;
 const DANCER_SUMMON_TICKS: u32 = 300;
 const BACKUP_DANCER_COUNT: usize = 4;
 const DIGGER_RISE_TICKS: u32 = 130;
@@ -1779,6 +1789,10 @@ pub struct ZombieState {
     #[serde(default)]
     pub departed: bool,
     #[serde(default)]
+    pub imp_thrown: bool,
+    #[serde(default)]
+    pub imp_flight_ticks: u32,
+    #[serde(default)]
     pub shield_health: i32,
     #[serde(default)]
     pub shield_max_health: i32,
@@ -2477,6 +2491,10 @@ pub enum GameEvent {
     },
     ZombieHypnotized {
         entity: EntityId,
+    },
+    ImpThrown {
+        gargantuar: EntityId,
+        imp: EntityId,
     },
     ZombieVaulted {
         entity: EntityId,
@@ -3609,6 +3627,8 @@ impl Game {
         }
         self.state.sun -= cost;
         let health = match zombie_type {
+            // I, Zombie imps use the source 70-HP override; everywhere else imps are 270.
+            ZombieType::Imp => 70,
             ZombieType::Buckethead | ZombieType::ScreenDoor => 1_370,
             ZombieType::Football => 1_670,
             ZombieType::Digger => 370,
@@ -4399,6 +4419,12 @@ impl Game {
             }
             let has_target = self.state.board.zombies.iter().any(|zombie| {
                 if zombie.health <= 0 {
+                    return false;
+                }
+                // Only Cactus (slot 26) and homing Cattail spikes target fliers.
+                let targets_fliers =
+                    plant_type.slot() == 26 || plant_type.firing_pattern() == FiringPattern::Homing;
+                if (balloon_is_airborne(zombie) || zombie.imp_flight_ticks > 0) && !targets_fliers {
                     return false;
                 }
                 let row_distance = zombie.row.abs_diff(row);
@@ -5655,6 +5681,35 @@ impl Game {
                 }
                 continue;
             }
+            {
+                let zombie = &mut self.state.board.zombies[zombie_index];
+                if zombie.imp_flight_ticks > 0 {
+                    zombie.imp_flight_ticks -= 1;
+                    zombie.position_x -= IMP_THROW_SPEED_X;
+                    continue;
+                }
+            }
+            {
+                let (should_throw, garg_row, garg_x, garg_wave) = {
+                    let zombie = &self.state.board.zombies[zombie_index];
+                    (
+                        is_gargantuar(zombie.zombie_type)
+                            && !zombie.imp_thrown
+                            && zombie.frozen_counter == 0
+                            && zombie.health < zombie.max_health / 2
+                            && zombie.position_x - GARGANTUAR_THROW_BASE_X
+                                > GARGANTUAR_THROW_MIN_DISTANCE,
+                        zombie.row,
+                        zombie.position_x,
+                        zombie.from_wave,
+                    )
+                };
+                if should_throw {
+                    let gargantuar = self.state.board.zombies[zombie_index].id;
+                    self.state.board.zombies[zombie_index].imp_thrown = true;
+                    self.throw_imp(gargantuar, garg_row, garg_x, garg_wave, events);
+                }
+            }
             self.update_dolphin_state(zombie_index);
             self.update_snorkel_state(zombie_index);
             self.update_zamboni_state(zombie_index);
@@ -6153,8 +6208,9 @@ impl Game {
             .zombies
             .iter()
             .filter(|zombie| {
+                // Cob blasts carry every damage-range flag: airborne and submerged
+                // zombies are all valid targets.
                 zombie.health > 0
-                    && projectile_can_hit_zombie(zombie)
                     && zombie.row.abs_diff(target_row) <= 1
                     && (zombie.position_x - target_x).abs() <= 115 * POSITION_SCALE
             })
@@ -6352,7 +6408,7 @@ impl Game {
                 .filter(|(_, zombie)| {
                     Some(zombie.row) == projectile_row
                         && zombie.health > 0
-                        && projectile_can_hit_zombie(zombie)
+                        && projectile_can_hit_zombie(zombie, projectile.projectile_type)
                 })
                 .filter(|(_, zombie)| projectile_hits(projectile.position_x, zombie.position_x))
                 .min_by_key(|(_, zombie)| zombie.position_x)
@@ -6433,7 +6489,9 @@ impl Game {
             .board
             .zombies
             .iter()
-            .filter(|zombie| zombie.health > 0 && projectile_can_hit_zombie(zombie))
+            .filter(|zombie| {
+                zombie.health > 0 && projectile_can_hit_zombie(zombie, projectile.projectile_type)
+            })
             .min_by_key(|zombie| {
                 (
                     (zombie.position_x - projectile.position_x).abs(),
@@ -6496,7 +6554,7 @@ impl Game {
             .filter(|zombie| {
                 zombie.id != primary_zombie
                     && zombie.health > 0
-                    && projectile_can_hit_zombie(zombie)
+                    && projectile_can_hit_zombie(zombie, projectile.projectile_type)
                     && zombie.row.abs_diff(row) <= 1
                     && projectile_hits(projectile.position_x, zombie.position_x)
             })
@@ -6537,7 +6595,7 @@ impl Game {
             .iter()
             .filter(|zombie| {
                 zombie.health > 0
-                    && projectile_can_hit_zombie(zombie)
+                    && projectile_can_hit_zombie(zombie, projectile.projectile_type)
                     && zombie.row.abs_diff(projectile.row) <= GLOOM_ROW_RADIUS
                     && zombie.position_x > projectile.position_x
                     && zombie.position_x
@@ -6579,7 +6637,7 @@ impl Game {
             .iter()
             .filter(|zombie| {
                 zombie.health > 0
-                    && projectile_can_hit_zombie(zombie)
+                    && projectile_can_hit_zombie(zombie, projectile.projectile_type)
                     && zombie.row == projectile.row
                     && zombie.position_x > projectile.position_x
                     && zombie.position_x
@@ -7771,7 +7829,41 @@ impl Game {
         position_override: Option<i64>,
         events: &mut Vec<GameEvent>,
     ) -> EntityId {
-        self._spawn_zombie_inner(ZombieType::Imp, 70, row, wave, position_override, events)
+        self._spawn_zombie_inner(ZombieType::Imp, 270, row, wave, position_override, events)
+    }
+
+    fn throw_imp(
+        &mut self,
+        gargantuar: EntityId,
+        row: u8,
+        gargantuar_x: i64,
+        wave: u32,
+        events: &mut Vec<GameEvent>,
+    ) {
+        let mut distance = gargantuar_x - GARGANTUAR_THROW_BASE_X;
+        if self.state.scene == SceneKind::Roof {
+            distance -= 180 * POSITION_SCALE;
+            distance = distance.max(-140 * POSITION_SCALE);
+        } else {
+            distance = distance.max(GARGANTUAR_THROW_MIN_DISTANCE);
+        }
+        if distance > 140 * POSITION_SCALE {
+            distance -= i64::from(self.rng.range(101)) * POSITION_SCALE;
+        }
+        let mut velocity_z = distance / 120;
+        let mut altitude = IMP_THROW_START_ALTITUDE;
+        let mut flight_ticks: u32 = 0;
+        while altitude > 0 && flight_ticks < 10_000 {
+            velocity_z -= THROWN_ZOMBIE_GRAVITY;
+            altitude += velocity_z;
+            flight_ticks += 1;
+        }
+        let spawn_x = gargantuar_x - IMP_THROW_SPAWN_OFFSET;
+        let imp = self._spawn_zombie_inner(ZombieType::Imp, 270, row, wave, Some(spawn_x), events);
+        if let Some(zombie) = self.state.board.zombies.iter_mut().find(|z| z.id == imp) {
+            zombie.imp_flight_ticks = flight_ticks;
+        }
+        events.push(GameEvent::ImpThrown { gargantuar, imp });
     }
 
     #[allow(dead_code)]
@@ -7954,6 +8046,8 @@ impl Game {
             },
             blowing_away: false,
             departed: false,
+            imp_thrown: false,
+            imp_flight_ticks: 0,
             shield_health: match zombie_type {
                 ZombieType::Ladder => LADDER_SHIELD_HEALTH,
                 ZombieType::WallnutHead => ZOMBOTANY_WALLNUT_HELM_HEALTH,
@@ -8049,8 +8143,18 @@ fn projectile_hits_plant(projectile_x: i64, plant_x: i64) -> bool {
         && projectile_x - 15 * POSITION_SCALE < plant_x + 40 * POSITION_SCALE
 }
 
-fn projectile_can_hit_zombie(zombie: &ZombieState) -> bool {
-    zombie.zombie_type != ZombieType::Snorkel || zombie.snorkel_phase != 1 || zombie.eating
+fn projectile_can_hit_zombie(zombie: &ZombieState, projectile_type: ProjectileType) -> bool {
+    if zombie.zombie_type == ZombieType::Snorkel && zombie.snorkel_phase == 1 && !zombie.eating {
+        return false;
+    }
+    // Only Cactus/Cattail spikes carry the flying damage-range flag; airborne
+    // balloons and mid-flight thrown imps reject every other projectile.
+    if (balloon_is_airborne(zombie) || zombie.imp_flight_ticks > 0)
+        && projectile_type != ProjectileType::Spike
+    {
+        return false;
+    }
+    true
 }
 
 fn balloon_is_airborne(zombie: &ZombieState) -> bool {
@@ -10290,7 +10394,7 @@ mod tests {
     }
 
     #[test]
-    fn first_projectile_hit_pops_balloon_before_body_damage() {
+    fn first_spike_hit_pops_balloon_while_peas_pass_it_by() {
         let mut game = Game::new(7, SceneKind::Day);
         let mut setup = Vec::new();
         let balloon =
@@ -10321,7 +10425,28 @@ mod tests {
             },
             &mut setup_events,
         );
+        let pea_events = game.advance(InputFrame::default());
+        assert!(
+            !pea_events
+                .iter()
+                .any(|event| matches!(event, GameEvent::ProjectileHit { zombie, .. } if *zombie == balloon)),
+            "a pea must not hit an airborne balloon"
+        );
 
+        let mut setup_events = Vec::new();
+        game.fire_projectile(
+            0,
+            ProjectileType::Spike,
+            2,
+            ProjectileTrajectory {
+                motion: ProjectileMotion::Straight,
+                position_x: balloon_position,
+                position_y: grid_y(2),
+                velocity_x: 0,
+                velocity_y: 0,
+            },
+            &mut setup_events,
+        );
         let events = game.advance(InputFrame::default());
         assert!(events.iter().any(|event| matches!(
             event,
@@ -10530,7 +10655,7 @@ mod tests {
     }
 
     #[test]
-    fn imp_zombie_has_70_health_and_imp_type() {
+    fn imp_zombie_has_270_health_and_imp_type() {
         let mut game = Game::new(7, SceneKind::Day);
         let mut setup = Vec::new();
         let zombie = game.spawn_imp_zombie(2, 0, Some(500 * POSITION_SCALE), &mut setup);
@@ -10542,7 +10667,7 @@ mod tests {
                 .find(|z| z.id == zombie)
                 .unwrap()
                 .health,
-            70
+            270
         );
         assert_eq!(
             game.state
@@ -10553,6 +10678,69 @@ mod tests {
                 .unwrap()
                 .zombie_type,
             ZombieType::Imp
+        );
+    }
+
+    #[test]
+    fn gargantuar_below_half_health_throws_a_270_hp_imp_once() {
+        let mut game = Game::new(7, SceneKind::Day);
+        let mut setup = Vec::new();
+        let garg = game.spawn_gargantuar_zombie(2, 0, Some(490 * POSITION_SCALE), &mut setup);
+        {
+            let zombie = game
+                .state
+                .board
+                .zombies
+                .iter_mut()
+                .find(|z| z.id == garg)
+                .unwrap();
+            zombie.speed = 0;
+            zombie.health = 1_499;
+        }
+
+        let events = game.advance(InputFrame::default());
+        let imp = events
+            .iter()
+            .find_map(|event| match event {
+                GameEvent::ImpThrown { gargantuar, imp } if *gargantuar == garg => Some(*imp),
+                _ => None,
+            })
+            .expect("gargantuar below half health throws its imp");
+        let (imp_health, imp_position, flight_ticks) = {
+            let zombie = game
+                .state
+                .board
+                .zombies
+                .iter()
+                .find(|z| z.id == imp)
+                .unwrap();
+            (zombie.health, zombie.position_x, zombie.imp_flight_ticks)
+        };
+        assert_eq!(imp_health, 270, "thrown imps keep the 270 HP profile");
+        assert_eq!(imp_position, (490 - 133) * POSITION_SCALE);
+        assert!(
+            (80..=90).contains(&flight_ticks),
+            "130px throw integrates to roughly 85 flight ticks, got {flight_ticks}"
+        );
+
+        let events = game.advance(InputFrame::default());
+        assert!(
+            !events
+                .iter()
+                .any(|event| matches!(event, GameEvent::ImpThrown { .. })),
+            "the imp throw happens exactly once"
+        );
+        let imp_after = game
+            .state
+            .board
+            .zombies
+            .iter()
+            .find(|z| z.id == imp)
+            .unwrap();
+        assert_eq!(
+            imp_after.position_x,
+            (490 - 133) * POSITION_SCALE - IMP_THROW_SPEED_X,
+            "the airborne imp travels 3 px per tick"
         );
     }
 
