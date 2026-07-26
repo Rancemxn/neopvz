@@ -859,6 +859,51 @@ pub fn adventure_introduced_zombie(level: u8) -> Option<ZombieType> {
     }
 }
 
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+pub enum AdventureAward {
+    Plant(u8),
+    Shovel,
+    Almanac,
+    CarKeys,
+    Taco,
+    WateringCan,
+    Note,
+    Trophy,
+}
+
+/// LawnApp::GetAwardSeedForLevel: the seed slot unlocked by a level.
+pub fn adventure_award_seed(level: u8) -> u8 {
+    let l = u32::from(level.clamp(1, 50));
+    let area = (l - 1) / 10 + 1;
+    let sub = (l - 1) % 10 + 1;
+    let mut n = (area - 1) * 8 + sub;
+    if sub >= 10 {
+        n -= 2;
+    } else if sub >= 5 {
+        n -= 1;
+    }
+    n.min(40) as u8
+}
+
+/// Zombie::TrySpawnLevelAward: the first-run end-of-level award identity.
+pub fn adventure_award(level: u8) -> AdventureAward {
+    match level {
+        4 => AdventureAward::Shovel,
+        14 => AdventureAward::Almanac,
+        24 => AdventureAward::CarKeys,
+        34 => AdventureAward::Taco,
+        44 => AdventureAward::WateringCan,
+        9 | 19 | 29 | 39 | 49 => AdventureAward::Note,
+        50 => AdventureAward::Trophy,
+        _ => AdventureAward::Plant(adventure_award_seed(level)),
+    }
+}
+
+/// LawnApp::CanShowAlmanac / CanShowStore / CanShowZenGarden thresholds.
+pub fn adventure_unlocks(level: u8) -> (bool, bool, bool) {
+    (level >= 15, level >= 25, level >= 45)
+}
+
 /// Board::HasConveyorBeltSeedBank for adventure levels.
 pub fn adventure_level_is_conveyor(level: u8) -> bool {
     matches!(level, 5 | 10 | 20 | 25 | 30 | 40 | 45 | 50)
@@ -12630,6 +12675,29 @@ mod tests {
             "next wave arms at 2500 + Rand(600), got {countdown}"
         );
         assert_eq!(game.state.board.wave.countdown_start, countdown);
+    }
+
+    #[test]
+    fn adventure_awards_match_the_source_formula() {
+        // GetAwardSeedForLevel identities from the decomp table.
+        assert_eq!(adventure_award(1), AdventureAward::Plant(1)); // Sunflower
+        assert_eq!(adventure_award(3), AdventureAward::Plant(3)); // Wall-nut
+        assert_eq!(adventure_award(5), AdventureAward::Plant(4)); // Potato Mine
+        assert_eq!(adventure_award(10), AdventureAward::Plant(8)); // Puff-shroom
+        assert_eq!(adventure_award(20), AdventureAward::Plant(16)); // Lily Pad
+        assert_eq!(adventure_award(38), AdventureAward::Plant(31)); // Magnet-shroom
+        assert_eq!(adventure_award(48), AdventureAward::Plant(39)); // Melon-pult
+        assert_eq!(adventure_award(4), AdventureAward::Shovel);
+        assert_eq!(adventure_award(14), AdventureAward::Almanac);
+        assert_eq!(adventure_award(24), AdventureAward::CarKeys);
+        assert_eq!(adventure_award(34), AdventureAward::Taco);
+        assert_eq!(adventure_award(44), AdventureAward::WateringCan);
+        assert_eq!(adventure_award(49), AdventureAward::Note);
+        assert_eq!(adventure_award(50), AdventureAward::Trophy);
+        assert_eq!(adventure_unlocks(14), (false, false, false));
+        assert_eq!(adventure_unlocks(15), (true, false, false));
+        assert_eq!(adventure_unlocks(25), (true, true, false));
+        assert_eq!(adventure_unlocks(45), (true, true, true));
     }
 
     #[test]
