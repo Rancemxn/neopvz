@@ -7393,14 +7393,47 @@ impl Game {
             let percent = 50 + self.rng.range(16) as i32;
             self.state.board.wave_health_threshold = start_health * percent / 100;
         }
-        // Roof stages route the final-wave grave rise to a bungee sky drop,
-        // 210 ticks after the wave spawns.
-        if self.state.scene == SceneKind::Roof
-            && self.state.board.wave.current >= self.state.board.wave.total
+        // The final wave schedules the scene-routed rise 210 ticks later:
+        // gravestones on night boards, pool emerges, or the roof sky drop.
+        if matches!(
+            self.state.scene,
+            SceneKind::Roof | SceneKind::Night | SceneKind::Pool
+        ) && self.state.board.wave.current >= self.state.board.wave.total
             && !self.state.board.wave.endless
         {
             self.state.board.sky_drop_countdown = SKY_DROP_DELAY_TICKS;
         }
+    }
+
+    /// Board::PickGraveRisingZombieType: Normal/Conehead at 4000 each, with
+    /// the 3000-weight Buckethead only off gravestone stages.
+    fn pick_grave_rising_type(&mut self, include_pail: bool) -> ZombieType {
+        let total = if include_pail { 11_000 } else { 8_000 };
+        let roll = self.rng.range(total);
+        if roll < 4_000 {
+            ZombieType::Normal
+        } else if roll < 8_000 {
+            ZombieType::Conehead
+        } else {
+            ZombieType::Buckethead
+        }
+    }
+
+    fn spawn_rising_zombie(
+        &mut self,
+        zombie_type: ZombieType,
+        row: u8,
+        column: u8,
+        wave: u32,
+        events: &mut Vec<GameEvent>,
+    ) {
+        let health = match zombie_type {
+            ZombieType::Conehead => 640,
+            ZombieType::Buckethead => 1_370,
+            _ => 270,
+        };
+        let position = grid_x(column) - 25 * POSITION_SCALE;
+        self._spawn_zombie_inner(zombie_type, health, row, wave, Some(position), events);
     }
 
     /// TotalZombiesHealthInWave for the most recently spawned wave: body plus
@@ -7430,6 +7463,41 @@ impl Game {
             return;
         }
         let wave = self.state.board.wave.current.saturating_sub(1);
+        match self.state.scene {
+            SceneKind::Night => {
+                // One riser per gravestone; night stages never roll pails.
+                let graves: Vec<(u8, u8)> = self
+                    .state
+                    .board
+                    .graves
+                    .iter()
+                    .map(|grave| (grave.row, grave.column))
+                    .collect();
+                for (row, column) in graves {
+                    let zombie_type = self.pick_grave_rising_type(false);
+                    self.spawn_rising_zombie(zombie_type, row, column, wave, events);
+                }
+                return;
+            }
+            SceneKind::Pool => {
+                let count = if matches!(self.state.level, 21 | 22 | 31 | 32) {
+                    2
+                } else {
+                    3
+                };
+                let mut cells: Vec<(u8, u8)> = (2u8..=3)
+                    .flat_map(|row| (5u8..=8).map(move |column| (row, column)))
+                    .collect();
+                for _ in 0..count {
+                    let pick = self.rng.range(cells.len() as u32) as usize;
+                    let (row, column) = cells.remove(pick);
+                    let zombie_type = self.pick_grave_rising_type(true);
+                    self.spawn_rising_zombie(zombie_type, row, column, wave, events);
+                }
+                return;
+            }
+            _ => {}
+        }
         for _ in 0..3 {
             let roll = self.rng.range(11_000);
             let zombie_type = if roll < 4_000 {
@@ -12675,6 +12743,59 @@ mod tests {
             "next wave arms at 2500 + Rand(600), got {countdown}"
         );
         assert_eq!(game.state.board.wave.countdown_start, countdown);
+    }
+
+    #[test]
+    fn night_graves_and_pool_cells_rise_on_the_final_wave() {
+        let mut game = Game::new_mode(7, ModeKind::Adventure, 11);
+        for column in [6, 7, 8] {
+            game.state.board.graves.push(GraveState { row: 2, column });
+        }
+        let total = game.state.board.wave.total;
+        game.state.board.wave.current = total - 1;
+        game.state.board.wave.countdown = 1;
+        game.advance(InputFrame::default());
+        assert!(game.state.board.sky_drop_countdown > 0);
+        let before: Vec<EntityId> = game.state.board.zombies.iter().map(|z| z.id).collect();
+        for _ in 0..SKY_DROP_DELAY_TICKS {
+            game.advance(InputFrame::default());
+        }
+        let risers: Vec<&ZombieState> = game
+            .state
+            .board
+            .zombies
+            .iter()
+            .filter(|z| !before.contains(&z.id))
+            .collect();
+        assert_eq!(risers.len(), 3, "one riser per gravestone");
+        assert!(
+            risers.iter().all(|z| z.row == 2
+                && matches!(z.zombie_type, ZombieType::Normal | ZombieType::Conehead))
+        );
+
+        let mut pool = Game::new_mode(7, ModeKind::Adventure, 21);
+        let total = pool.state.board.wave.total;
+        pool.state.board.wave.current = total - 1;
+        pool.state.board.wave.countdown = 1;
+        pool.advance(InputFrame::default());
+        let before: Vec<EntityId> = pool.state.board.zombies.iter().map(|z| z.id).collect();
+        for _ in 0..SKY_DROP_DELAY_TICKS {
+            pool.advance(InputFrame::default());
+        }
+        let emerged: Vec<&ZombieState> = pool
+            .state
+            .board
+            .zombies
+            .iter()
+            .filter(|z| !before.contains(&z.id))
+            .collect();
+        assert_eq!(emerged.len(), 2, "levels 21-22 emerge two zombies");
+        assert!(
+            emerged
+                .iter()
+                .all(|z| matches!(z.row, 2 | 3) && z.position_x < grid_x(8)),
+            "pool emerges use the source cell block"
+        );
     }
 
     #[test]
