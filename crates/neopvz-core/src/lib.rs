@@ -123,6 +123,22 @@ const SPIKE_VEHICLE_DAMAGE: i32 = 1_800;
 const SPIKEROCK_VEHICLE_SELF_DAMAGE: i32 = 50;
 const BOBSLED_ICE_KEEPALIVE_TICKS: u32 = 500;
 const BOBSLED_ICE_END_DAMAGE: i32 = 6;
+// Plant_UpdateMagnetshoom: one item per 1500-tick cycle; 270-unit reach (320
+// against an eating victim), two-row window with an 80-per-row tie-break.
+// A robbed tunneling Digger pauses 200 ticks and rises for 130 more.
+const MAGNET_RECHARGE_TICKS: u32 = 1_500;
+const MAGNET_STEAL_RADIUS: i64 = 270 * POSITION_SCALE;
+const MAGNET_STEAL_EATING_RADIUS: i64 = 320 * POSITION_SCALE;
+const DIGGER_AXE_LOSS_SURFACE_TICKS: u32 = 330;
+// Bungee delivery (Zombie_AirborneInit / Zombie_BungeeFallingUpdate): the
+// carrier starts at altitude 3000 + Rand(150) and dives 8 per tick, releases
+// its held zombie on landing, rises 8 per tick, and departs at altitude 600.
+// The roof final-wave sky drop fires 210 ticks after the wave spawns with
+// Normal/Conehead/Buckethead weighted 4000/4000/3000 over columns 4-8, rows 0-4.
+const BUNGEE_DROP_DIVE_ALTITUDE: i64 = 3_000;
+const BUNGEE_DROP_SPEED: i64 = 8;
+const BUNGEE_RISE_DEPART_TICKS: u32 = 75;
+const SKY_DROP_DELAY_TICKS: u32 = 210;
 const DANCER_SUMMON_TICKS: u32 = 300;
 const BACKUP_DANCER_COUNT: usize = 4;
 const DIGGER_RISE_TICKS: u32 = 130;
@@ -1821,6 +1837,10 @@ pub struct ZombieState {
     #[serde(default)]
     pub departed: bool,
     #[serde(default)]
+    pub in_pool: bool,
+    #[serde(default)]
+    pub bungee_held: bool,
+    #[serde(default)]
     pub imp_thrown: bool,
     #[serde(default)]
     pub imp_flight_ticks: u32,
@@ -1968,6 +1988,8 @@ pub struct BoardState {
     #[serde(default)]
     pub ladders: Vec<LadderState>,
     #[serde(default)]
+    pub sky_drop_countdown: u32,
+    #[serde(default)]
     pub ice_min_x: Vec<i64>,
     #[serde(default)]
     pub ice_timer: Vec<u32>,
@@ -2055,6 +2077,7 @@ impl BoardState {
             craters: Vec::new(),
             graves: Vec::new(),
             ladders: Vec::new(),
+            sky_drop_countdown: 0,
             ice_min_x: vec![ICE_START_X; usize::from(rows)],
             ice_timer: vec![0; usize::from(rows)],
             vases,
@@ -2534,6 +2557,10 @@ pub enum GameEvent {
         gargantuar: EntityId,
         imp: EntityId,
     },
+    MetalStolen {
+        plant: EntityId,
+        zombie: Option<EntityId>,
+    },
     ZombieVaulted {
         entity: EntityId,
     },
@@ -2861,6 +2888,7 @@ impl Game {
                 self.state.board.ice_counter = self.state.board.ice_counter.saturating_sub(1);
                 self.update_craters();
                 self.update_ice();
+                self.update_sky_drop(&mut events);
                 self.state.tick = self.state.tick.saturating_add(1);
                 self.state.wave = self.state.board.wave.current;
 
@@ -4461,6 +4489,10 @@ impl Game {
                     plant.imitater_type,
                 )
             };
+            if plant_type.slot() == 31 {
+                self.update_magnet_shroom(index, id, row, column, events);
+                continue;
+            }
             if plant_type.is_imitater() {
                 let Some(target) = imitater_type else {
                     continue;
@@ -5112,6 +5144,7 @@ impl Game {
             .iter()
             .filter(|zombie| {
                 zombie.health > 0
+                    && !zombie.bungee_held
                     && zombie.row.abs_diff(row) <= row_radius
                     && (row_wide || (zombie.position_x - center_x).abs() <= radius)
             })
@@ -5865,6 +5898,46 @@ impl Game {
                     zombie.position_x -= IMP_THROW_SPEED_X;
                     continue;
                 }
+                if zombie.bungee_held {
+                    continue;
+                }
+            }
+            {
+                let (delivering, phase, counter, held) = {
+                    let zombie = &self.state.board.zombies[zombie_index];
+                    (
+                        zombie.zombie_type == ZombieType::Bungee && zombie.special_phase > 0,
+                        zombie.special_phase,
+                        zombie.special_counter,
+                        zombie.special_target,
+                    )
+                };
+                if delivering {
+                    let counter = counter.saturating_sub(1);
+                    self.state.board.zombies[zombie_index].special_counter = counter;
+                    if counter == 0 {
+                        if phase == 1 {
+                            if let Some(zombie) = held.and_then(|held_id| {
+                                self.state
+                                    .board
+                                    .zombies
+                                    .iter_mut()
+                                    .find(|z| z.id == held_id)
+                            }) {
+                                zombie.bungee_held = false;
+                            }
+                            let zombie = &mut self.state.board.zombies[zombie_index];
+                            zombie.special_phase = 2;
+                            zombie.special_counter = BUNGEE_RISE_DEPART_TICKS;
+                            zombie.special_target = None;
+                        } else {
+                            let entity = self.state.board.zombies[zombie_index].id;
+                            self.emit_zombie_died(entity, events);
+                            self.state.board.zombies[zombie_index].departed = true;
+                        }
+                    }
+                    continue;
+                }
             }
             {
                 let (should_throw, garg_row, garg_x, garg_wave) = {
@@ -5885,6 +5958,19 @@ impl Game {
                     let gargantuar = self.state.board.zombies[zombie_index].id;
                     self.state.board.zombies[zombie_index].imp_thrown = true;
                     self.throw_imp(gargantuar, garg_row, garg_x, garg_wave, events);
+                }
+            }
+            {
+                let scene = self.state.scene;
+                let zombie = &mut self.state.board.zombies[zombie_index];
+                if scene == SceneKind::Pool
+                    && matches!(zombie.row, 2 | 3)
+                    && zombie.position_x < 680 * POSITION_SCALE
+                    && !zombie.in_pool
+                    && (zombie_type_can_go_in_pool(zombie.zombie_type)
+                        || zombie.zombie_type == ZombieType::DuckyTube)
+                {
+                    zombie.in_pool = true;
                 }
             }
             self.update_dolphin_state(zombie_index);
@@ -6121,8 +6207,10 @@ impl Game {
                 } else {
                     let ztype = self.state.board.zombies[zombie_index].zombie_type;
                     let target = self.find_plant_for_zombie(row, position_x, ztype);
+                    let pogo_has_stick = ztype == ZombieType::Pogo
+                        && self.state.board.zombies[zombie_index].special_phase == 0;
                     self.state.board.zombies[zombie_index].eating =
-                        target.is_some() && ztype != ZombieType::Pogo;
+                        target.is_some() && !pogo_has_stick;
                     if let Some(plant_index) = target {
                         let plant_id = self.state.board.plants[plant_index].id;
                         let has_vaulted = self.state.board.zombies[zombie_index].has_vaulted;
@@ -6153,7 +6241,9 @@ impl Game {
                             self.state.board.zombies[zombie_index].shield_health = 0;
                             self.state.board.zombies[zombie_index].eating = false;
                             self.state.board.zombies[zombie_index].speed = walk_speed;
-                        } else if ztype == ZombieType::Pogo {
+                        } else if ztype == ZombieType::Pogo
+                            && self.state.board.zombies[zombie_index].special_phase == 0
+                        {
                             if !pogo_bouncing {
                                 let target_x = grid_x(self.state.board.plants[plant_index].column)
                                     - 80 * POSITION_SCALE;
@@ -6402,8 +6492,9 @@ impl Game {
             .iter()
             .filter(|zombie| {
                 // Cob blasts carry every damage-range flag: airborne and submerged
-                // zombies are all valid targets.
+                // zombies are all valid targets, but not bungee-held deliveries.
                 zombie.health > 0
+                    && !zombie.bungee_held
                     && zombie.row.abs_diff(target_row) <= 1
                     && (zombie.position_x - target_x).abs() <= 115 * POSITION_SCALE
             })
@@ -6924,7 +7015,8 @@ impl Game {
                 if let Some(ice_row) = self.pick_bobsled_row() {
                     self.spawn_bobsled_zombie(ice_row, wave, None, events);
                 } else {
-                    self.spawn_zamboni_zombie(row, wave, None, events);
+                    let zamboni_row = self.pick_spawn_row(ZombieType::Zamboni, wave);
+                    self.spawn_zamboni_zombie(zamboni_row, wave, None, events);
                 }
             }
             ChallengeKind::PogoParty => {
@@ -6958,11 +7050,49 @@ impl Game {
                 }
             },
             _ => {
-                self.spawn_normal_zombie(row, wave, None, events);
+                let normal_row = if self.state.scene == SceneKind::Pool {
+                    self.pick_spawn_row(ZombieType::Normal, wave)
+                } else {
+                    row
+                };
+                self.spawn_normal_zombie(normal_row, wave, None, events);
             }
         }
         self.state.board.wave.current += 1;
         self.state.board.wave.countdown_start = 0;
+        // Roof stages route the final-wave grave rise to a bungee sky drop,
+        // 210 ticks after the wave spawns.
+        if self.state.scene == SceneKind::Roof
+            && self.state.board.wave.current >= self.state.board.wave.total
+            && !self.state.board.wave.endless
+        {
+            self.state.board.sky_drop_countdown = SKY_DROP_DELAY_TICKS;
+        }
+    }
+
+    fn update_sky_drop(&mut self, events: &mut Vec<GameEvent>) {
+        if self.state.board.sky_drop_countdown == 0 {
+            return;
+        }
+        self.state.board.sky_drop_countdown -= 1;
+        if self.state.board.sky_drop_countdown != 0 {
+            return;
+        }
+        let wave = self.state.board.wave.current.saturating_sub(1);
+        for _ in 0..3 {
+            let roll = self.rng.range(11_000);
+            let zombie_type = if roll < 4_000 {
+                ZombieType::Normal
+            } else if roll < 8_000 {
+                ZombieType::Conehead
+            } else {
+                ZombieType::Buckethead
+            };
+            let column = 4 + self.rng.range(5) as u8;
+            let row_limit = u32::from(self.state.board.rows.min(5));
+            let row = self.rng.range(row_limit) as u8;
+            self.spawn_bungee_drop(zombie_type, row, column, wave, events);
+        }
     }
 
     fn apply_spikeweed_damage(
@@ -8113,6 +8243,210 @@ impl Game {
         events.push(GameEvent::ImpThrown { gargantuar, imp });
     }
 
+    fn update_magnet_shroom(
+        &mut self,
+        plant_index: usize,
+        plant_id: EntityId,
+        row: u8,
+        column: u8,
+        events: &mut Vec<GameEvent>,
+    ) {
+        {
+            let plant = &mut self.state.board.plants[plant_index];
+            if plant.special_counter > 0 {
+                plant.special_counter -= 1;
+                return;
+            }
+        }
+        let center_x = grid_x(column);
+        let mut best: Option<(usize, i64)> = None;
+        for (index, zombie) in self.state.board.zombies.iter().enumerate() {
+            if zombie.health <= 0
+                || zombie.hypnotized
+                || zombie.departed
+                || zombie.imp_flight_ticks > 0
+                || zombie.position_x > 800 * POSITION_SCALE
+                || row.abs_diff(zombie.row) > 2
+            {
+                continue;
+            }
+            if zombie.zombie_type == ZombieType::Digger
+                && !zombie.digger_underground
+                && zombie.digger_counter > 0
+            {
+                continue;
+            }
+            let stealable = match zombie.zombie_type {
+                ZombieType::Buckethead | ZombieType::Football | ZombieType::ScreenDoor => {
+                    zombie.health > 270
+                }
+                ZombieType::Ladder => zombie.shield_health > 0,
+                ZombieType::Jackbox => zombie.jackbox_timer > 0,
+                ZombieType::Pogo | ZombieType::Digger => zombie.special_phase == 0,
+                _ => false,
+            };
+            if !stealable {
+                continue;
+            }
+            let radius = if zombie.eating {
+                MAGNET_STEAL_EATING_RADIUS
+            } else {
+                MAGNET_STEAL_RADIUS
+            };
+            let distance = (zombie.position_x - center_x).abs();
+            if distance > radius {
+                continue;
+            }
+            let score = distance + i64::from(row.abs_diff(zombie.row)) * 80 * POSITION_SCALE;
+            if best.is_none_or(|(_, s)| score < s) {
+                best = Some((index, score));
+            }
+        }
+        if let Some((zombie_index, _)) = best {
+            let walk_speed = self.rng.fixed_range(230_000, 320_000);
+            let mode = self.state.mode;
+            let zombie = &mut self.state.board.zombies[zombie_index];
+            let entity = zombie.id;
+            match zombie.zombie_type {
+                ZombieType::Buckethead | ZombieType::Football | ZombieType::ScreenDoor => {
+                    zombie.health = zombie.health.min(270);
+                }
+                ZombieType::Ladder => {
+                    zombie.shield_health = 0;
+                }
+                ZombieType::Jackbox => {
+                    zombie.jackbox_timer = 0;
+                    zombie.speed = walk_speed;
+                }
+                ZombieType::Pogo => {
+                    zombie.special_phase = 1;
+                    zombie.pogo_counter = 0;
+                    zombie.pogo_target_x = None;
+                    zombie.pogo_velocity_x = 0;
+                }
+                ZombieType::Digger => {
+                    zombie.special_phase = 1;
+                    if zombie.digger_underground {
+                        zombie.digger_underground = false;
+                        zombie.digger_counter = DIGGER_AXE_LOSS_SURFACE_TICKS;
+                        zombie.speed = if mode == ModeKind::IZombie {
+                            DIGGER_IZOMBIE_WALK_SPEED
+                        } else {
+                            DIGGER_WALK_SPEED
+                        };
+                    }
+                }
+                _ => {}
+            }
+            self.state.board.plants[plant_index].special_counter = MAGNET_RECHARGE_TICKS;
+            events.push(GameEvent::MetalStolen {
+                plant: plant_id,
+                zombie: Some(entity),
+            });
+            return;
+        }
+        if let Some(ladder_index) =
+            self.state.board.ladders.iter().position(|ladder| {
+                ladder.row.abs_diff(row) <= 2 && ladder.column.abs_diff(column) <= 2
+            })
+        {
+            self.state.board.ladders.remove(ladder_index);
+            self.state.board.plants[plant_index].special_counter = MAGNET_RECHARGE_TICKS;
+            events.push(GameEvent::MetalStolen {
+                plant: plant_id,
+                zombie: None,
+            });
+        }
+    }
+
+    fn spawn_bungee_drop(
+        &mut self,
+        zombie_type: ZombieType,
+        row: u8,
+        column: u8,
+        wave: u32,
+        events: &mut Vec<GameEvent>,
+    ) -> (EntityId, EntityId) {
+        let health = match zombie_type {
+            ZombieType::Conehead => 640,
+            ZombieType::Buckethead => 1_370,
+            _ => 270,
+        };
+        let carried = self._spawn_zombie_inner(
+            zombie_type,
+            health,
+            row,
+            wave,
+            Some(grid_x(column) - 15 * POSITION_SCALE),
+            events,
+        );
+        let carrier = self._spawn_zombie_inner(
+            ZombieType::Bungee,
+            450,
+            row,
+            wave,
+            Some(grid_x(column)),
+            events,
+        );
+        let altitude = BUNGEE_DROP_DIVE_ALTITUDE + i64::from(self.rng.range(151));
+        let dive_ticks = ((altitude + BUNGEE_DROP_SPEED - 1) / BUNGEE_DROP_SPEED) as u32;
+        if let Some(zombie) = self
+            .state
+            .board
+            .zombies
+            .iter_mut()
+            .find(|z| z.id == carried)
+        {
+            zombie.bungee_held = true;
+        }
+        if let Some(zombie) = self
+            .state
+            .board
+            .zombies
+            .iter_mut()
+            .find(|z| z.id == carrier)
+        {
+            zombie.bungee_stolen = true;
+            zombie.special_phase = 1;
+            zombie.special_counter = dive_ticks;
+            zombie.special_target = Some(carried);
+        }
+        (carrier, carried)
+    }
+
+    fn row_can_have_zombie_type(&self, row: u8, zombie_type: ZombieType, wave: u32) -> bool {
+        if zombie_type == ZombieType::Bobsled
+            && self
+                .state
+                .board
+                .ice_timer
+                .get(usize::from(row))
+                .copied()
+                .unwrap_or(0)
+                == 0
+        {
+            return false;
+        }
+        let pool_row = self.state.scene == SceneKind::Pool && matches!(row, 2 | 3);
+        if pool_row {
+            if wave < 5 {
+                return zombie_type_is_pool_only(zombie_type);
+            }
+            return zombie_type_can_go_in_pool(zombie_type);
+        }
+        !zombie_type_is_pool_only(zombie_type)
+    }
+
+    fn pick_spawn_row(&mut self, zombie_type: ZombieType, wave: u32) -> u8 {
+        for _ in 0..16 {
+            let row = self.rng.range(u32::from(self.state.board.rows)) as u8;
+            if self.row_can_have_zombie_type(row, zombie_type, wave) {
+                return row;
+            }
+        }
+        0
+    }
+
     fn pick_bobsled_row(&mut self) -> Option<u8> {
         let can_add = self
             .state
@@ -8342,6 +8676,8 @@ impl Game {
             },
             blowing_away: false,
             departed: false,
+            in_pool: false,
+            bungee_held: false,
             imp_thrown: false,
             imp_flight_ticks: 0,
             shield_health: match zombie_type {
@@ -8400,6 +8736,29 @@ fn is_ladder_target(plant_type: PlantType) -> bool {
     matches!(plant_type.slot(), 3 | 23 | 30)
 }
 
+// Zombie_If_CanWater in 1.0.0.1051; ZOMBIE_DUCKY_TUBE itself is absent from
+// the source list (it is preview-only and never wave-picked, weight 0).
+fn zombie_type_can_go_in_pool(zombie_type: ZombieType) -> bool {
+    matches!(
+        zombie_type,
+        ZombieType::Normal
+            | ZombieType::Conehead
+            | ZombieType::Buckethead
+            | ZombieType::Flag
+            | ZombieType::Snorkel
+            | ZombieType::DolphinRider
+            | ZombieType::PeaHead
+            | ZombieType::WallnutHead
+            | ZombieType::JalapenoHead
+            | ZombieType::GatlingHead
+            | ZombieType::TallnutHead
+    )
+}
+
+fn zombie_type_is_pool_only(zombie_type: ZombieType) -> bool {
+    matches!(zombie_type, ZombieType::Snorkel | ZombieType::DolphinRider)
+}
+
 fn is_gargantuar(zombie_type: ZombieType) -> bool {
     matches!(
         zombie_type,
@@ -8440,6 +8799,9 @@ fn projectile_hits_plant(projectile_x: i64, plant_x: i64) -> bool {
 }
 
 fn projectile_can_hit_zombie(zombie: &ZombieState, projectile_type: ProjectileType) -> bool {
+    if zombie.bungee_held {
+        return false;
+    }
     if zombie.zombie_type == ZombieType::Snorkel && zombie.snorkel_phase == 1 && !zombie.eating {
         return false;
     }
@@ -11290,6 +11652,271 @@ mod tests {
                 .all(|zombie| !zombie.bobsled_leader || zombie.shield_health == 0),
             "the leader's 300 HP sled is consumed by the 6-per-tick overrun damage"
         );
+    }
+
+    #[test]
+    fn magnetshroom_steals_the_nearest_bucket_and_recharges_1500_ticks() {
+        let mut game = Game::new(7, SceneKind::Night);
+        game.state.sun = 1_000;
+        game.advance(InputFrame {
+            actions: vec![
+                InputAction::SelectSeed { slot: 31 },
+                InputAction::Plant { row: 2, column: 4 },
+            ],
+        });
+        let mut setup = Vec::new();
+        let bucket = game.spawn_buckethead_zombie(2, 0, Some(520 * POSITION_SCALE), &mut setup);
+        let cone = game.spawn_conehead_zombie(2, 0, Some(440 * POSITION_SCALE), &mut setup);
+        let second = game.spawn_buckethead_zombie(3, 0, Some(520 * POSITION_SCALE), &mut setup);
+        let cone_health = game
+            .state
+            .board
+            .zombies
+            .iter()
+            .find(|z| z.id == cone)
+            .unwrap()
+            .health;
+        for zombie in &mut game.state.board.zombies {
+            zombie.speed = 0;
+        }
+
+        let events = game.advance(InputFrame::default());
+        assert!(
+            events.iter().any(|event| matches!(
+                event,
+                GameEvent::MetalStolen { zombie: Some(z), .. } if *z == bucket
+            )),
+            "the nearest bucket loses its pail"
+        );
+        let health_of = |game: &Game, id: EntityId| {
+            game.state
+                .board
+                .zombies
+                .iter()
+                .find(|z| z.id == id)
+                .unwrap()
+                .health
+        };
+        assert_eq!(health_of(&game, bucket), 270, "the 270 HP body survives");
+        assert_eq!(
+            health_of(&game, cone),
+            cone_health,
+            "traffic cones are not stealable"
+        );
+        assert!(health_of(&game, second) > 270, "one item per cycle");
+
+        let mut extra_steals = 0;
+        for _ in 0..1_502 {
+            let events = game.advance(InputFrame::default());
+            extra_steals += events
+                .iter()
+                .filter(|event| matches!(event, GameEvent::MetalStolen { .. }))
+                .count();
+        }
+        assert_eq!(
+            extra_steals, 1,
+            "the next steal waits out the 1500-tick recharge"
+        );
+        assert_eq!(health_of(&game, second), 270);
+    }
+
+    #[test]
+    fn magnetshroom_pickaxe_steal_surfaces_the_digger() {
+        let mut game = Game::new(7, SceneKind::Night);
+        game.state.sun = 1_000;
+        game.advance(InputFrame {
+            actions: vec![
+                InputAction::SelectSeed { slot: 31 },
+                InputAction::Plant { row: 2, column: 4 },
+            ],
+        });
+        let mut setup = Vec::new();
+        let digger = game.spawn_digger_zombie(2, 0, Some(500 * POSITION_SCALE), &mut setup);
+
+        let events = game.advance(InputFrame::default());
+        assert!(events.iter().any(|event| matches!(
+            event,
+            GameEvent::MetalStolen { zombie: Some(z), .. } if *z == digger
+        )));
+        {
+            let zombie = game
+                .state
+                .board
+                .zombies
+                .iter()
+                .find(|z| z.id == digger)
+                .unwrap();
+            assert!(!zombie.digger_underground, "the robbed digger surfaces");
+            assert!(
+                (DIGGER_AXE_LOSS_SURFACE_TICKS - 1..=DIGGER_AXE_LOSS_SURFACE_TICKS)
+                    .contains(&zombie.digger_counter),
+                "the 200-tick pause plus 130-tick rise starts, got {}",
+                zombie.digger_counter
+            );
+            assert_eq!(zombie.special_phase, 1);
+            assert_eq!(zombie.speed, DIGGER_WALK_SPEED);
+        }
+        for _ in 0..=DIGGER_AXE_LOSS_SURFACE_TICKS {
+            game.advance(InputFrame::default());
+        }
+        let zombie = game
+            .state
+            .board
+            .zombies
+            .iter()
+            .find(|z| z.id == digger)
+            .unwrap();
+        assert_eq!(zombie.digger_counter, 0, "the digger finishes rising");
+        assert_eq!(zombie.health, 370);
+    }
+
+    #[test]
+    fn pool_rows_gate_spawns_and_tube_riders_keep_their_land_health() {
+        let mut game = Game::new(7, SceneKind::Pool);
+        assert!(!game.row_can_have_zombie_type(2, ZombieType::Football, 6));
+        assert!(!game.row_can_have_zombie_type(2, ZombieType::DuckyTube, 6));
+        assert!(game.row_can_have_zombie_type(2, ZombieType::Buckethead, 6));
+        assert!(
+            !game.row_can_have_zombie_type(2, ZombieType::Buckethead, 3),
+            "the first five waves keep pool rows for swimmers"
+        );
+        assert!(game.row_can_have_zombie_type(2, ZombieType::Snorkel, 3));
+        assert!(
+            !game.row_can_have_zombie_type(0, ZombieType::Snorkel, 3),
+            "pool-only swimmers never spawn on land rows"
+        );
+
+        let mut setup = Vec::new();
+        let pool_bucket =
+            game.spawn_buckethead_zombie(2, 6, Some(500 * POSITION_SCALE), &mut setup);
+        let land_bucket =
+            game.spawn_buckethead_zombie(0, 6, Some(500 * POSITION_SCALE), &mut setup);
+        game.advance(InputFrame::default());
+        let find = |game: &Game, id: EntityId| {
+            game.state
+                .board
+                .zombies
+                .iter()
+                .find(|z| z.id == id)
+                .cloned()
+                .unwrap()
+        };
+        let pool_zombie = find(&game, pool_bucket);
+        assert!(pool_zombie.in_pool, "pool-row walkers ride a ducky tube");
+        assert_eq!(
+            pool_zombie.health, 1_370,
+            "the tube is a visual overlay; helm and body HP are unchanged"
+        );
+        assert!(!find(&game, land_bucket).in_pool);
+    }
+
+    #[test]
+    fn bungee_pair_delivers_a_zombie_and_departs_without_stealing() {
+        let mut game = Game::new(7, SceneKind::Day);
+        let mut setup = Vec::new();
+        let (carrier, carried) =
+            game.spawn_bungee_drop(ZombieType::Buckethead, 2, 5, 0, &mut setup);
+        let held_x = grid_x(5) - 15 * POSITION_SCALE;
+        let find = |game: &Game, id: EntityId| {
+            game.state
+                .board
+                .zombies
+                .iter()
+                .find(|z| z.id == id)
+                .cloned()
+        };
+
+        game.advance(InputFrame::default());
+        let held = find(&game, carried).unwrap();
+        assert!(held.bungee_held, "the delivery rides down with the carrier");
+        assert_eq!(held.position_x, held_x, "held zombies do not walk");
+
+        let mut released_at = None;
+        for tick in 0..450 {
+            game.advance(InputFrame::default());
+            if !find(&game, carried).unwrap().bungee_held {
+                released_at = Some(tick);
+                break;
+            }
+        }
+        let released_at = released_at.expect("the carrier releases its zombie");
+        assert!(
+            (360..=400).contains(&released_at),
+            "the 3000-3150 altitude dive at 8 per tick lands near tick 375-394, got {released_at}"
+        );
+        assert_eq!(
+            find(&game, carried).unwrap().health,
+            1_370,
+            "the delivered zombie lands with its full profile"
+        );
+
+        let mut carrier_gone = false;
+        for _ in 0..80 {
+            let events = game.advance(InputFrame::default());
+            if events.iter().any(
+                |event| matches!(event, GameEvent::ZombieDied { entity } if *entity == carrier),
+            ) {
+                carrier_gone = true;
+                break;
+            }
+        }
+        assert!(carrier_gone, "the carrier rises and departs after 75 ticks");
+        assert!(find(&game, carrier).is_none());
+        let walk_start = find(&game, carried).unwrap().position_x;
+        game.advance(InputFrame::default());
+        game.advance(InputFrame::default());
+        game.advance(InputFrame::default());
+        game.advance(InputFrame::default());
+        assert!(
+            find(&game, carried).unwrap().position_x < walk_start,
+            "the released zombie walks like a normal spawn"
+        );
+    }
+
+    #[test]
+    fn roof_final_wave_schedules_a_three_pair_sky_drop() {
+        let mut game = Game::new(7, SceneKind::Roof);
+        let total = game.state.board.wave.total;
+        game.state.board.wave.current = total - 1;
+        game.state.board.wave.countdown = 1;
+        game.advance(InputFrame::default());
+        assert!(
+            (SKY_DROP_DELAY_TICKS - 1..=SKY_DROP_DELAY_TICKS)
+                .contains(&game.state.board.sky_drop_countdown),
+            "the final roof wave schedules the 210-tick sky drop"
+        );
+
+        for _ in 0..SKY_DROP_DELAY_TICKS {
+            game.advance(InputFrame::default());
+        }
+        let carriers = game
+            .state
+            .board
+            .zombies
+            .iter()
+            .filter(|z| z.zombie_type == ZombieType::Bungee)
+            .count();
+        assert_eq!(carriers, 3, "three carrier bungees dive in");
+        let held: Vec<&ZombieState> = game
+            .state
+            .board
+            .zombies
+            .iter()
+            .filter(|z| z.bungee_held)
+            .collect();
+        assert_eq!(held.len(), 3);
+        for zombie in held {
+            assert!(matches!(
+                zombie.zombie_type,
+                ZombieType::Normal | ZombieType::Conehead | ZombieType::Buckethead
+            ));
+            assert!(zombie.row <= 4, "drops land on rows 0-4");
+            assert!(
+                zombie.position_x >= grid_x(4) - 15 * POSITION_SCALE
+                    && zombie.position_x <= grid_x(8) - 15 * POSITION_SCALE,
+                "drops land on columns 4-8"
+            );
+        }
     }
 
     #[test]
