@@ -2197,6 +2197,10 @@ pub struct BoardState {
     #[serde(default)]
     pub wave_plan: Vec<Vec<ZombieType>>,
     #[serde(default)]
+    pub huge_wave_countdown: u32,
+    #[serde(default)]
+    pub wave_health_threshold: i32,
+    #[serde(default)]
     pub sky_drop_countdown: u32,
     #[serde(default)]
     pub ice_min_x: Vec<i64>,
@@ -2287,6 +2291,8 @@ impl BoardState {
             graves: Vec::new(),
             ladders: Vec::new(),
             wave_plan: Vec::new(),
+            huge_wave_countdown: 0,
+            wave_health_threshold: -1,
             sky_drop_countdown: 0,
             ice_min_x: vec![ICE_START_X; usize::from(rows)],
             ice_timer: vec![0; usize::from(rows)],
@@ -7225,7 +7231,33 @@ impl Game {
         if self.state.board.wave.current >= self.state.board.wave.total {
             return;
         }
+        let adventure =
+            self.state.mode == ModeKind::Adventure && (1..=50).contains(&self.state.level);
+        // The huge-wave banner freezes the spawn clock for 750 ticks, then
+        // the wave releases immediately.
+        if adventure && self.state.board.huge_wave_countdown > 0 {
+            self.state.board.huge_wave_countdown -= 1;
+            if self.state.board.huge_wave_countdown > 0 {
+                return;
+            }
+            self.state.board.wave.countdown = 1;
+        }
         self.state.board.wave.countdown = self.state.board.wave.countdown.saturating_sub(1);
+        if adventure
+            && self.state.board.wave.countdown > 200
+            && self.state.board.wave.countdown_start > self.state.board.wave.countdown + 400
+            && self.state.board.wave_health_threshold >= 0
+            && self.current_wave_health() <= self.state.board.wave_health_threshold
+        {
+            self.state.board.wave.countdown = 200;
+        }
+        if adventure
+            && self.state.board.wave.countdown == 5
+            && adventure_is_flag_wave(self.state.level, false, self.state.board.wave.current)
+        {
+            self.state.board.huge_wave_countdown = 750;
+            return;
+        }
         if self.state.board.wave.countdown != 0 {
             return;
         }
@@ -7310,6 +7342,11 @@ impl Game {
             let countdown = ZOMBIE_NEXT_WAVE_COUNTDOWN + self.rng.range(ZOMBIE_NEXT_WAVE_RANGE);
             self.state.board.wave.countdown = countdown;
             self.state.board.wave.countdown_start = countdown;
+            // Board::UpdateZombieSpawning: the next wave releases early once
+            // this wave's health falls to a random 50-65% of its start.
+            let start_health = self.current_wave_health();
+            let percent = 50 + self.rng.range(16) as i32;
+            self.state.board.wave_health_threshold = start_health * percent / 100;
         }
         // Roof stages route the final-wave grave rise to a bungee sky drop,
         // 210 ticks after the wave spawns.
@@ -7319,6 +7356,24 @@ impl Game {
         {
             self.state.board.sky_drop_countdown = SKY_DROP_DELAY_TICKS;
         }
+    }
+
+    /// TotalZombiesHealthInWave for the most recently spawned wave: body plus
+    /// a fifth of the shield, skipping bungees and the dead.
+    fn current_wave_health(&self) -> i32 {
+        let wave = self.state.board.wave.current.saturating_sub(1);
+        self.state
+            .board
+            .zombies
+            .iter()
+            .filter(|zombie| {
+                zombie.from_wave == wave
+                    && zombie.health > 0
+                    && !zombie.hypnotized
+                    && zombie.zombie_type != ZombieType::Bungee
+            })
+            .map(|zombie| zombie.health + zombie.shield_health / 5)
+            .sum()
     }
 
     fn update_sky_drop(&mut self, events: &mut Vec<GameEvent>) {
@@ -12575,6 +12630,42 @@ mod tests {
             "next wave arms at 2500 + Rand(600), got {countdown}"
         );
         assert_eq!(game.state.board.wave.countdown_start, countdown);
+    }
+
+    #[test]
+    fn adventure_flag_waves_pause_and_cleared_waves_release_early() {
+        // Early advance: an old-enough countdown snaps to 200 once the last
+        // wave's health falls below the 50-65% threshold.
+        let mut game = Game::new_mode(7, ModeKind::Adventure, 6);
+        game.state.board.wave.countdown = 1;
+        game.advance(InputFrame::default());
+        game.state.board.zombies.clear();
+        game.state.board.wave.countdown_start = 3_000;
+        game.state.board.wave.countdown = 2_599;
+        game.advance(InputFrame::default());
+        assert_eq!(
+            game.state.board.wave.countdown, 200,
+            "a cleared wave releases the next one early"
+        );
+
+        // Huge-wave pause: the flag wave freezes at countdown 5 for 750
+        // ticks, then spawns immediately.
+        let mut game = Game::new_mode(7, ModeKind::Adventure, 6);
+        game.state.board.wave.current = 9;
+        game.state.board.wave.countdown = 6;
+        game.state.board.wave_plan = vec![vec![ZombieType::Normal]; 10];
+        game.advance(InputFrame::default());
+        assert_eq!(game.state.board.huge_wave_countdown, 750);
+        assert_eq!(game.state.board.wave.current, 9, "the wave waits");
+        for _ in 0..749 {
+            game.advance(InputFrame::default());
+        }
+        assert_eq!(game.state.board.wave.current, 9);
+        game.advance(InputFrame::default());
+        assert_eq!(
+            game.state.board.wave.current, 10,
+            "the wave releases the tick the pause expires"
+        );
     }
 
     #[test]
