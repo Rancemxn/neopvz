@@ -2131,6 +2131,10 @@ pub struct ZombieState {
     #[serde(default)]
     pub catapult_armed: bool,
     #[serde(default)]
+    pub vehicle_disabled: bool,
+    #[serde(default)]
+    pub damage_tier: u8,
+    #[serde(default)]
     pub pogo_counter: u32,
     #[serde(default)]
     pub pogo_target_x: Option<i64>,
@@ -2941,6 +2945,13 @@ pub enum GameEvent {
         damage: i32,
         health_remaining: i32,
         attacker: Option<EntityId>,
+    },
+    ZombieDamageTierChanged {
+        entity: EntityId,
+        tier: u8,
+    },
+    VehicleDisabled {
+        entity: EntityId,
     },
     ProjectileFired {
         entity: EntityId,
@@ -5363,7 +5374,7 @@ impl Game {
                     .iter()
                     .position(|zombie| zombie.id == zombie_id && zombie.health > 0)
                 {
-                    self.damage_zombie(zombie_index, PLANT_SPECIAL_DAMAGE);
+                    self.damage_zombie(zombie_index, PLANT_SPECIAL_DAMAGE, events);
                     let health_remaining = self.state.board.zombies[zombie_index].health;
                     events.push(GameEvent::PlantSpecialHit {
                         plant: id,
@@ -5576,7 +5587,7 @@ impl Game {
                 else {
                     continue;
                 };
-                self.damage_zombie(zombie_index, PLANT_SPECIAL_DAMAGE);
+                self.damage_zombie(zombie_index, PLANT_SPECIAL_DAMAGE, events);
                 let health_remaining = self.state.board.zombies[zombie_index].health;
                 events.push(GameEvent::PlantSpecialHit {
                     plant: plant_id,
@@ -5662,7 +5673,7 @@ impl Game {
                         duration,
                     });
 
-                    self.damage_zombie(zombie_index, ICE_SHROOM_DAMAGE);
+                    self.damage_zombie(zombie_index, ICE_SHROOM_DAMAGE, events);
                     let health_remaining = self.state.board.zombies[zombie_index].health;
                     events.push(GameEvent::PlantSpecialHit {
                         plant: plant_id,
@@ -5730,7 +5741,7 @@ impl Game {
             else {
                 continue;
             };
-            self.damage_zombie(zombie_index, PLANT_SPECIAL_DAMAGE);
+            self.damage_zombie(zombie_index, PLANT_SPECIAL_DAMAGE, events);
             let health_remaining = self.state.board.zombies[zombie_index].health;
             events.push(GameEvent::PlantSpecialHit {
                 plant: plant_id,
@@ -5925,7 +5936,7 @@ impl Game {
                 .iter()
                 .position(|zombie| zombie.id == target)
             {
-                self.damage_zombie(target_index, PLANT_SPECIAL_DAMAGE);
+                self.damage_zombie(target_index, PLANT_SPECIAL_DAMAGE, events);
                 if self.state.board.zombies[target_index].health <= 0 {
                     self.emit_zombie_died(target, events);
                 }
@@ -6429,7 +6440,7 @@ impl Game {
                     }
                 };
                 if let Some(zombie_id) = zombie_id {
-                    self.damage_zombie(zombie_index, ZOMBOTANY_SQUASH_DAMAGE);
+                    self.damage_zombie(zombie_index, ZOMBOTANY_SQUASH_DAMAGE, events);
                     self.emit_zombie_died(zombie_id, events);
                 }
             }
@@ -6446,7 +6457,7 @@ impl Game {
         }
     }
 
-    fn damage_zombie(&mut self, zombie_index: usize, damage: i32) {
+    fn damage_zombie(&mut self, zombie_index: usize, damage: i32, events: &mut Vec<GameEvent>) {
         let mut remaining = damage.max(0);
         let zombie = &mut self.state.board.zombies[zombie_index];
         if zombie.zombie_type == ZombieType::Balloon && zombie.balloon_phase == BALLOON_FLYING_PHASE
@@ -6463,18 +6474,55 @@ impl Game {
         zombie.shield_health -= shield_damage;
         remaining -= shield_damage;
         zombie.health -= remaining;
+        self.update_damage_tier(zombie_index, false, events);
     }
 
     /// Fume, gloom, and spike damage carry DAMAGE_BYPASSES_SHIELD: doors,
     /// paper, and ladders are skipped, but the Bobsled sled is a helm in the
     /// source and still absorbs first.
-    fn damage_zombie_bypassing_shield(&mut self, zombie_index: usize, damage: i32) {
+    fn damage_zombie_bypassing_shield(
+        &mut self,
+        zombie_index: usize,
+        damage: i32,
+        spike: bool,
+        events: &mut Vec<GameEvent>,
+    ) {
         if self.state.board.zombies[zombie_index].zombie_type == ZombieType::Bobsled {
-            self.damage_zombie(zombie_index, damage);
+            self.damage_zombie(zombie_index, damage, events);
             return;
         }
         let zombie = &mut self.state.board.zombies[zombie_index];
         zombie.health -= damage.max(0);
+        self.update_damage_tier(zombie_index, spike, events);
+    }
+
+    fn update_damage_tier(
+        &mut self,
+        zombie_index: usize,
+        spike: bool,
+        events: &mut Vec<GameEvent>,
+    ) {
+        let zombie = &mut self.state.board.zombies[zombie_index];
+        let tier = damage_tier(zombie.health, zombie.max_health);
+        if tier > zombie.damage_tier {
+            zombie.damage_tier = tier;
+            events.push(GameEvent::ZombieDamageTierChanged {
+                entity: zombie.id,
+                tier,
+            });
+        }
+        if spike
+            && matches!(
+                zombie.zombie_type,
+                ZombieType::Zamboni | ZombieType::Catapult
+            )
+            && !zombie.vehicle_disabled
+        {
+            zombie.vehicle_disabled = true;
+            zombie.speed = 0;
+            zombie.catapult_armed = false;
+            events.push(GameEvent::VehicleDisabled { entity: zombie.id });
+        }
     }
 
     fn update_zombies(&mut self, events: &mut Vec<GameEvent>) {
@@ -6532,7 +6580,7 @@ impl Game {
                         .copied()
                         .unwrap_or(ICE_START_X);
                     if is_leader && leader_x + 10 * POSITION_SCALE < ice_min {
-                        self.damage_zombie(zombie_index, BOBSLED_ICE_END_DAMAGE);
+                        self.damage_zombie(zombie_index, BOBSLED_ICE_END_DAMAGE, events);
                         if self.state.board.zombies[zombie_index].shield_health == 0 {
                             let team: Vec<usize> = self
                                 .state
@@ -7108,7 +7156,11 @@ impl Game {
                                         else {
                                             continue;
                                         };
-                                        self.damage_zombie(target_idx, PLANT_SPECIAL_DAMAGE);
+                                        self.damage_zombie(
+                                            target_idx,
+                                            PLANT_SPECIAL_DAMAGE,
+                                            events,
+                                        );
                                         let health_remaining =
                                             self.state.board.zombies[target_idx].health;
                                         events.push(GameEvent::PlantSpecialHit {
@@ -7309,7 +7361,7 @@ impl Game {
             else {
                 continue;
             };
-            self.damage_zombie(zombie_index, projectile.damage);
+            self.damage_zombie(zombie_index, projectile.damage, events);
             let health_remaining = self.state.board.zombies[zombie_index].health;
             if target_index == 0 {
                 events.push(GameEvent::ProjectileHit {
@@ -7498,7 +7550,7 @@ impl Game {
 
             if let Some(zombie_index) = target {
                 let zombie_id = self.state.board.zombies[zombie_index].id;
-                self.damage_zombie(zombie_index, projectile.damage);
+                self.damage_zombie(zombie_index, projectile.damage, events);
                 let health_remaining = self.state.board.zombies[zombie_index].health;
                 events.push(GameEvent::ProjectileHit {
                     projectile: projectile.id,
@@ -7671,7 +7723,7 @@ impl Game {
             else {
                 continue;
             };
-            self.damage_zombie(zombie_index, splash_damage);
+            self.damage_zombie(zombie_index, splash_damage, events);
             let health_remaining = self.state.board.zombies[zombie_index].health;
             events.push(GameEvent::ProjectileSplashHit {
                 projectile: projectile.id,
@@ -7714,7 +7766,7 @@ impl Game {
             else {
                 continue;
             };
-            self.damage_zombie_bypassing_shield(zombie_index, projectile.damage);
+            self.damage_zombie_bypassing_shield(zombie_index, projectile.damage, false, events);
             let health_remaining = self.state.board.zombies[zombie_index].health;
             events.push(GameEvent::ProjectileHit {
                 projectile: projectile.id,
@@ -7756,7 +7808,7 @@ impl Game {
             else {
                 continue;
             };
-            self.damage_zombie_bypassing_shield(zombie_index, projectile.damage);
+            self.damage_zombie_bypassing_shield(zombie_index, projectile.damage, false, events);
             let health_remaining = self.state.board.zombies[zombie_index].health;
             events.push(GameEvent::ProjectileHit {
                 projectile: projectile.id,
@@ -8127,7 +8179,7 @@ impl Game {
             } else {
                 SPIKEWEED_DAMAGE
             };
-            self.damage_zombie_bypassing_shield(zombie_index, damage);
+            self.damage_zombie_bypassing_shield(zombie_index, damage, vehicle_hit, events);
             let health_remaining = self.state.board.zombies[zombie_index].health;
             events.push(GameEvent::PlantSpecialHit {
                 plant: plant_id,
@@ -8307,7 +8359,7 @@ impl Game {
             .iter()
             .position(|z| z.id == target_id)
         {
-            self.damage_zombie(target_idx, ZOMBIE_BITE_DAMAGE);
+            self.damage_zombie(target_idx, ZOMBIE_BITE_DAMAGE, events);
             let health_remaining = self.state.board.zombies[target_idx].health;
             events.push(GameEvent::ZombieDamaged {
                 entity: target_id,
@@ -9837,6 +9889,8 @@ impl Game {
                 0
             },
             catapult_armed: false,
+            vehicle_disabled: false,
+            damage_tier: 0,
             pogo_counter: if zombie_type == ZombieType::Pogo {
                 POGO_BOUNCE_TICKS
             } else {
@@ -9952,6 +10006,16 @@ fn spikeweed_hits(zombie_x: i64, column: u8) -> bool {
 
 fn grid_x(column: u8) -> i64 {
     i64::from(column) * 80 * POSITION_SCALE + 40 * POSITION_SCALE
+}
+
+fn damage_tier(health: i32, max_health: i32) -> u8 {
+    if health <= max_health / 3 {
+        2
+    } else if health <= max_health * 2 / 3 {
+        1
+    } else {
+        0
+    }
 }
 
 /// Board::StageIsNight (Board.cpp:8849-8857): the boss roof plays at night
@@ -12170,7 +12234,8 @@ mod tests {
             .iter()
             .position(|zombie| zombie.id == leader)
             .unwrap();
-        game.damage_zombie(leader_index, 20);
+        let mut damage_events = Vec::new();
+        game.damage_zombie(leader_index, 20, &mut damage_events);
         assert_eq!(
             game.state.board.zombies[leader_index].health,
             BOBSLED_HEALTH
@@ -12236,7 +12301,8 @@ mod tests {
             .iter()
             .position(|zombie| zombie.id == ladder)
             .unwrap();
-        game.damage_zombie(ladder_index, 20);
+        let mut damage_events = Vec::new();
+        game.damage_zombie(ladder_index, 20, &mut damage_events);
         assert_eq!(game.state.board.zombies[ladder_index].health, LADDER_HEALTH);
         assert_eq!(
             game.state.board.zombies[ladder_index].shield_health,
@@ -12846,6 +12912,7 @@ mod tests {
         let zamboni = game.spawn_zamboni_zombie(2, 0, Some(grid_x(5)), &mut setup);
 
         let mut popped = false;
+        let mut disabled = false;
         let mut spikeweed_died = false;
         for _ in 0..200 {
             let events = game.advance(InputFrame::default());
@@ -12860,15 +12927,19 @@ mod tests {
                 ) {
                     popped = true;
                 }
+                if matches!(event, GameEvent::VehicleDisabled { entity } if *entity == zamboni) {
+                    disabled = true;
+                }
                 if matches!(event, GameEvent::PlantDied { .. }) {
                     spikeweed_died = true;
                 }
             }
-            if popped && spikeweed_died {
+            if popped && disabled && spikeweed_died {
                 break;
             }
         }
         assert!(popped, "spike contact deals the 1800 vehicle damage");
+        assert!(disabled, "spike contact emits the vehicle tire-pop anchor");
         assert!(spikeweed_died, "the spikeweed is destroyed by the vehicle");
         assert!(
             game.state
@@ -12878,6 +12949,60 @@ mod tests {
                 .all(|zombie| zombie.id != zamboni),
             "1800 spike damage kills the 1350 HP zomboni"
         );
+    }
+
+    #[test]
+    fn vehicle_damage_tiers_emit_smoke_anchor_events() {
+        let mut game = Game::new(7, SceneKind::Day);
+        let mut setup = Vec::new();
+        let zamboni = game.spawn_zamboni_zombie(2, 0, Some(500 * POSITION_SCALE), &mut setup);
+        let projectile = game.state.board.allocate_entity();
+        game.state.board.projectiles.push(ProjectileState {
+            id: projectile,
+            projectile_type: ProjectileType::Pea,
+            motion: ProjectileMotion::Straight,
+            row: 2,
+            position_x: 500 * POSITION_SCALE,
+            position_y: grid_y(2),
+            velocity_x: 0,
+            velocity_y: 0,
+            damage: ZAMBONI_HEALTH / 3 + 1,
+            age: 0,
+            target_x: None,
+            target_row: None,
+            lob_height: 0,
+            lob_velocity: 0,
+        });
+        let events = game.advance(InputFrame::default());
+        assert!(events.iter().any(|event| matches!(
+            event,
+            GameEvent::ZombieDamageTierChanged { entity, tier: 1 } if *entity == zamboni
+        )));
+
+        let mut game = Game::new(7, SceneKind::Day);
+        let catapult = game.spawn_catapult_zombie(1, 0, Some(500 * POSITION_SCALE), &mut setup);
+        let projectile = game.state.board.allocate_entity();
+        game.state.board.projectiles.push(ProjectileState {
+            id: projectile,
+            projectile_type: ProjectileType::Puff,
+            motion: ProjectileMotion::Fume,
+            row: 1,
+            position_x: 420 * POSITION_SCALE,
+            position_y: grid_y(1),
+            velocity_x: 0,
+            velocity_y: 0,
+            damage: 850 * 2 / 3 + 1,
+            age: 0,
+            target_x: None,
+            target_row: None,
+            lob_height: 0,
+            lob_velocity: 0,
+        });
+        let events = game.advance(InputFrame::default());
+        assert!(events.iter().any(|event| matches!(
+            event,
+            GameEvent::ZombieDamageTierChanged { entity, tier: 2 } if *entity == catapult
+        )));
     }
 
     #[test]
