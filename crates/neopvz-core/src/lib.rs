@@ -2884,6 +2884,9 @@ pub enum GameEvent {
     PogoStickLost {
         entity: EntityId,
     },
+    DiggerSurfaced {
+        entity: EntityId,
+    },
     MetalStolen {
         plant: EntityId,
         zombie: Option<EntityId>,
@@ -6429,6 +6432,8 @@ impl Game {
                     if zombie.digger_underground && zombie.position_x <= 10 * POSITION_SCALE {
                         zombie.digger_underground = false;
                         zombie.digger_counter = DIGGER_RISE_TICKS;
+                        // PARTICLE_DIGGER_RISE anchor.
+                        events.push(GameEvent::DiggerSurfaced { entity: zombie.id });
                         // Zombie_ResetSpeed: the surfaced walk is 0.12, or
                         // 0.23 on I, Zombie levels.
                         zombie.speed = if mode == ModeKind::IZombie {
@@ -8909,6 +8914,7 @@ impl Game {
                         } else {
                             DIGGER_WALK_SPEED
                         };
+                        events.push(GameEvent::DiggerSurfaced { entity });
                     }
                 }
                 _ => {}
@@ -12517,6 +12523,13 @@ mod tests {
             event,
             GameEvent::MetalStolen { zombie: Some(z), .. } if *z == digger
         )));
+        assert!(
+            events.iter().any(|event| matches!(
+                event,
+                GameEvent::DiggerSurfaced { entity } if *entity == digger
+            )),
+            "the robbed tunneler emits the surface anchor"
+        );
         {
             let zombie = game
                 .state
