@@ -2140,6 +2140,8 @@ pub struct ZombieState {
     #[serde(default)]
     pub armor_intact: bool,
     #[serde(default)]
+    pub portal_cooldown: u32,
+    #[serde(default)]
     pub bungee_held: bool,
     #[serde(default)]
     pub imp_thrown: bool,
@@ -2291,6 +2293,8 @@ pub struct BoardState {
     #[serde(default)]
     pub rake: Option<(u8, u8)>,
     #[serde(default)]
+    pub portals: Vec<(u8, u8, bool)>,
+    #[serde(default)]
     pub wave_plan: Vec<Vec<ZombieType>>,
     #[serde(default)]
     pub huge_wave_countdown: u32,
@@ -2387,6 +2391,7 @@ impl BoardState {
             graves: Vec::new(),
             ladders: Vec::new(),
             rake: None,
+            portals: Vec::new(),
             wave_plan: Vec::new(),
             huge_wave_countdown: 0,
             wave_health_threshold: -1,
@@ -2894,6 +2899,16 @@ pub enum GameEvent {
     },
     ZombieShieldLost {
         entity: EntityId,
+    },
+    PortalOpened {
+        row: u8,
+        column: u8,
+        square: bool,
+    },
+    ZombieTeleported {
+        entity: EntityId,
+        row: u8,
+        column: u8,
     },
     MetalStolen {
         plant: EntityId,
@@ -6894,6 +6909,36 @@ impl Game {
                 }
             }
 
+            // GridItem portals: a zombie reaching a portal cell teleports to
+            // the next portal in the pair cycle.
+            {
+                let cooldown = self.state.board.zombies[zombie_index].portal_cooldown;
+                if cooldown > 0 {
+                    self.state.board.zombies[zombie_index].portal_cooldown = cooldown - 1;
+                } else if self.state.board.portals.len() >= 2 {
+                    let hit = self.state.board.portals.iter().position(
+                        |(portal_row, portal_column, _)| {
+                            *portal_row == row
+                                && (position_x - grid_x(*portal_column)).abs()
+                                    <= 10 * POSITION_SCALE
+                        },
+                    );
+                    if let Some(index) = hit {
+                        let (target_row, target_column, _) =
+                            self.state.board.portals[(index + 1) % self.state.board.portals.len()];
+                        let zombie = &mut self.state.board.zombies[zombie_index];
+                        zombie.row = target_row;
+                        zombie.position_x = grid_x(target_column);
+                        zombie.portal_cooldown = 100;
+                        events.push(GameEvent::ZombieTeleported {
+                            entity,
+                            row: target_row,
+                            column: target_column,
+                        });
+                        continue;
+                    }
+                }
+            }
             // GridItem rake: the first zombie that steps on it dies and
             // consumes it.
             if let Some((rake_row, rake_column)) = self.state.board.rake
@@ -9212,6 +9257,16 @@ impl Game {
         ZombieType::Normal
     }
 
+    /// GridItem::OpenPortal: places a portal and emits its opening anchor.
+    pub fn place_portal(&mut self, row: u8, column: u8, square: bool, events: &mut Vec<GameEvent>) {
+        self.state.board.portals.push((row, column, square));
+        events.push(GameEvent::PortalOpened {
+            row,
+            column,
+            square,
+        });
+    }
+
     fn pick_bobsled_row(&mut self) -> Option<u8> {
         let can_add = self
             .state
@@ -9463,6 +9518,7 @@ impl Game {
                     | ZombieType::Newspaper
                     | ZombieType::Ladder
             ),
+            portal_cooldown: 0,
             bungee_held: false,
             imp_thrown: false,
             imp_flight_ticks: 0,
@@ -13047,6 +13103,50 @@ mod tests {
         assert_eq!(Game::new_mode(7, ModeKind::Adventure, 2).state().sun, 50);
         assert_eq!(Game::new_mode(7, ModeKind::Adventure, 15).state().sun, 0);
         assert_eq!(Game::new_mode(7, ModeKind::Adventure, 35).state().sun, 0);
+    }
+
+    #[test]
+    fn portals_teleport_zombies_between_cells() {
+        let mut game = Game::new(7, SceneKind::Day);
+        let mut setup = Vec::new();
+        game.place_portal(1, 4, false, &mut setup);
+        game.place_portal(3, 7, true, &mut setup);
+        assert_eq!(
+            setup
+                .iter()
+                .filter(|e| matches!(e, GameEvent::PortalOpened { .. }))
+                .count(),
+            2
+        );
+        let zombie =
+            game.spawn_normal_zombie(1, 0, Some(grid_x(4) + 15 * POSITION_SCALE), &mut setup);
+
+        let mut teleported = false;
+        for _ in 0..120 {
+            let events = game.advance(InputFrame::default());
+            if events.iter().any(|e| {
+                matches!(
+                    e,
+                    GameEvent::ZombieTeleported { entity, row: 3, column: 7 } if *entity == zombie
+                )
+            }) {
+                teleported = true;
+                break;
+            }
+        }
+        assert!(teleported, "the zombie rides the portal pair");
+        let state = game
+            .state
+            .board
+            .zombies
+            .iter()
+            .find(|z| z.id == zombie)
+            .unwrap();
+        assert_eq!(state.row, 3);
+        assert!(
+            state.portal_cooldown > 0,
+            "teleports carry a re-entry cooldown"
+        );
     }
 
     #[test]
