@@ -8204,7 +8204,12 @@ impl Game {
         let position_x = position_override
             .unwrap_or_else(|| i64::from(780 + self.rng.range(40)) * POSITION_SCALE);
         let groan_counter = self.rng.range_inclusive(300, 400) as i32;
-        let speed = if zombie_type == ZombieType::Pogo {
+        // Zombie_ResetSpeed in 1.0.0.1051 gives Dancer, Backup Dancer, Pogo,
+        // and Flag a fixed 0.45 walk.
+        let speed = if zombie_type == ZombieType::Pogo
+            || zombie_type == ZombieType::Flag
+            || zombie_type == ZombieType::BackupDancer
+        {
             450_000
         } else if zombie_type == ZombieType::Digger {
             120_000
@@ -10022,7 +10027,7 @@ mod tests {
     }
 
     #[test]
-    fn flag_zombie_is_identical_to_normal_except_type() {
+    fn flag_zombie_keeps_the_normal_body_but_walks_at_the_fixed_source_speed() {
         let mut game = Game::new(7, SceneKind::Day);
         let mut setup = Vec::new();
         let zombie = game.spawn_flag_zombie(2, 0, Some(500 * POSITION_SCALE), &mut setup);
@@ -10046,6 +10051,28 @@ mod tests {
                 .unwrap()
                 .zombie_type,
             ZombieType::Flag
+        );
+        // Zombie_ResetSpeed gives Flag and Backup Dancer a fixed 0.45 walk.
+        assert_eq!(
+            game.state
+                .board
+                .zombies
+                .iter()
+                .find(|z| z.id == zombie)
+                .unwrap()
+                .speed,
+            450_000
+        );
+        let backup = game.spawn_backup_dancer(2, 0, Some(500 * POSITION_SCALE), &mut setup);
+        assert_eq!(
+            game.state
+                .board
+                .zombies
+                .iter()
+                .find(|z| z.id == backup)
+                .unwrap()
+                .speed,
+            450_000
         );
     }
 
