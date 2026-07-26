@@ -13,7 +13,7 @@ evidence; a reviewer assertion alone is never sufficient.
 Status is `verified`, `partial`, or `missing`. The progress quantity is the sum
 of `total - accepted` across all rows.
 
-Current baseline: **1122 accepted / 1809 total; 687 unresolved**.
+Current baseline: **1127 accepted / 1809 total; 682 unresolved**.
 
 ## Foundation and Boundaries
 
@@ -83,7 +83,7 @@ Kernel, Butter, Melon, WinterMelon, Fireball, Star, Spike, Cob, ZombiePea, and G
 
 | Obligation | Mode domain | Accepted | Total | Status | Evidence / owner |
 |---|---|---:|---:|---|---|
-| MODE-ADVENTURE | Adventure levels | 0 | 50 | missing | Issue `#5`, renderer issue |
+| MODE-ADVENTURE | Adventure levels | 5 | 50 | partial | Ignored `artifacts/adventure-levels/verification.md` and `artifacts/adventure-evidence/`; the 50-level scene/wave/flag/conveyor identity table has deterministic source checks; levels 5, 15, 25, 35, and 50 accepted via their existing special-mechanic implementations; remaining levels await the source wave-composition algorithm, rewards, and tutorial gating; Issue `#18` |
 | MODE-SURVIVAL | Visible normal, hard, and endless survival variants | 11 | 11 | partial | Ignored `artifacts/survival/verification.md`; all 11 stage scene, wave-count, endless-profile, and core repick identities have deterministic source checks; progression, visual, and audio remain; Issue `#18` |
 | MODE-MINIGAME | Mini-game levels | 20 | 20 | partial | Ignored `artifacts/minigames/verification.md`; all catalog levels have deterministic source scene, wave, interaction, fixed seed-bank, or profile checks; conveyor checks are covered by ignored `artifacts/conveyor/verification.md`; progression, visual, and audio obligations remain; Issue `#18` |
 | MODE-VASE | Vasebreaker levels, including endless | 10 | 10 | verified | Ignored `artifacts/vasebreaker/verification.md`; all 10 level identities have deterministic source-layout checks, with reveal, rejection, spawning, and win behavior covered by focused core evidence |
