@@ -116,8 +116,10 @@ const THROWN_ZOMBIE_GRAVITY: i64 = POSITION_SCALE / 20;
 // Board::UpdateZombieSpawning: waves after the first arm at 2500 + Rand(600).
 // Zombie::ApplyButter 0x5326D0 immobilizes for 400 ticks.
 const BUTTER_TICKS: u32 = 400;
-// Coin.cpp:293-294 COIN_MOTION_FROM_SKY: sky suns fall at 0.67 per tick.
+// Coin.cpp:293-294 COIN_MOTION_FROM_SKY: sky suns fall at 0.67 per tick;
+// plant suns launch upward and fall under the 0.09 gravity (Coin.cpp:487).
 const SUN_FALL_SPEED: i64 = 670_000;
+const SUN_GRAVITY: i64 = 90_000;
 const ZOMBIE_NEXT_WAVE_COUNTDOWN: u32 = 2_500;
 const ZOMBIE_NEXT_WAVE_RANGE: u32 = 600;
 const ICE_START_X: i64 = 800 * POSITION_SCALE;
@@ -2202,6 +2204,10 @@ pub struct SunPickupState {
     pub position_y: i64,
     #[serde(default)]
     pub target_y: Option<i64>,
+    #[serde(default)]
+    pub velocity_x: i64,
+    #[serde(default)]
+    pub velocity_y: i64,
 }
 
 #[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
@@ -5287,9 +5293,17 @@ impl Game {
                     grid_y(row),
                     events,
                 );
-                let _vertical_motion = self.rng.next();
-                let _horizontal_motion = self.rng.next();
-                let _ground_offset = self.rng.range(20);
+                let vertical_motion = self.rng.next();
+                let horizontal_motion = self.rng.next();
+                let ground_offset = self.rng.range(20);
+                if let Some(sun) = self.state.board.suns.last_mut() {
+                    // COIN_MOTION_COIN: plant suns pop up in the -1.7..-3.4
+                    // launch band with a small lateral drift and fall back to
+                    // a ground stop near the plant under 0.09 gravity.
+                    sun.velocity_y = -1_700_000 - (i64::from(vertical_motion) % 1_700_001);
+                    sun.velocity_x = (i64::from(horizontal_motion) % 2_000_001) - 1_000_000;
+                    sun.target_y = Some(sun.position_y + i64::from(ground_offset) * POSITION_SCALE);
+                }
             }
             if produce_coin {
                 let coin_type = if self.rng.range(100) < 10 {
@@ -7564,10 +7578,22 @@ impl Game {
     fn update_suns(&mut self) {
         for sun in &mut self.state.board.suns {
             if let Some(target_y) = sun.target_y {
-                sun.position_y += SUN_FALL_SPEED;
-                if sun.position_y >= target_y {
-                    sun.position_y = target_y;
-                    sun.target_y = None;
+                if sun.velocity_y != 0 || sun.velocity_x != 0 {
+                    sun.position_x += sun.velocity_x;
+                    sun.position_y += sun.velocity_y;
+                    sun.velocity_y += SUN_GRAVITY;
+                    if sun.velocity_y > 0 && sun.position_y >= target_y {
+                        sun.position_y = target_y;
+                        sun.target_y = None;
+                        sun.velocity_x = 0;
+                        sun.velocity_y = 0;
+                    }
+                } else {
+                    sun.position_y += SUN_FALL_SPEED;
+                    if sun.position_y >= target_y {
+                        sun.position_y = target_y;
+                        sun.target_y = None;
+                    }
                 }
             }
         }
@@ -8308,6 +8334,8 @@ impl Game {
             position_x,
             position_y,
             target_y: None,
+            velocity_x: 0,
+            velocity_y: 0,
         });
         events.push(GameEvent::SunProduced {
             entity: id,
@@ -13177,6 +13205,41 @@ mod tests {
         assert_eq!(Game::new_mode(7, ModeKind::Adventure, 2).state().sun, 50);
         assert_eq!(Game::new_mode(7, ModeKind::Adventure, 15).state().sun, 0);
         assert_eq!(Game::new_mode(7, ModeKind::Adventure, 35).state().sun, 0);
+    }
+
+    #[test]
+    fn plant_suns_arc_up_and_land_near_the_plant() {
+        let mut game = Game::new(7, SceneKind::Day);
+        game.state.sun = 100;
+        game.advance(InputFrame {
+            actions: vec![
+                InputAction::SelectSeed { slot: 1 },
+                InputAction::Plant { row: 2, column: 2 },
+            ],
+        });
+        for _ in 0..3_000 {
+            game.advance(InputFrame::default());
+            if !game.state.board.suns.is_empty() {
+                break;
+            }
+        }
+        let sun = game.state.board.suns[0].clone();
+        assert!(sun.velocity_y < 0, "plant suns launch upward");
+        assert!(
+            (-3_400_000..=-1_700_000).contains(&sun.velocity_y),
+            "launch speed sits in the source band, got {}",
+            sun.velocity_y
+        );
+        let target = sun.target_y.expect("plant suns carry a ground stop");
+
+        let mut ticks = 0;
+        while game.state.board.suns[0].target_y.is_some() && ticks < 400 {
+            game.advance(InputFrame::default());
+            ticks += 1;
+        }
+        let landed = &game.state.board.suns[0];
+        assert_eq!(landed.position_y, target);
+        assert_eq!(landed.velocity_y, 0, "landing clears the arc velocities");
     }
 
     #[test]
