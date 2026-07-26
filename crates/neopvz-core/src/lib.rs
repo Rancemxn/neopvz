@@ -904,6 +904,53 @@ pub fn adventure_unlocks(level: u8) -> (bool, bool, bool) {
     (level >= 15, level >= 25, level >= 45)
 }
 
+/// Board::InitLevel starting sun: item levels 15/35 play with none; the
+/// first-run tutorial level starts at 150; everything else at 50.
+pub fn adventure_starting_sun(level: u8, first_time: bool) -> u32 {
+    match level {
+        15 | 35 => 0,
+        1 if first_time => 150,
+        _ => 50,
+    }
+}
+
+/// Board::GetNumSeedsInBank for adventure: fixed banks on 15/35, the
+/// conveyor's ten, and the first-run tutorial slot progression.
+pub fn adventure_seed_slots(level: u8, first_time: bool, packet_upgrades: u8) -> u8 {
+    match level {
+        35 => 1,
+        15 => 3,
+        _ if adventure_level_is_conveyor(level) => 10,
+        1 if first_time => 1,
+        2 if first_time => 2,
+        3 if first_time => 3,
+        4 if first_time => 4,
+        6 if first_time => 5,
+        _ => (6 + packet_upgrades).min(10),
+    }
+}
+
+/// Board::ChooseSeedsOnCurrentLevel: the chooser opens after the level-7
+/// tutorial stretch, except on conveyor and fixed-bank levels.
+pub fn adventure_uses_seed_chooser(level: u8, first_time: bool) -> bool {
+    if adventure_level_is_conveyor(level) || matches!(level, 15 | 35) {
+        return false;
+    }
+    !first_time || level > 7
+}
+
+/// Board::AddGraveStones counts for adventure night levels.
+pub fn adventure_grave_count(level: u8) -> u8 {
+    match level {
+        11..=13 => 4,
+        14 | 16 => 7,
+        15 => 9,
+        17..=19 => 11,
+        20 => 13,
+        _ => 0,
+    }
+}
+
 /// Board::HasConveyorBeltSeedBank for adventure levels.
 pub fn adventure_level_is_conveyor(level: u8) -> bool {
     matches!(level, 5 | 10 | 20 | 25 | 30 | 40 | 45 | 50)
@@ -12796,6 +12843,43 @@ mod tests {
                 .all(|z| matches!(z.row, 2 | 3) && z.position_x < grid_x(8)),
             "pool emerges use the source cell block"
         );
+    }
+
+    #[test]
+    fn adventure_setup_identities_match_the_source() {
+        assert_eq!(adventure_starting_sun(1, true), 150);
+        assert_eq!(adventure_starting_sun(1, false), 50);
+        assert_eq!(adventure_starting_sun(15, true), 0);
+        assert_eq!(adventure_starting_sun(35, false), 0);
+        assert_eq!(adventure_starting_sun(41, true), 50);
+
+        assert_eq!(adventure_seed_slots(1, true, 0), 1);
+        assert_eq!(adventure_seed_slots(4, true, 0), 4);
+        assert_eq!(
+            adventure_seed_slots(5, true, 0),
+            10,
+            "bowling runs the conveyor"
+        );
+        assert_eq!(adventure_seed_slots(6, true, 0), 5);
+        assert_eq!(adventure_seed_slots(7, true, 0), 6);
+        assert_eq!(adventure_seed_slots(8, true, 0), 6);
+        assert_eq!(adventure_seed_slots(15, true, 0), 3);
+        assert_eq!(adventure_seed_slots(35, false, 4), 1);
+        assert_eq!(adventure_seed_slots(22, false, 4), 10);
+        assert_eq!(adventure_seed_slots(22, false, 2), 8);
+
+        assert!(!adventure_uses_seed_chooser(7, true));
+        assert!(adventure_uses_seed_chooser(8, true));
+        assert!(adventure_uses_seed_chooser(3, false));
+        assert!(
+            !adventure_uses_seed_chooser(10, false),
+            "conveyor levels skip the chooser"
+        );
+        assert!(!adventure_uses_seed_chooser(35, false));
+
+        let counts: Vec<u8> = (11..=20).map(adventure_grave_count).collect();
+        assert_eq!(counts, vec![4, 4, 4, 7, 9, 7, 11, 11, 11, 13]);
+        assert_eq!(adventure_grave_count(21), 0);
     }
 
     #[test]
