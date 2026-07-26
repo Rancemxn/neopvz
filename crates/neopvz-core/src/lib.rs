@@ -114,6 +114,8 @@ const THROWN_ZOMBIE_GRAVITY: i64 = POSITION_SCALE / 20;
 // spawn on iced rows, keep their row's timer at >= 500, and the leader takes
 // 6 damage per tick past the ice end until the 300 HP sled breaks.
 // Board::UpdateZombieSpawning: waves after the first arm at 2500 + Rand(600).
+// Zombie::ApplyButter 0x5326D0 immobilizes for 400 ticks.
+const BUTTER_TICKS: u32 = 400;
 const ZOMBIE_NEXT_WAVE_COUNTDOWN: u32 = 2_500;
 const ZOMBIE_NEXT_WAVE_RANGE: u32 = 600;
 const ICE_START_X: i64 = 800 * POSITION_SCALE;
@@ -2909,6 +2911,9 @@ pub enum GameEvent {
         entity: EntityId,
         row: u8,
         column: u8,
+    },
+    ZombieButtered {
+        entity: EntityId,
     },
     MetalStolen {
         plant: EntityId,
@@ -7313,6 +7318,24 @@ impl Game {
         projectile_type: ProjectileType,
         events: &mut Vec<GameEvent>,
     ) {
+        if projectile_type == ProjectileType::Butter {
+            // Zombie::ApplyButter 0x5326D0: 400-tick immobilize, refused by
+            // Zamboni, the Boss, sledded bobsleds, and airborne fliers.
+            if let Some(zombie) = self
+                .state
+                .board
+                .zombies
+                .iter_mut()
+                .find(|zombie| zombie.id == zombie_id)
+                && !matches!(zombie.zombie_type, ZombieType::Zamboni | ZombieType::Boss)
+                && !(zombie.zombie_type == ZombieType::Bobsled && zombie.bobsled_sliding)
+                && !balloon_is_airborne(zombie)
+            {
+                zombie.frozen_counter = zombie.frozen_counter.max(BUTTER_TICKS);
+                events.push(GameEvent::ZombieButtered { entity: zombie_id });
+            }
+            return;
+        }
         let duration = projectile_type.chill_duration();
         if duration == 0 {
             return;
@@ -13103,6 +13126,37 @@ mod tests {
         assert_eq!(Game::new_mode(7, ModeKind::Adventure, 2).state().sun, 50);
         assert_eq!(Game::new_mode(7, ModeKind::Adventure, 15).state().sun, 0);
         assert_eq!(Game::new_mode(7, ModeKind::Adventure, 35).state().sun, 0);
+    }
+
+    #[test]
+    fn butter_immobilizes_for_400_ticks() {
+        let mut game = Game::new(7, SceneKind::Day);
+        let mut setup = Vec::new();
+        let zombie = game.spawn_normal_zombie(2, 0, Some(500 * POSITION_SCALE), &mut setup);
+        let mut events = Vec::new();
+        game.apply_projectile_chill(zombie, ProjectileType::Butter, &mut events);
+        assert!(events.iter().any(|e| matches!(
+            e,
+            GameEvent::ZombieButtered { entity } if *entity == zombie
+        )));
+        assert_eq!(
+            game.state
+                .board
+                .zombies
+                .iter()
+                .find(|z| z.id == zombie)
+                .unwrap()
+                .frozen_counter,
+            BUTTER_TICKS
+        );
+
+        let zamboni = game.spawn_zamboni_zombie(3, 0, Some(500 * POSITION_SCALE), &mut setup);
+        let mut events = Vec::new();
+        game.apply_projectile_chill(zamboni, ProjectileType::Butter, &mut events);
+        assert!(
+            events.is_empty(),
+            "the Zamboni refuses butter per ApplyButter"
+        );
     }
 
     #[test]
