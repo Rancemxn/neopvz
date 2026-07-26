@@ -113,6 +113,9 @@ const THROWN_ZOMBIE_GRAVITY: i64 = POSITION_SCALE / 20;
 // the front is left of 800; Jalapeno sets the row timer to 20. Bobsleds only
 // spawn on iced rows, keep their row's timer at >= 500, and the leader takes
 // 6 damage per tick past the ice end until the 300 HP sled breaks.
+// Board::UpdateZombieSpawning: waves after the first arm at 2500 + Rand(600).
+const ZOMBIE_NEXT_WAVE_COUNTDOWN: u32 = 2_500;
+const ZOMBIE_NEXT_WAVE_RANGE: u32 = 600;
 const ICE_START_X: i64 = 800 * POSITION_SCALE;
 const ICE_LAY_OFFSET: i64 = 118 * POSITION_SCALE;
 const ICE_LAY_MIN_X: i64 = 25 * POSITION_SCALE;
@@ -7300,6 +7303,14 @@ impl Game {
         }
         self.state.board.wave.current += 1;
         self.state.board.wave.countdown_start = 0;
+        if self.state.mode == ModeKind::Adventure
+            && (1..=50).contains(&self.state.level)
+            && self.state.board.wave.current < self.state.board.wave.total
+        {
+            let countdown = ZOMBIE_NEXT_WAVE_COUNTDOWN + self.rng.range(ZOMBIE_NEXT_WAVE_RANGE);
+            self.state.board.wave.countdown = countdown;
+            self.state.board.wave.countdown_start = countdown;
+        }
         // Roof stages route the final-wave grave rise to a bungee sky drop,
         // 210 ticks after the wave spawns.
         if self.state.scene == SceneKind::Roof
@@ -12549,6 +12560,21 @@ mod tests {
             );
             game.state.board.zombies.clear();
         }
+    }
+
+    #[test]
+    fn adventure_waves_rearm_at_the_source_countdown() {
+        let mut game = Game::new_mode(7, ModeKind::Adventure, 6);
+        game.state.board.wave.countdown = 1;
+        game.advance(InputFrame::default());
+        assert_eq!(game.state.board.wave.current, 1);
+        let countdown = game.state.board.wave.countdown;
+        assert!(
+            (ZOMBIE_NEXT_WAVE_COUNTDOWN..=ZOMBIE_NEXT_WAVE_COUNTDOWN + ZOMBIE_NEXT_WAVE_RANGE)
+                .contains(&countdown),
+            "next wave arms at 2500 + Rand(600), got {countdown}"
+        );
+        assert_eq!(game.state.board.wave.countdown_start, countdown);
     }
 
     #[test]
