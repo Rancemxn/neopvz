@@ -3631,14 +3631,22 @@ impl Game {
             });
             return;
         }
+        // Plant::GetCost in 1.0.0.1051 prices the I, Zombie seed cards;
+        // types without a source card keep their previous fallback values.
         let cost = match zombie_type {
             ZombieType::Normal | ZombieType::Flag | ZombieType::Imp => 50,
-            ZombieType::Conehead | ZombieType::PoleVaulter | ZombieType::Pogo => 75,
-            ZombieType::Buckethead | ZombieType::ScreenDoor | ZombieType::Newspaper => 125,
-            ZombieType::Football => 175,
-            ZombieType::Jackbox | ZombieType::Dancer => 150,
-            ZombieType::Bobsled | ZombieType::Ladder => 150,
-            ZombieType::Gargantuar | ZombieType::Gigagargantuar => 250,
+            ZombieType::Conehead | ZombieType::PoleVaulter => 75,
+            ZombieType::ScreenDoor => 100,
+            ZombieType::Buckethead
+            | ZombieType::Newspaper
+            | ZombieType::Digger
+            | ZombieType::Bungee => 125,
+            ZombieType::Ladder | ZombieType::Balloon | ZombieType::Jackbox => 150,
+            ZombieType::Bobsled => 150,
+            ZombieType::Football | ZombieType::Zamboni => 175,
+            ZombieType::Pogo => 200,
+            ZombieType::Dancer => 350,
+            ZombieType::Gargantuar | ZombieType::Gigagargantuar => 300,
             _ => 100,
         };
         if self.state.sun < cost {
@@ -13310,6 +13318,41 @@ mod tests {
         )));
         assert!(game.state().board.brains[0].squished);
         assert_ne!(game.state().scene, SceneKind::Complete);
+    }
+
+    #[test]
+    fn izombie_deploy_costs_match_the_source_card_prices() {
+        // Plant::GetCost in the target build prices the I, Zombie seeds.
+        let cases: [(u8, ZombieType, u32); 5] = [
+            (1, ZombieType::ScreenDoor, 100),
+            (4, ZombieType::Bungee, 125),
+            (4, ZombieType::Balloon, 150),
+            (5, ZombieType::Gargantuar, 300),
+            (6, ZombieType::Dancer, 350),
+        ];
+        for (level, zombie_type, cost) in cases {
+            let mut game = Game::new_mode(7, ModeKind::IZombie, level);
+            game.state.sun = 1_000;
+            let events = game.advance(InputFrame {
+                actions: vec![InputAction::DeployZombie {
+                    zombie_type,
+                    row: 0,
+                    column: 0,
+                }],
+            });
+            let expected = 1_000 - cost;
+            assert!(
+                events.iter().any(|event| matches!(
+                    event,
+                    GameEvent::ZombieDeployed {
+                        zombie_type: deployed,
+                        sun_remaining,
+                        ..
+                    } if *deployed == zombie_type && *sun_remaining == expected
+                )),
+                "{zombie_type:?} on level {level} should cost {cost} sun"
+            );
+        }
     }
 
     #[test]
