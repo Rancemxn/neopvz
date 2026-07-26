@@ -2192,6 +2192,8 @@ pub struct BoardState {
     #[serde(default)]
     pub ladders: Vec<LadderState>,
     #[serde(default)]
+    pub wave_plan: Vec<Vec<ZombieType>>,
+    #[serde(default)]
     pub sky_drop_countdown: u32,
     #[serde(default)]
     pub ice_min_x: Vec<i64>,
@@ -2281,6 +2283,7 @@ impl BoardState {
             craters: Vec::new(),
             graves: Vec::new(),
             ladders: Vec::new(),
+            wave_plan: Vec::new(),
             sky_drop_countdown: 0,
             ice_min_x: vec![ICE_START_X; usize::from(rows)],
             ice_timer: vec![0; usize::from(rows)],
@@ -7269,12 +7272,30 @@ impl Game {
                 }
             },
             _ => {
-                let normal_row = if self.state.scene == SceneKind::Pool {
-                    self.pick_spawn_row(ZombieType::Normal, wave)
+                if self.state.mode == ModeKind::Adventure && (1..=50).contains(&self.state.level) {
+                    if self.state.board.wave_plan.is_empty() {
+                        let level = self.state.level;
+                        let plan = self.pick_adventure_waves(level, false);
+                        self.state.board.wave_plan = plan;
+                    }
+                    let plan = self
+                        .state
+                        .board
+                        .wave_plan
+                        .get(wave as usize)
+                        .cloned()
+                        .unwrap_or_default();
+                    for zombie_type in plan {
+                        self.spawn_adventure_zombie(zombie_type, wave, events);
+                    }
                 } else {
-                    row
-                };
-                self.spawn_normal_zombie(normal_row, wave, None, events);
+                    let normal_row = if self.state.scene == SceneKind::Pool {
+                        self.pick_spawn_row(ZombieType::Normal, wave)
+                    } else {
+                        row
+                    };
+                    self.spawn_normal_zombie(normal_row, wave, None, events);
+                }
             }
         }
         self.state.board.wave.current += 1;
@@ -8740,6 +8761,56 @@ impl Game {
             waves.push(wave);
         }
         waves
+    }
+
+    /// SpawnZombieWave: composed entries spawn on smooth-picked legal rows;
+    /// a Bobsled entry without a usable ice trail becomes four normals.
+    fn spawn_adventure_zombie(
+        &mut self,
+        zombie_type: ZombieType,
+        wave: u32,
+        events: &mut Vec<GameEvent>,
+    ) {
+        match zombie_type {
+            ZombieType::Bobsled => {
+                if let Some(ice_row) = self.pick_bobsled_row() {
+                    self.spawn_bobsled_zombie(ice_row, wave, None, events);
+                } else {
+                    for _ in 0..4 {
+                        let row = self.pick_spawn_row(ZombieType::Normal, wave);
+                        self.spawn_normal_zombie(row, wave, None, events);
+                    }
+                }
+            }
+            ZombieType::Jackbox => {
+                let row = self.pick_spawn_row(zombie_type, wave);
+                self.spawn_jackbox_zombie(row, wave, None, events);
+            }
+            ZombieType::Yeti => {
+                let row = self.pick_spawn_row(zombie_type, wave);
+                self.spawn_yeti_zombie(row, wave, None, events);
+            }
+            _ => {
+                let health = match zombie_type {
+                    ZombieType::Conehead => 640,
+                    ZombieType::Buckethead => 1_370,
+                    ZombieType::Football => 1_670,
+                    ZombieType::Digger => 370,
+                    ZombieType::Bungee => 450,
+                    ZombieType::PoleVaulter
+                    | ZombieType::Pogo
+                    | ZombieType::Dancer
+                    | ZombieType::DolphinRider => 500,
+                    ZombieType::Ladder => LADDER_HEALTH,
+                    ZombieType::Zamboni => ZAMBONI_HEALTH,
+                    ZombieType::Catapult => 850,
+                    ZombieType::Gargantuar => 3_000,
+                    _ => 270,
+                };
+                let row = self.pick_spawn_row(zombie_type, wave);
+                self._spawn_zombie_inner(zombie_type, health, row, wave, None, events);
+            }
+        }
     }
 
     fn pick_adventure_wave_type(&mut self, level: u8, wave_index: u32, points: i32) -> ZombieType {
@@ -12444,6 +12515,40 @@ mod tests {
         let replay_last = game.pick_adventure_waves(12, true).len();
         assert_eq!(first_last, 20);
         assert_eq!(replay_last, 30);
+    }
+
+    #[test]
+    fn adventure_runtime_spawns_the_composed_waves() {
+        let mut game = Game::new_mode(7, ModeKind::Adventure, 3);
+        assert_eq!(game.state().board.wave.total, 8);
+        for wave in 0..8u32 {
+            game.state.board.wave.countdown = 1;
+            let events = game.advance(InputFrame::default());
+            let spawned: Vec<ZombieType> = events
+                .iter()
+                .filter_map(|event| match event {
+                    GameEvent::ZombieSpawned {
+                        zombie_type,
+                        wave: w,
+                        ..
+                    } if *w == wave => Some(*zombie_type),
+                    _ => None,
+                })
+                .collect();
+            assert!(!spawned.is_empty(), "wave {wave} spawns its plan");
+            assert!(
+                spawned.iter().all(|z| matches!(
+                    z,
+                    ZombieType::Normal | ZombieType::Conehead | ZombieType::Flag
+                )),
+                "level 3 spawns only allow-listed types, got {spawned:?}"
+            );
+            assert_eq!(
+                spawned, game.state.board.wave_plan[wave as usize],
+                "wave {wave} matches the composed plan"
+            );
+            game.state.board.zombies.clear();
+        }
     }
 
     #[test]
