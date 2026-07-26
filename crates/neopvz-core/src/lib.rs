@@ -7701,7 +7701,8 @@ impl Game {
     ) -> EntityId {
         self._spawn_zombie_inner(
             ZombieType::DolphinRider,
-            270,
+            // Zombie_Init in 1.0.0.1051 gives the Dolphin Rider a 500-HP body.
+            500,
             row,
             wave,
             position_override,
@@ -9922,7 +9923,8 @@ mod tests {
             .iter()
             .find(|candidate| candidate.id == dolphin)
             .unwrap();
-        assert_eq!(dolphin_state.health, 270);
+        // Zombie_Init gives the Dolphin Rider a 500-HP body, not the plain 270.
+        assert_eq!(dolphin_state.health, 500);
         assert_eq!(dolphin_state.speed, DOLPHIN_WALK_SPEED);
 
         game.advance(InputFrame::default());
