@@ -6133,9 +6133,13 @@ impl Game {
                                 (plant.row, plant.column)
                             };
                             self.state.board.ladders.push(LadderState { row, column });
+                            // Leaving PHASE_LADDER_CARRYING re-picks the plain
+                            // 0.23-0.32 walk (Zombie_ResetSpeed).
+                            let walk_speed = self.rng.fixed_range(230_000, 320_000);
                             self.state.board.zombies[zombie_index].ladder_placed = true;
                             self.state.board.zombies[zombie_index].shield_health = 0;
                             self.state.board.zombies[zombie_index].eating = false;
+                            self.state.board.zombies[zombie_index].speed = walk_speed;
                         } else if ztype == ZombieType::Pogo {
                             if !pogo_bouncing {
                                 let target_x = grid_x(self.state.board.plants[plant_index].column)
@@ -8240,6 +8244,9 @@ impl Game {
         } else if zombie_type == ZombieType::Jackbox {
             // Zombie_ResetSpeed in 1.0.0.1051 runs Jack-in-the-Box at 0.66-0.68.
             self.rng.fixed_range(660_000, 680_000)
+        } else if zombie_type == ZombieType::Ladder {
+            // Zombie_ResetSpeed gives PHASE_LADDER_CARRYING 0.79-0.81.
+            self.rng.fixed_range(790_000, 810_000)
         } else {
             self.rng.fixed_range(230_000, 320_000)
         };
@@ -10634,6 +10641,63 @@ mod tests {
         game.advance(InputFrame::default());
         assert_eq!(game.state.board.plants[0].health, 4_000);
         assert!(!game.state.board.zombies[normal_index].eating);
+    }
+
+    #[test]
+    fn ladder_zombie_carries_fast_and_slows_to_a_walk_after_placing() {
+        // Zombie_ResetSpeed: PHASE_LADDER_CARRYING walks at 0.79-0.81 and the
+        // plain 0.23-0.32 walk returns once the ladder is placed.
+        let mut game = Game::new(7, SceneKind::Day);
+        game.state.sun = 50;
+        game.advance(InputFrame {
+            actions: vec![
+                InputAction::SelectSeed { slot: 3 },
+                InputAction::Plant { row: 2, column: 0 },
+            ],
+        });
+        let mut setup = Vec::new();
+        let ladder =
+            game.spawn_ladder_zombie(2, 0, Some(grid_x(0) + 20 * POSITION_SCALE), &mut setup);
+        let carrying_speed = game
+            .state
+            .board
+            .zombies
+            .iter()
+            .find(|zombie| zombie.id == ladder)
+            .unwrap()
+            .speed;
+        assert!(
+            (790_000..=810_000).contains(&carrying_speed),
+            "carrying speed {carrying_speed} should be in the 0.79-0.81 band"
+        );
+
+        for _ in 0..8 {
+            game.advance(InputFrame::default());
+            if game
+                .state
+                .board
+                .zombies
+                .iter()
+                .find(|zombie| zombie.id == ladder)
+                .unwrap()
+                .ladder_placed
+            {
+                break;
+            }
+        }
+        let placed = game
+            .state
+            .board
+            .zombies
+            .iter()
+            .find(|zombie| zombie.id == ladder)
+            .unwrap();
+        assert!(placed.ladder_placed);
+        assert!(
+            (230_000..=320_000).contains(&placed.speed),
+            "placed speed {} should re-pick the plain walk band",
+            placed.speed
+        );
     }
 
     #[test]
