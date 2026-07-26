@@ -2315,6 +2315,8 @@ pub struct BoardState {
     #[serde(default)]
     pub wave_plan: Vec<Vec<ZombieType>>,
     #[serde(default)]
+    pub scary_pot_stage: u8,
+    #[serde(default)]
     pub huge_wave_countdown: u32,
     #[serde(default)]
     pub wave_health_threshold: i32,
@@ -2363,6 +2365,8 @@ impl BoardState {
         };
         let vases = if mode == ModeKind::Vasebreaker {
             initial_vases(level, rng)
+        } else if mode == ModeKind::Adventure && level == 35 {
+            scary_pot_stage_vases(0, 1, rng)
         } else {
             Vec::new()
         };
@@ -2411,6 +2415,7 @@ impl BoardState {
             rake: None,
             portals: Vec::new(),
             wave_plan: Vec::new(),
+            scary_pot_stage: 0,
             huge_wave_countdown: 0,
             wave_health_threshold: -1,
             sky_drop_countdown: 0,
@@ -2610,6 +2615,68 @@ fn initial_vases(level: u8, rng: &mut Mt19937) -> Vec<VaseState> {
         7 => 3,
         _ => 2,
     };
+    let leaf_count = match level.min(9) {
+        0 => 0,
+        2 => 3,
+        _ => 2,
+    };
+    place_vases(contents, excluded_columns, leaf_count, 1, rng)
+}
+
+/// Challenge.cpp:3900-3944 ScaryPotterPopulate: adventure level 4-5 pot
+/// layouts by mSurvivalStage (columns 6-8, then 5-8, then 4-8).
+fn scary_pot_stage_vases(stage: u8, first_id: u32, rng: &mut Mt19937) -> Vec<VaseState> {
+    let mut contents = Vec::new();
+    let (excluded_columns, leaf_count) = match stage {
+        0 => {
+            push_vase_contents(&mut contents, VaseContents::Plant(PlantType::Peashooter), 5);
+            push_vase_contents(&mut contents, VaseContents::Plant(PlantType::Other(17)), 5);
+            push_vase_contents(&mut contents, VaseContents::Zombie(ZombieType::Normal), 4);
+            push_vase_contents(
+                &mut contents,
+                VaseContents::Zombie(ZombieType::Buckethead),
+                1,
+            );
+            (6, 0)
+        }
+        1 => {
+            push_vase_contents(&mut contents, VaseContents::Plant(PlantType::Peashooter), 4);
+            push_vase_contents(&mut contents, VaseContents::Plant(PlantType::Other(5)), 5);
+            push_vase_contents(&mut contents, VaseContents::Plant(PlantType::Other(17)), 4);
+            push_vase_contents(&mut contents, VaseContents::Zombie(ZombieType::Normal), 5);
+            push_vase_contents(
+                &mut contents,
+                VaseContents::Zombie(ZombieType::Buckethead),
+                1,
+            );
+            push_vase_contents(&mut contents, VaseContents::Zombie(ZombieType::Football), 1);
+            (5, 2)
+        }
+        _ => {
+            push_vase_contents(&mut contents, VaseContents::Plant(PlantType::Peashooter), 5);
+            push_vase_contents(&mut contents, VaseContents::Plant(PlantType::Other(5)), 5);
+            push_vase_contents(&mut contents, VaseContents::Plant(PlantType::Other(12)), 5);
+            push_vase_contents(&mut contents, VaseContents::Zombie(ZombieType::Normal), 6);
+            push_vase_contents(
+                &mut contents,
+                VaseContents::Zombie(ZombieType::Buckethead),
+                2,
+            );
+            push_vase_contents(&mut contents, VaseContents::Zombie(ZombieType::Dancer), 1);
+            push_vase_contents(&mut contents, VaseContents::Zombie(ZombieType::Jackbox), 1);
+            (4, 3)
+        }
+    };
+    place_vases(contents, excluded_columns, leaf_count, first_id, rng)
+}
+
+fn place_vases(
+    contents: Vec<VaseContents>,
+    excluded_columns: u8,
+    leaf_count: u8,
+    first_id: u32,
+    rng: &mut Mt19937,
+) -> Vec<VaseState> {
     let capacity = usize::from(GRID_COLUMNS - excluded_columns) * usize::from(DAY_ROWS);
     let excluded_columns = if contents.len() > capacity {
         0
@@ -2619,11 +2686,6 @@ fn initial_vases(level: u8, rng: &mut Mt19937) -> Vec<VaseState> {
     let mut cells = (excluded_columns..GRID_COLUMNS)
         .flat_map(|column| (0..DAY_ROWS).map(move |row| (column, row)))
         .collect::<Vec<_>>();
-    let leaf_count = match level.min(9) {
-        0 => 0,
-        2 => 3,
-        _ => 2,
-    };
     let mut remaining_leaves = leaf_count;
     let mut vases = Vec::with_capacity(contents.len().min(cells.len()));
     // ponytail: O(n^2) cell removal is bounded to one 9x5 board; use a swap pool only if setup grows.
@@ -2644,7 +2706,7 @@ fn initial_vases(level: u8, rng: &mut Mt19937) -> Vec<VaseState> {
             remaining_leaves -= 1;
         }
         vases.push(VaseState {
-            id: u32::try_from(index).unwrap_or(u32::MAX).saturating_add(1),
+            id: first_id.saturating_add(u32::try_from(index).unwrap_or(u32::MAX)),
             row,
             column,
             contents: content,
@@ -3300,7 +3362,25 @@ impl Game {
                 self.state.tick = self.state.tick.saturating_add(1);
                 self.state.wave = self.state.board.wave.current;
 
-                let won = if self.state.mode == ModeKind::Vasebreaker {
+                let scary_potter = self.state.mode == ModeKind::Adventure && self.state.level == 35;
+                if scary_potter
+                    && self.state.board.scary_pot_stage < 2
+                    && self.state.board.vases.is_empty()
+                    && self.state.board.zombies.is_empty()
+                {
+                    self.state.board.scary_pot_stage += 1;
+                    let stage = self.state.board.scary_pot_stage;
+                    let first_id = self.state.board.next_entity_id;
+                    let vases = scary_pot_stage_vases(stage, first_id, &mut self.rng);
+                    self.state.board.next_entity_id =
+                        first_id.saturating_add(u32::try_from(vases.len()).unwrap_or(0));
+                    self.state.board.vases = vases;
+                }
+                let won = if scary_potter {
+                    self.state.board.scary_pot_stage >= 2
+                        && self.state.board.vases.is_empty()
+                        && self.state.board.zombies.is_empty()
+                } else if self.state.mode == ModeKind::Vasebreaker {
                     self.state.board.vases.is_empty() && self.state.board.zombies.is_empty()
                 } else if self.state.mode == ModeKind::IZombie {
                     self.state.board.brains.iter().all(|brain| brain.squished)
@@ -7617,6 +7697,11 @@ impl Game {
     }
 
     fn update_wave_spawning(&mut self, events: &mut Vec<GameEvent>) {
+        // Challenge::UpdateZombieSpawning claims spawning on Scary Potter
+        // levels, so the board wave clock never runs on adventure 4-5.
+        if self.state.mode == ModeKind::Adventure && self.state.level == 35 {
+            return;
+        }
         if self.state.board.wave.current >= self.state.board.wave.total {
             if self.state.board.wave.endless {
                 self.state.board.wave.current = self.state.board.wave.total.saturating_sub(1);
@@ -12933,6 +13018,54 @@ mod tests {
                 "drops land on columns 4-8"
             );
         }
+    }
+
+    #[test]
+    fn adventure_level_35_places_the_stage_zero_scary_pots() {
+        let game = Game::new_mode(9, ModeKind::Adventure, 35);
+        let vases = &game.state().board.vases;
+        assert_eq!(vases.len(), 15);
+        assert!(vases.iter().all(|vase| vase.column >= 6));
+        assert!(vases.iter().all(|vase| !vase.leaf));
+        let count = |contents: VaseContents| {
+            vases
+                .iter()
+                .filter(|vase| vase.contents == contents)
+                .count()
+        };
+        assert_eq!(count(VaseContents::Plant(PlantType::Peashooter)), 5);
+        assert_eq!(count(VaseContents::Plant(PlantType::Other(17))), 5);
+        assert_eq!(count(VaseContents::Zombie(ZombieType::Normal)), 4);
+        assert_eq!(count(VaseContents::Zombie(ZombieType::Buckethead)), 1);
+    }
+
+    #[test]
+    fn adventure_level_35_advances_through_three_scary_pot_stages() {
+        let mut game = Game::new_mode(9, ModeKind::Adventure, 35);
+        game.state.board.vases.clear();
+        game.advance(InputFrame::default());
+        assert_eq!(game.state.board.scary_pot_stage, 1);
+        assert_eq!(game.state.board.vases.len(), 20);
+        assert!(game.state.board.vases.iter().all(|vase| vase.column >= 5));
+        assert_eq!(
+            game.state
+                .board
+                .vases
+                .iter()
+                .filter(|vase| vase.leaf)
+                .count(),
+            2
+        );
+        game.state.board.vases.clear();
+        game.advance(InputFrame::default());
+        assert_eq!(game.state.board.scary_pot_stage, 2);
+        assert_eq!(game.state.board.vases.len(), 25);
+        assert!(game.state.board.vases.iter().all(|vase| vase.column >= 4));
+        game.state.board.vases.clear();
+        let events = game.advance(InputFrame::default());
+        assert!(events.contains(&GameEvent::GameWon));
+        // The wave clock stays parked the whole time.
+        assert_eq!(game.state.board.wave.current, 0);
     }
 
     #[test]
