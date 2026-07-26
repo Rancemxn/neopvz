@@ -3108,6 +3108,33 @@ impl Game {
             board.wave.countdown = countdown;
             board.wave.countdown_start = countdown;
         }
+        if mode == ModeKind::Adventure && adventure_level_scene(level) == SceneKind::Night {
+            // Board::AddGraveStones: per-column grave counts on random rows
+            // (the Whack-a-Zombie nine-grave spread is approximated by
+            // columns).
+            let columns: &[(u8, u8)] = match level {
+                11..=13 => &[(6, 1), (7, 1), (8, 2)],
+                14 | 16 => &[(5, 1), (6, 1), (7, 2), (8, 3)],
+                15 => &[(4, 2), (5, 2), (6, 2), (7, 2), (8, 1)],
+                17..=19 => &[(4, 1), (5, 2), (6, 2), (7, 3), (8, 3)],
+                20 => &[(3, 1), (4, 2), (5, 2), (6, 2), (7, 3), (8, 3)],
+                _ => &[],
+            };
+            for (column, count) in columns {
+                let mut rows: Vec<u8> = (0..board.rows).collect();
+                for _ in 0..*count {
+                    if rows.is_empty() {
+                        break;
+                    }
+                    let pick = rng.range(rows.len() as u32) as usize;
+                    let row = rows.remove(pick);
+                    board.graves.push(GraveState {
+                        row,
+                        column: *column,
+                    });
+                }
+            }
+        }
         let mut challenge = initial_challenge_state(mode, level);
         if mode == ModeKind::MiniGame && is_conveyor_challenge(challenge.kind) {
             board.set_seed_packets(conveyor_initial_seeds(level));
@@ -3130,6 +3157,8 @@ impl Game {
                 && challenge_kind(level) == ChallengeKind::LastStand
             {
                 5_000
+            } else if mode == ModeKind::Adventure && (1..=50).contains(&level) {
+                adventure_starting_sun(level, true)
             } else {
                 50
             },
@@ -12809,9 +12838,8 @@ mod tests {
     #[test]
     fn night_graves_and_pool_cells_rise_on_the_final_wave() {
         let mut game = Game::new_mode(7, ModeKind::Adventure, 11);
-        for column in [6, 7, 8] {
-            game.state.board.graves.push(GraveState { row: 2, column });
-        }
+        let grave_count = game.state.board.graves.len();
+        assert_eq!(grave_count, 4, "level 11 boards own four graves");
         let total = game.state.board.wave.total;
         game.state.board.wave.current = total - 1;
         game.state.board.wave.countdown = 1;
@@ -12828,10 +12856,11 @@ mod tests {
             .iter()
             .filter(|z| !before.contains(&z.id))
             .collect();
-        assert_eq!(risers.len(), 3, "one riser per gravestone");
+        assert_eq!(risers.len(), grave_count, "one riser per gravestone");
         assert!(
-            risers.iter().all(|z| z.row == 2
-                && matches!(z.zombie_type, ZombieType::Normal | ZombieType::Conehead))
+            risers
+                .iter()
+                .all(|z| matches!(z.zombie_type, ZombieType::Normal | ZombieType::Conehead))
         );
 
         let mut pool = Game::new_mode(7, ModeKind::Adventure, 21);
@@ -12857,6 +12886,48 @@ mod tests {
                 .all(|z| matches!(z.row, 2 | 3) && z.position_x < grid_x(8)),
             "pool emerges use the source cell block"
         );
+    }
+
+    #[test]
+    fn adventure_night_boards_place_source_graves_and_sun() {
+        let game = Game::new_mode(7, ModeKind::Adventure, 11);
+        assert_eq!(game.state().board.graves.len(), 4);
+        assert!(
+            game.state()
+                .board
+                .graves
+                .iter()
+                .all(|grave| (6..=8).contains(&grave.column)),
+            "level 11 graves sit in columns 6-8"
+        );
+        assert_eq!(
+            Game::new_mode(7, ModeKind::Adventure, 15)
+                .state()
+                .board
+                .graves
+                .len(),
+            9
+        );
+        assert_eq!(
+            Game::new_mode(7, ModeKind::Adventure, 20)
+                .state()
+                .board
+                .graves
+                .len(),
+            13
+        );
+        assert!(
+            Game::new_mode(7, ModeKind::Adventure, 21)
+                .state()
+                .board
+                .graves
+                .is_empty()
+        );
+
+        assert_eq!(Game::new_mode(7, ModeKind::Adventure, 1).state().sun, 150);
+        assert_eq!(Game::new_mode(7, ModeKind::Adventure, 2).state().sun, 50);
+        assert_eq!(Game::new_mode(7, ModeKind::Adventure, 15).state().sun, 0);
+        assert_eq!(Game::new_mode(7, ModeKind::Adventure, 35).state().sun, 0);
     }
 
     #[test]
