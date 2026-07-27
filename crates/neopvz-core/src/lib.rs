@@ -2263,6 +2263,8 @@ pub struct CoinPickupState {
     #[serde(default)]
     pub target_y: Option<i64>,
     #[serde(default)]
+    pub velocity_x: i64,
+    #[serde(default)]
     pub velocity_y: i64,
 }
 
@@ -7884,11 +7886,14 @@ impl Game {
         }
         for coin in &mut self.state.board.coins {
             if let Some(target_y) = coin.target_y {
-                coin.position_y += coin.velocity_y;
-                coin.velocity_y += COIN_GRAVITY;
-                if coin.velocity_y > 0 && coin.position_y >= target_y {
+                if coin.position_y + coin.velocity_y < target_y {
+                    coin.position_x += coin.velocity_x;
+                    coin.position_y += coin.velocity_y;
+                    coin.velocity_y += COIN_GRAVITY;
+                } else {
                     coin.position_y = target_y;
                     coin.target_y = None;
+                    coin.velocity_x = 0;
                     coin.velocity_y = 0;
                 }
             }
@@ -8655,10 +8660,12 @@ impl Game {
         self.spawn_pickup(coin_type, position_x, position_y, events);
         // COIN_MOTION_COIN (Coin.cpp:306): dropped coins pop up in the
         // -1.7..-3.4 band and fall back under the 0.15 gravity.
-        let launch = self.rng.next();
+        let launch_y = self.rng.next();
+        let launch_x = self.rng.next();
         let ground_offset = self.rng.range(20);
         if let Some(coin) = self.state.board.coins.last_mut() {
-            coin.velocity_y = -1_700_000 - (i64::from(launch) % 1_700_001);
+            coin.velocity_y = -1_700_000 - (i64::from(launch_y) % 1_700_001);
+            coin.velocity_x = (i64::from(launch_x) % 1_000_001) - 500_000;
             coin.target_y = Some(coin.position_y + i64::from(ground_offset) * POSITION_SCALE);
         }
     }
@@ -8684,6 +8691,47 @@ impl Game {
     ) {
         let id = self.state.board.allocate_entity();
         let value = coin_type.value();
+        let award_motion = coin_type.is_level_award() || coin_type.unlock_mask() != 0;
+        let (position_y, target_y, velocity_x, velocity_y) = if award_motion {
+            let launch_y = self.rng.next();
+            let launch_x = self.rng.next();
+            let ground_offset = 45 + self.rng.range(20);
+            let (position_y, ground_y) = if matches!(
+                coin_type,
+                CoinType::AwardSilverSunflower | CoinType::AwardGoldSunflower
+            ) {
+                let position_y = position_y - 100 * POSITION_SCALE;
+                let ground_y = (position_y + 45 * POSITION_SCALE).min(400 * POSITION_SCALE);
+                (position_y, ground_y)
+            } else {
+                let mut ground_y = position_y + i64::from(ground_offset) * POSITION_SCALE;
+                ground_y = ground_y.clamp(80 * POSITION_SCALE, 521 * POSITION_SCALE);
+                if matches!(
+                    coin_type,
+                    CoinType::FinalSeedPacket
+                        | CoinType::UsableSeedPacket
+                        | CoinType::Trophy
+                        | CoinType::Shovel
+                        | CoinType::CarKeys
+                        | CoinType::Almanac
+                        | CoinType::Vase
+                        | CoinType::WateringCan
+                        | CoinType::Taco
+                        | CoinType::Note
+                ) {
+                    ground_y -= 30 * POSITION_SCALE;
+                }
+                (position_y, ground_y)
+            };
+            (
+                position_y,
+                Some(ground_y),
+                (i64::from(launch_x) % 1_000_001) - 500_000,
+                -3_000_000 - (i64::from(launch_y) % 2_000_001),
+            )
+        } else {
+            (position_y, None, 0, 0)
+        };
         self.state.board.coins.push(CoinPickupState {
             id,
             coin_type,
@@ -8692,8 +8740,9 @@ impl Game {
             position_y,
             plant_type,
             usable_seed_type,
-            target_y: None,
-            velocity_y: 0,
+            target_y,
+            velocity_x,
+            velocity_y,
         });
         events.push(GameEvent::CoinProduced {
             entity: id,
@@ -15139,6 +15188,52 @@ mod tests {
         collect(&mut game, CoinType::AwardBagDiamond, None, None);
         assert_eq!(game.state.chocolates, 1);
         assert_eq!(game.state.coins, 525);
+    }
+
+    #[test]
+    fn award_pickups_use_source_coin_arc_motion() {
+        let mut game = Game::new(7, SceneKind::Day);
+        let mut events = Vec::new();
+        game.spawn_pickup(CoinType::FinalSeedPacket, grid_x(4), grid_y(2), &mut events);
+        let coin = game.state.board.coins.last().unwrap().clone();
+        let coin_id = coin.id;
+        assert!(coin.target_y.is_some());
+        assert!(coin.velocity_y <= -3_000_000);
+        assert!(coin.velocity_x.abs() <= 500_000);
+        assert!(
+            (coin.position_y + 15 * POSITION_SCALE..=coin.position_y + 34 * POSITION_SCALE)
+                .contains(&coin.target_y.unwrap())
+        );
+
+        let mut sunflower_events = Vec::new();
+        game.spawn_pickup(
+            CoinType::AwardSilverSunflower,
+            grid_x(4),
+            380 * POSITION_SCALE,
+            &mut sunflower_events,
+        );
+        let sunflower = game.state.board.coins.last().unwrap();
+        assert_eq!(sunflower.position_y, 280 * POSITION_SCALE);
+        assert_eq!(sunflower.target_y, Some(325 * POSITION_SCALE));
+
+        let mut last_y = coin.position_y;
+        for _ in 0..80 {
+            game.advance(InputFrame::default());
+            let coin = game
+                .state
+                .board
+                .coins
+                .iter()
+                .find(|coin| coin.id == coin_id)
+                .unwrap();
+            if coin.target_y.is_none() {
+                assert_eq!(coin.velocity_x, 0);
+                assert_eq!(coin.velocity_y, 0);
+                return;
+            }
+            last_y = coin.position_y;
+        }
+        panic!("award coin did not land, last y {last_y}");
     }
 
     #[test]
