@@ -1720,18 +1720,20 @@ impl App {
 
     fn play_audio(&mut self, tick: u64, events: &[GameEvent]) {
         for event in events {
-            let Some((kind, path)) = audio_for_event(event) else {
-                continue;
-            };
-            let Some(bytes) = self.resources.read(path).ok() else {
-                tracing::debug!(path, "audio resource is unavailable");
-                continue;
-            };
-            tracing::debug!(tick, ?kind, ?event, path, "audio event queued");
-            if let Some(audio) = &mut self.audio {
-                match audio.play_bytes(kind, path, bytes) {
-                    Ok(()) => tracing::debug!(tick, ?kind, path, "audio playback started"),
-                    Err(error) => tracing::warn!(%error, path, "audio playback failed"),
+            for (kind, path) in [audio_for_event(event), audio_companion_for_event(event)]
+                .into_iter()
+                .flatten()
+            {
+                let Some(bytes) = self.resources.read(path).ok() else {
+                    tracing::debug!(path, "audio resource is unavailable");
+                    continue;
+                };
+                tracing::debug!(tick, ?kind, ?event, path, "audio event queued");
+                if let Some(audio) = &mut self.audio {
+                    match audio.play_bytes(kind, path, bytes) {
+                        Ok(()) => tracing::debug!(tick, ?kind, path, "audio playback started"),
+                        Err(error) => tracing::warn!(%error, path, "audio playback failed"),
+                    }
                 }
             }
         }
@@ -2270,6 +2272,20 @@ fn audio_for_event(event: &GameEvent) -> Option<(AudioKind, &'static str)> {
     }
 }
 
+fn audio_companion_for_event(event: &GameEvent) -> Option<(AudioKind, &'static str)> {
+    match event {
+        GameEvent::PlantSpecialTriggered {
+            plant_type: neopvz_core::PlantType::Other(2),
+            ..
+        }
+        | GameEvent::PlantSpecialTriggered {
+            plant_type: neopvz_core::PlantType::Other(20),
+            ..
+        } => Some((AudioKind::Effect, "sounds/juicy.ogg")),
+        _ => None,
+    }
+}
+
 impl ApplicationHandler for App {
     fn resumed(&mut self, event_loop: &ActiveEventLoop) {
         self.initialize(event_loop);
@@ -2493,6 +2509,29 @@ mod tests {
         );
         assert_eq!(audio_for_event(&GameEvent::Resumed), None);
         assert_eq!(audio_for_event(&GameEvent::StateChanged), None);
+    }
+
+    #[test]
+    fn maps_explosive_plant_companions_to_juicy() {
+        for plant_type in [
+            neopvz_core::PlantType::Other(2),
+            neopvz_core::PlantType::Other(20),
+        ] {
+            assert_eq!(
+                audio_companion_for_event(&GameEvent::PlantSpecialTriggered {
+                    entity: 1,
+                    plant_type,
+                }),
+                Some((AudioKind::Effect, "sounds/juicy.ogg"))
+            );
+        }
+        assert_eq!(
+            audio_companion_for_event(&GameEvent::PlantSpecialTriggered {
+                entity: 1,
+                plant_type: neopvz_core::PlantType::Other(15),
+            }),
+            None
+        );
     }
 
     #[test]
