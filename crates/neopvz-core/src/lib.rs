@@ -2896,6 +2896,9 @@ pub enum GameEvent {
     TangleKelpGrabStarted {
         entity: EntityId,
     },
+    TangleKelpWaterEntry {
+        entity: EntityId,
+    },
     BloverTriggered {
         entity: EntityId,
         row: u8,
@@ -5512,6 +5515,7 @@ impl Game {
             let mut squash_hit_target = None;
             let mut tangle_grab_target = None;
             let mut tangle_started = false;
+            let mut tangle_water_entry = false;
             let mut gold_magnet_coin = None;
             let mut potato_armed_now = false;
             {
@@ -5595,6 +5599,7 @@ impl Game {
                     }
                 } else if plant_type.is_tangle_kelp() {
                     if plant.special_armed {
+                        tangle_water_entry = plant.special_counter == 20;
                         plant.special_counter = plant.special_counter.saturating_sub(1);
                         if plant.special_counter == 0 {
                             tangle_grab_target = plant.special_target.take();
@@ -5749,6 +5754,9 @@ impl Game {
             }
             if tangle_started {
                 events.push(GameEvent::TangleKelpGrabStarted { entity: id });
+            }
+            if tangle_water_entry {
+                events.push(GameEvent::TangleKelpWaterEntry { entity: id });
             }
             if spikeweed_started {
                 events.push(GameEvent::PlantSpecialTriggered {
@@ -15569,6 +15577,10 @@ mod tests {
                 entity,
                 plant_type: PlantType::Other(19),
             } if *entity == tangle_kelp
+        )));
+        assert!(events.iter().any(|event| matches!(
+            event,
+            GameEvent::TangleKelpWaterEntry { entity } if *entity == tangle_kelp
         )));
         assert!(events.iter().any(|event| matches!(
             event,

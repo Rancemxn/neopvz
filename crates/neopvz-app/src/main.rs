@@ -2203,6 +2203,9 @@ fn audio_for_event(event: &GameEvent) -> Option<(AudioKind, &'static str)> {
             ..
         } => Some((AudioKind::Effect, "sounds/coffee.ogg")),
         GameEvent::TangleKelpGrabStarted { .. } => Some((AudioKind::Effect, "sounds/floop.ogg")),
+        GameEvent::TangleKelpWaterEntry { .. } => {
+            Some((AudioKind::Effect, "sounds/zombiesplash.ogg"))
+        }
         GameEvent::PlantSpecialTriggered {
             plant_type: neopvz_core::PlantType::Other(4),
             ..
@@ -2400,6 +2403,10 @@ mod tests {
         assert_eq!(
             audio_for_event(&GameEvent::TangleKelpGrabStarted { entity: 1 }),
             Some((AudioKind::Effect, "sounds/floop.ogg"))
+        );
+        assert_eq!(
+            audio_for_event(&GameEvent::TangleKelpWaterEntry { entity: 1 }),
+            Some((AudioKind::Effect, "sounds/zombiesplash.ogg"))
         );
         assert_eq!(
             audio_for_event(&GameEvent::BloverTriggered { entity: 1, row: 2 }),
