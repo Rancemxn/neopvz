@@ -3440,6 +3440,17 @@ impl Game {
     }
 
     #[doc(hidden)]
+    pub fn debug_prepare_rake(&mut self) -> Vec<GameEvent> {
+        self.state.level_scene = SceneKind::Day;
+        self.state.scene = SceneKind::Day;
+        self.state.board.rake = Some((2, 2));
+        self.state.board.zombies.clear();
+        let mut setup_events = Vec::new();
+        self.spawn_normal_zombie(2, 0, Some(grid_x(2)), &mut setup_events);
+        self.advance(InputFrame::default())
+    }
+
+    #[doc(hidden)]
     pub fn debug_prepare_blover_chomper(&mut self) {
         self.state.level_scene = SceneKind::Day;
         self.state.scene = SceneKind::Day;
