@@ -34,9 +34,11 @@ use neopvz_render::{
     SELECTOR_RIGHT_IMAGE_ID, SELECTOR_STORE_IMAGE_ID, SELECTOR_SURVIVAL_IMAGE_ID,
     SELECTOR_TROPHY_IMAGE_ID, SELECTOR_VASEBREAKER_IMAGE_ID, SELECTOR_WOODSIGN1_IMAGE_ID,
     SELECTOR_WOODSIGN2_IMAGE_ID, SELECTOR_WOODSIGN3_IMAGE_ID, SELECTOR_ZEN_GARDEN_IMAGE_ID,
-    SURVIVAL_THUMBNAIL_BASE_IMAGE_ID, SpriteCommand, TITLE_IMAGE_ID, TITLE_LOGO_IMAGE_ID,
-    TUTORIAL_BUBBLE_IMAGE_ID, TUTORIAL_CONTINUE_IMAGE_ID, TUTORIAL_TEXT1_IMAGE_ID,
-    TUTORIAL_TEXT2_IMAGE_ID, UI_PIXEL_IMAGE_ID, logical_position,
+    SURVIVAL_THUMBNAIL_BASE_IMAGE_ID, SpriteCommand, TITLE_IMAGE_ID, TITLE_LOAD_BAR_DIRT_IMAGE_ID,
+    TITLE_LOAD_BAR_GRASS_IMAGE_ID, TITLE_LOGO_IMAGE_ID, TITLE_START_PROMPT_HOVER_IMAGE_ID,
+    TITLE_START_PROMPT_IMAGE_ID, TITLE_START_PROMPT_SHADOW_IMAGE_ID, TUTORIAL_BUBBLE_IMAGE_ID,
+    TUTORIAL_CONTINUE_IMAGE_ID, TUTORIAL_TEXT1_IMAGE_ID, TUTORIAL_TEXT2_IMAGE_ID,
+    UI_PIXEL_IMAGE_ID, logical_position,
 };
 use winit::{
     application::ApplicationHandler,
@@ -86,6 +88,16 @@ impl From<Checkpoint> for SceneKind {
 }
 
 const SIMULATION_STEP: Duration = Duration::from_millis(10);
+const TITLE_LOAD_BAR_X: f32 = 243.0;
+const TITLE_LOAD_BAR_Y: f32 = 530.0;
+const TITLE_START_BUTTON_Y: f32 = 529.0;
+const TITLE_START_BUTTON_WIDTH: f32 = 314.0;
+const TITLE_START_BUTTON_HEIGHT: f32 = 50.0;
+
+fn title_start_contains(x: f32, y: f32) -> bool {
+    (TITLE_LOAD_BAR_X..TITLE_LOAD_BAR_X + TITLE_START_BUTTON_WIDTH).contains(&x)
+        && (TITLE_START_BUTTON_Y..TITLE_START_BUTTON_Y + TITLE_START_BUTTON_HEIGHT).contains(&y)
+}
 
 fn main() -> ExitCode {
     tracing_subscriber::fmt::init();
@@ -212,6 +224,40 @@ fn load_assets(resources: &ResourceProvider) -> Result<Vec<ImageAsset>, String> 
     let mut assets = vec![
         load_image(resources, TITLE_IMAGE_ID, "images/titlescreen.jpg")?,
         load_title_logo(resources)?,
+        load_image(
+            resources,
+            TITLE_LOAD_BAR_DIRT_IMAGE_ID,
+            "images/LoadBar_dirt.png",
+        )?,
+        load_image(
+            resources,
+            TITLE_LOAD_BAR_GRASS_IMAGE_ID,
+            "images/LoadBar_grass.png",
+        )?,
+        render_colored_text_image(
+            TITLE_START_PROMPT_SHADOW_IMAGE_ID,
+            "\u{70b9}\u{51fb}\u{5f00}\u{59cb}",
+            120,
+            24,
+            16,
+            [71, 45, 0],
+        )?,
+        render_colored_text_image(
+            TITLE_START_PROMPT_IMAGE_ID,
+            "\u{70b9}\u{51fb}\u{5f00}\u{59cb}",
+            120,
+            24,
+            16,
+            [218, 184, 33],
+        )?,
+        render_colored_text_image(
+            TITLE_START_PROMPT_HOVER_IMAGE_ID,
+            "\u{70b9}\u{51fb}\u{5f00}\u{59cb}",
+            120,
+            24,
+            16,
+            [250, 90, 15],
+        )?,
         load_image(
             resources,
             SELECTOR_BASE_IMAGE_ID,
@@ -652,6 +698,23 @@ fn render_text_image(
     .map_err(|error| error.to_string())
 }
 
+fn render_colored_text_image(
+    resource_id: u32,
+    text: &str,
+    width: u32,
+    height: u32,
+    font_size: i32,
+    color: [u8; 3],
+) -> Result<ImageAsset, String> {
+    let mut asset = render_text_image(resource_id, text, width, height, font_size)?;
+    for pixel in asset.rgba8.chunks_exact_mut(4) {
+        if pixel[3] != 0 {
+            pixel[..3].copy_from_slice(&color);
+        }
+    }
+    Ok(asset)
+}
+
 #[cfg(windows)]
 mod windows_text {
     use std::{ffi::c_void, ptr, slice};
@@ -968,6 +1031,23 @@ impl App {
         self.last_update = Some(Instant::now());
     }
 
+    fn title_start_hovered(&self) -> bool {
+        let Some(position) = self.cursor_position else {
+            return false;
+        };
+        let Some(renderer) = &self.renderer else {
+            return false;
+        };
+        let size = renderer.window().inner_size();
+        logical_position(
+            size.width,
+            size.height,
+            position,
+            LogicalViewport::default(),
+        )
+        .is_some_and(|(x, y)| title_start_contains(x, y))
+    }
+
     fn handle_key(&mut self, event_loop: &ActiveEventLoop, key: PhysicalKey) {
         let PhysicalKey::Code(key) = key else {
             return;
@@ -1201,6 +1281,10 @@ impl App {
         {
             return;
         }
+        if scene == SceneKind::Title {
+            self.start_scene(SceneKind::AdventureSelect);
+            return;
+        }
         let Some(position) = self.cursor_position else {
             return;
         };
@@ -1215,12 +1299,6 @@ impl App {
         }) else {
             return;
         };
-        if scene == SceneKind::Title {
-            if (300.0..500.0).contains(&x) && (520.0..600.0).contains(&y) {
-                self.start_scene(SceneKind::AdventureSelect);
-            }
-            return;
-        }
         if scene == SceneKind::AdventureSelect {
             if (400.0..730.0).contains(&x) && (55.0..175.0).contains(&y) {
                 self.start_scene(SceneKind::AdventureTutorial);
@@ -1517,6 +1595,42 @@ impl App {
                     x: 50.0,
                     y: 0.0,
                     z: 1,
+                    scale: 1.0,
+                    alpha: 1.0,
+                });
+                frame.sprites.push(SpriteCommand {
+                    resource_id: TITLE_LOAD_BAR_DIRT_IMAGE_ID,
+                    x: TITLE_LOAD_BAR_X,
+                    y: TITLE_LOAD_BAR_Y,
+                    z: 2,
+                    scale: 1.0,
+                    alpha: 1.0,
+                });
+                frame.sprites.push(SpriteCommand {
+                    resource_id: TITLE_LOAD_BAR_GRASS_IMAGE_ID,
+                    x: TITLE_LOAD_BAR_X,
+                    y: TITLE_START_BUTTON_Y - 17.0,
+                    z: 3,
+                    scale: 1.0,
+                    alpha: 1.0,
+                });
+                frame.sprites.push(SpriteCommand {
+                    resource_id: TITLE_START_PROMPT_SHADOW_IMAGE_ID,
+                    x: 341.0,
+                    y: 544.0,
+                    z: 4,
+                    scale: 1.0,
+                    alpha: 1.0,
+                });
+                frame.sprites.push(SpriteCommand {
+                    resource_id: if self.title_start_hovered() {
+                        TITLE_START_PROMPT_HOVER_IMAGE_ID
+                    } else {
+                        TITLE_START_PROMPT_IMAGE_ID
+                    },
+                    x: 340.0,
+                    y: 543.0,
+                    z: 5,
                     scale: 1.0,
                     alpha: 1.0,
                 });
@@ -1897,5 +2011,12 @@ mod tests {
             Some((AudioKind::Music, "sounds/winmusic.ogg"))
         );
         assert_eq!(audio_for_event(&GameEvent::StateChanged), None);
+    }
+
+    #[test]
+    fn title_start_hitbox_matches_the_source_load_bar() {
+        assert!(title_start_contains(400.0, 550.0));
+        assert!(!title_start_contains(242.0, 550.0));
+        assert!(!title_start_contains(400.0, 579.0));
     }
 }
