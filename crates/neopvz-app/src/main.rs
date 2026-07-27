@@ -91,6 +91,7 @@ enum Checkpoint {
     Portal,
     GraveBuster,
     Coffee,
+    TangleKelp,
 }
 
 impl From<Checkpoint> for SceneKind {
@@ -117,6 +118,7 @@ impl From<Checkpoint> for SceneKind {
             Checkpoint::Portal => Self::Day,
             Checkpoint::GraveBuster => Self::Day,
             Checkpoint::Coffee => Self::Day,
+            Checkpoint::TangleKelp => Self::Pool,
         }
     }
 }
@@ -1173,6 +1175,7 @@ impl App {
             Some(Checkpoint::CobCannon) => Game::new(0, SceneKind::Day),
             Some(Checkpoint::GraveBuster) => Game::new(0, SceneKind::Day),
             Some(Checkpoint::Coffee) => Game::new(0, SceneKind::Day),
+            Some(Checkpoint::TangleKelp) => Game::new(0, SceneKind::Pool),
             _ => new_scene_game(initial_scene),
         };
         let mut pending_input = Vec::new();
@@ -1201,6 +1204,7 @@ impl App {
             Some(Checkpoint::Portal) => startup_events = game.debug_prepare_portal(),
             Some(Checkpoint::GraveBuster) => game.debug_prepare_gravebuster(),
             Some(Checkpoint::Coffee) => game.debug_prepare_coffee(),
+            Some(Checkpoint::TangleKelp) => game.debug_prepare_tangle_kelp(),
             _ => {}
         }
         Self {
@@ -2198,6 +2202,7 @@ fn audio_for_event(event: &GameEvent) -> Option<(AudioKind, &'static str)> {
             plant_type: neopvz_core::PlantType::Other(35),
             ..
         } => Some((AudioKind::Effect, "sounds/coffee.ogg")),
+        GameEvent::TangleKelpGrabStarted { .. } => Some((AudioKind::Effect, "sounds/floop.ogg")),
         GameEvent::PlantSpecialTriggered {
             plant_type: neopvz_core::PlantType::Other(4),
             ..
@@ -2392,6 +2397,10 @@ mod tests {
                 Some((AudioKind::Effect, path))
             );
         }
+        assert_eq!(
+            audio_for_event(&GameEvent::TangleKelpGrabStarted { entity: 1 }),
+            Some((AudioKind::Effect, "sounds/floop.ogg"))
+        );
         assert_eq!(
             audio_for_event(&GameEvent::BloverTriggered { entity: 1, row: 2 }),
             Some((AudioKind::Effect, "sounds/blover.ogg"))

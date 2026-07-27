@@ -2893,6 +2893,9 @@ pub enum GameEvent {
         entity: EntityId,
         plant_type: PlantType,
     },
+    TangleKelpGrabStarted {
+        entity: EntityId,
+    },
     BloverTriggered {
         entity: EntityId,
         row: u8,
@@ -3565,6 +3568,28 @@ impl Game {
         {
             coffee.special_counter = 1;
         }
+    }
+
+    #[doc(hidden)]
+    pub fn debug_prepare_tangle_kelp(&mut self) {
+        self.state.level_scene = SceneKind::Pool;
+        self.state.scene = SceneKind::Pool;
+        self.state.sun = 25;
+        self.state.board.plants.clear();
+        self.state.board.zombies.clear();
+        self.advance(InputFrame {
+            actions: vec![
+                InputAction::SelectSeed { slot: 19 },
+                InputAction::Plant { row: 2, column: 2 },
+            ],
+        });
+        let mut setup_events = Vec::new();
+        self.spawn_normal_zombie(
+            2,
+            0,
+            Some(grid_x(2) + 30 * POSITION_SCALE),
+            &mut setup_events,
+        );
     }
 
     fn new_with_mode(seed: u64, mode: ModeKind, level: u8, scene: SceneKind) -> Self {
@@ -5723,10 +5748,7 @@ impl Game {
                 continue;
             }
             if tangle_started {
-                events.push(GameEvent::PlantSpecialTriggered {
-                    entity: id,
-                    plant_type,
-                });
+                events.push(GameEvent::TangleKelpGrabStarted { entity: id });
             }
             if spikeweed_started {
                 events.push(GameEvent::PlantSpecialTriggered {
@@ -15462,6 +15484,18 @@ mod tests {
                 ..
             }
         )));
+    }
+
+    #[test]
+    fn debug_tangle_kelp_checkpoint_emits_special_audio_event() {
+        let mut game = Game::new(0, SceneKind::Pool);
+        game.debug_prepare_tangle_kelp();
+        let events = game.advance(InputFrame::default());
+        assert!(
+            events
+                .iter()
+                .any(|event| matches!(event, GameEvent::TangleKelpGrabStarted { .. }))
+        );
     }
 
     #[test]
