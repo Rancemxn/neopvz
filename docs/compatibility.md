@@ -13,7 +13,7 @@ evidence; a reviewer assertion alone is never sufficient.
 Status is `verified`, `partial`, or `missing`. The progress quantity is the sum
 of `total - accepted` across all rows.
 
-Current baseline: **1251 accepted / 1809 total; 558 unresolved**.
+Current baseline: **1253 accepted / 1809 total; 556 unresolved**.
 
 ## Foundation and Boundaries
 
@@ -41,7 +41,7 @@ loader coverage. They do not authorize committing the manifest or its assets.
 | RES-FONT | Manifest font entries | 20 | 20 | verified | PR `#22`, run `29943384294`, ignored local record |
 | RES-SOUND | Manifest sound entries | 167 | 167 | verified | PR `#22`, run `29943384294`, ignored local record |
 | RES-ANIMATION | Compiled animation resources | 250 | 250 | verified | PR `#25`, run `29947497544`, ignored local record |
-| RES-MUSIC | Target music files and loop metadata | 0 | 2 | missing | MO3 entries verified by PR `#25`; loop metadata remains in Issue `#3` |
+| RES-MUSIC | Target music files and loop metadata | 2 | 2 | verified | Source `Music.cpp:172-188` track mapping; exact-version `mainmusic.mo3` and `mainmusic_hihats.mo3` libopenmpt probe (both 48 kHz stereo, identical 189.826 s duration); ignored `artifacts/music-loop/verification.md` |
 
 ## Simulation Entities and Effects
 
@@ -110,7 +110,7 @@ Kernel, Butter, Melon, WinterMelon, Fireball, Star, Spike, Cob, ZombiePea, and G
 | VIS-PROJECTILE | Projectile animation and impact review units | 0 | 14 | missing | Issue `#14` |
 | VIS-EFFECT | Effect and particle review units | 0 | 105 | missing | Issue `#14` |
 | AUD-SFX | Simulation-tick and decoded-output sound-event units | 0 | 167 | missing | Issue `#19` |
-| AUD-MUSIC | Music playback, loop, and stem units | 0 | 2 | missing | Issues `#3`, `#19` |
+| AUD-MUSIC | Music playback, loop, and stem units | 1 | 2 | partial | Main/hihats MO3 loop duration and source track mapping verified in ignored `artifacts/music-loop/verification.md`; runtime playback/stem synchronization remains |
 | AUD-SYNC | Event-to-device timing and music synchronization contract | 0 | 1 | missing | Issue `#19` |
 
 ## Acceptance Rules
