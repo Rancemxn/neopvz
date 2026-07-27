@@ -88,6 +88,7 @@ enum Checkpoint {
     BloverChomper,
     HypnoJackbox,
     CobCannon,
+    Portal,
 }
 
 impl From<Checkpoint> for SceneKind {
@@ -111,6 +112,7 @@ impl From<Checkpoint> for SceneKind {
             Checkpoint::BloverChomper => Self::Day,
             Checkpoint::HypnoJackbox => Self::Night,
             Checkpoint::CobCannon => Self::Day,
+            Checkpoint::Portal => Self::Day,
         }
     }
 }
@@ -1145,6 +1147,7 @@ struct App {
     selected_mode: ModeKind,
     selected_level: u8,
     fullscreen: bool,
+    startup_events: Vec<GameEvent>,
 }
 
 impl App {
@@ -1167,6 +1170,7 @@ impl App {
             _ => new_scene_game(initial_scene),
         };
         let mut pending_input = Vec::new();
+        let mut startup_events = Vec::new();
         match checkpoint {
             Some(Checkpoint::GameOver) => game.debug_force_game_over(),
             Some(Checkpoint::GameLost) => game.debug_prepare_game_lost(),
@@ -1188,6 +1192,7 @@ impl App {
             Some(Checkpoint::BloverChomper) => game.debug_prepare_blover_chomper(),
             Some(Checkpoint::HypnoJackbox) => game.debug_prepare_hypno_jackbox(),
             Some(Checkpoint::CobCannon) => game.debug_prepare_cob_cannon(),
+            Some(Checkpoint::Portal) => startup_events = game.debug_prepare_portal(),
             _ => {}
         }
         Self {
@@ -1205,6 +1210,7 @@ impl App {
             selected_mode: ModeKind::MiniGame,
             selected_level: 0,
             fullscreen,
+            startup_events,
         }
     }
 
@@ -1249,6 +1255,8 @@ impl App {
         renderer.window().request_redraw();
         self.renderer = Some(renderer);
         self.last_update = Some(Instant::now());
+        let startup_events = std::mem::take(&mut self.startup_events);
+        self.play_audio(0, &startup_events);
     }
 
     fn title_start_hovered(&self) -> bool {
@@ -2201,6 +2209,7 @@ fn audio_for_event(event: &GameEvent) -> Option<(AudioKind, &'static str)> {
         GameEvent::JackboxExploded { .. } => Some((AudioKind::Effect, "sounds/explosion.ogg")),
         GameEvent::ZombieChilled { .. } => Some((AudioKind::Effect, "sounds/frozen.ogg")),
         GameEvent::CobCannonFired { .. } => Some((AudioKind::Effect, "sounds/coblaunch.ogg")),
+        GameEvent::PortalOpened { .. } => Some((AudioKind::Effect, "sounds/portal.ogg")),
         GameEvent::ProjectileHit { .. } | GameEvent::ProjectileSplashHit { .. } => {
             Some((AudioKind::Effect, "sounds/splat.ogg"))
         }
@@ -2392,6 +2401,14 @@ mod tests {
                 target_column: 4,
             }),
             Some((AudioKind::Effect, "sounds/coblaunch.ogg"))
+        );
+        assert_eq!(
+            audio_for_event(&GameEvent::PortalOpened {
+                row: 2,
+                column: 5,
+                square: true,
+            }),
+            Some((AudioKind::Effect, "sounds/portal.ogg"))
         );
         assert_eq!(audio_for_event(&GameEvent::Resumed), None);
         assert_eq!(audio_for_event(&GameEvent::StateChanged), None);

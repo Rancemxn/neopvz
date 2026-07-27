@@ -3508,6 +3508,16 @@ impl Game {
         }
     }
 
+    #[doc(hidden)]
+    pub fn debug_prepare_portal(&mut self) -> Vec<GameEvent> {
+        self.state.level_scene = SceneKind::Day;
+        self.state.scene = SceneKind::Day;
+        self.state.board.portals.clear();
+        let mut events = Vec::new();
+        self.place_portal(2, 5, true, &mut events);
+        events
+    }
+
     fn new_with_mode(seed: u64, mode: ModeKind, level: u8, scene: SceneKind) -> Self {
         let mut rng = Mt19937::new(seed);
         let mut board = BoardState::new(scene, mode, level, &mut rng);
@@ -15358,6 +15368,21 @@ mod tests {
                 target_row: 2,
                 target_column: 4,
             } if *fired == entity
+        )));
+    }
+
+    #[test]
+    fn debug_portal_checkpoint_emits_open_audio_event() {
+        let mut game = Game::new(0, SceneKind::Day);
+        let events = game.debug_prepare_portal();
+        assert_eq!(game.state.board.portals, vec![(2, 5, true)]);
+        assert!(events.iter().any(|event| matches!(
+            event,
+            GameEvent::PortalOpened {
+                row: 2,
+                column: 5,
+                square: true,
+            }
         )));
     }
 
