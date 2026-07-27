@@ -1131,7 +1131,7 @@ impl App {
         fullscreen: bool,
         force_game_over: bool,
     ) -> Self {
-        let mut game = Game::new(0, initial_scene);
+        let mut game = new_scene_game(initial_scene);
         if force_game_over {
             game.debug_force_game_over();
         }
@@ -1391,7 +1391,7 @@ impl App {
     }
 
     fn start_scene(&mut self, scene: SceneKind) {
-        self.game = Game::new(0, scene);
+        self.game = new_scene_game(scene);
         self.tutorial_page = 0;
         self.pending_input.clear();
         self.simulation_accumulator = Duration::ZERO;
@@ -2085,6 +2085,14 @@ fn board_background_id(scene: SceneKind) -> u32 {
     }
 }
 
+fn new_scene_game(scene: SceneKind) -> Game {
+    if scene == SceneKind::Day {
+        Game::new_mode(0, ModeKind::Adventure, 1)
+    } else {
+        Game::new(0, scene)
+    }
+}
+
 fn mode_level_at(mode: ModeKind, x: f32, y: f32) -> Option<u8> {
     if !(30.0..780.0).contains(&x) || !(55.0..595.0).contains(&y) {
         return None;
@@ -2200,6 +2208,10 @@ mod tests {
             audio_for_event(&GameEvent::Paused),
             Some((AudioKind::Effect, "sounds/pause.ogg"))
         );
+        assert_eq!(
+            audio_for_event(&GameEvent::MowerTriggered { row: 2 }),
+            Some((AudioKind::Effect, "sounds/lawnmower.ogg"))
+        );
         assert_eq!(audio_for_event(&GameEvent::Resumed), None);
         assert_eq!(audio_for_event(&GameEvent::StateChanged), None);
     }
@@ -2209,5 +2221,14 @@ mod tests {
         assert!(title_start_contains(400.0, 550.0));
         assert!(!title_start_contains(242.0, 550.0));
         assert!(!title_start_contains(400.0, 579.0));
+    }
+
+    #[test]
+    fn day_scene_starts_the_first_adventure_level() {
+        let game = new_scene_game(SceneKind::Day);
+        assert_eq!(game.state().mode, ModeKind::Adventure);
+        assert_eq!(game.state().level, 1);
+        assert_eq!(game.state().scene, SceneKind::Day);
+        assert_eq!(game.state().board.wave.total, 4);
     }
 }
