@@ -81,6 +81,7 @@ enum Checkpoint {
     GameWon,
     Pickups,
     GardenWater,
+    GardenFertilize,
 }
 
 impl From<Checkpoint> for SceneKind {
@@ -97,6 +98,7 @@ impl From<Checkpoint> for SceneKind {
             Checkpoint::GameWon => Self::Day,
             Checkpoint::Pickups => Self::Day,
             Checkpoint::GardenWater => Self::Garden,
+            Checkpoint::GardenFertilize => Self::Garden,
         }
     }
 }
@@ -1142,7 +1144,10 @@ impl App {
         fullscreen: bool,
         checkpoint: Option<Checkpoint>,
     ) -> Self {
-        let mut game = if matches!(checkpoint, Some(Checkpoint::GardenWater)) {
+        let mut game = if matches!(
+            checkpoint,
+            Some(Checkpoint::GardenWater | Checkpoint::GardenFertilize)
+        ) {
             Game::new_mode(0, ModeKind::ZenGarden, 0)
         } else {
             new_scene_game(initial_scene)
@@ -1159,6 +1164,9 @@ impl App {
             }
             Some(Checkpoint::GardenWater) => {
                 pending_input.push(InputAction::GardenWater { plant: 0 });
+            }
+            Some(Checkpoint::GardenFertilize) => {
+                pending_input.push(InputAction::GardenFertilize { plant: 0 });
             }
             _ => {}
         }
@@ -2141,6 +2149,7 @@ fn audio_for_event(event: &GameEvent) -> Option<(AudioKind, &'static str)> {
         GameEvent::SunCollected { .. } => Some((AudioKind::Effect, "sounds/points.ogg")),
         GameEvent::CoinCollected { .. } => Some((AudioKind::Effect, "sounds/coin.ogg")),
         GameEvent::GardenWatered { .. } => Some((AudioKind::Effect, "sounds/watering.ogg")),
+        GameEvent::GardenFertilized { .. } => Some((AudioKind::Effect, "sounds/fertilizer.ogg")),
         GameEvent::ProjectileHit { .. } | GameEvent::ProjectileSplashHit { .. } => {
             Some((AudioKind::Effect, "sounds/splat.ogg"))
         }
@@ -2266,6 +2275,13 @@ mod tests {
                 age_ticks: 1,
             }),
             Some((AudioKind::Effect, "sounds/watering.ogg"))
+        );
+        assert_eq!(
+            audio_for_event(&GameEvent::GardenFertilized {
+                plant: 0,
+                age_ticks: 100,
+            }),
+            Some((AudioKind::Effect, "sounds/fertilizer.ogg"))
         );
         assert_eq!(audio_for_event(&GameEvent::Resumed), None);
         assert_eq!(audio_for_event(&GameEvent::StateChanged), None);
