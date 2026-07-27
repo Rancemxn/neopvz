@@ -100,6 +100,7 @@ enum Checkpoint {
     Magnet,
     Zamboni,
     PogoBlock,
+    UmbrellaDeflect,
 }
 
 impl From<Checkpoint> for SceneKind {
@@ -135,6 +136,7 @@ impl From<Checkpoint> for SceneKind {
             Checkpoint::Magnet => Self::Night,
             Checkpoint::Zamboni => Self::Day,
             Checkpoint::PogoBlock => Self::Day,
+            Checkpoint::UmbrellaDeflect => Self::Day,
         }
     }
 }
@@ -1200,6 +1202,7 @@ impl App {
             Some(Checkpoint::Magnet) => Game::new(0, SceneKind::Night),
             Some(Checkpoint::Zamboni) => Game::new(0, SceneKind::Day),
             Some(Checkpoint::PogoBlock) => Game::new(0, SceneKind::Day),
+            Some(Checkpoint::UmbrellaDeflect) => Game::new(0, SceneKind::Day),
             _ => new_scene_game(initial_scene),
         };
         let mut pending_input = Vec::new();
@@ -1237,6 +1240,7 @@ impl App {
             Some(Checkpoint::Magnet) => game.debug_prepare_magnet(),
             Some(Checkpoint::Zamboni) => game.debug_prepare_zamboni(),
             Some(Checkpoint::PogoBlock) => game.debug_prepare_pogo_block(),
+            Some(Checkpoint::UmbrellaDeflect) => game.debug_prepare_umbrella_deflect(),
             _ => {}
         }
         Self {
@@ -2278,6 +2282,7 @@ fn audio_for_event(event: &GameEvent) -> Option<(AudioKind, &'static str)> {
         GameEvent::VaseBroken { .. } => Some((AudioKind::Effect, "sounds/vase_breaking.ogg")),
         GameEvent::RakeTriggered { .. } => Some((AudioKind::Effect, "sounds/swing.ogg")),
         GameEvent::JumpBlocked { .. } => Some((AudioKind::Effect, "sounds/bonk.ogg")),
+        GameEvent::UmbrellaDeflected { .. } => Some((AudioKind::Effect, "sounds/boing.ogg")),
         GameEvent::CobCannonFired { .. } => Some((AudioKind::Effect, "sounds/coblaunch.ogg")),
         GameEvent::PortalOpened { .. } => Some((AudioKind::Effect, "sounds/portal.ogg")),
         GameEvent::ProjectileHit { .. } | GameEvent::ProjectileSplashHit { .. } => {
@@ -2302,6 +2307,7 @@ fn audio_companion_for_event(event: &GameEvent) -> Option<(AudioKind, &'static s
             plant_type: neopvz_core::PlantType::Other(20),
             ..
         } => Some((AudioKind::Effect, "sounds/juicy.ogg")),
+        GameEvent::UmbrellaDeflected { .. } => Some((AudioKind::Effect, "sounds/throw2.ogg")),
         _ => None,
     }
 }
@@ -2533,6 +2539,20 @@ mod tests {
                 plant: 2,
             }),
             Some((AudioKind::Effect, "sounds/bonk.ogg"))
+        );
+        assert_eq!(
+            audio_for_event(&GameEvent::UmbrellaDeflected {
+                plant: 1,
+                zombie: 2,
+            }),
+            Some((AudioKind::Effect, "sounds/boing.ogg"))
+        );
+        assert_eq!(
+            audio_companion_for_event(&GameEvent::UmbrellaDeflected {
+                plant: 1,
+                zombie: 2,
+            }),
+            Some((AudioKind::Effect, "sounds/throw2.ogg"))
         );
         assert_eq!(
             audio_for_event(&GameEvent::CobCannonFired {

@@ -3742,6 +3742,28 @@ impl Game {
         );
     }
 
+    #[doc(hidden)]
+    pub fn debug_prepare_umbrella_deflect(&mut self) {
+        self.state.level_scene = SceneKind::Day;
+        self.state.scene = SceneKind::Day;
+        self.state.sun = 1_000;
+        self.state.board.plants.clear();
+        self.state.board.zombies.clear();
+        self.advance(InputFrame {
+            actions: vec![
+                InputAction::SelectSeed { slot: 37 },
+                InputAction::Plant { row: 2, column: 3 },
+            ],
+        });
+        let mut setup_events = Vec::new();
+        let bungee = self.spawn_bungee_zombie(2, 0, None, &mut setup_events);
+        for zombie in &mut self.state.board.zombies {
+            if zombie.id == bungee {
+                zombie.bungee_counter = 1;
+            }
+        }
+    }
+
     fn new_with_mode(seed: u64, mode: ModeKind, level: u8, scene: SceneKind) -> Self {
         let mut rng = Mt19937::new(seed);
         let mut board = BoardState::new(scene, mode, level, &mut rng);
