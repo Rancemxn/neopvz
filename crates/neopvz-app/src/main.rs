@@ -85,6 +85,7 @@ enum Checkpoint {
     IceShroom,
     PotatoMine,
     ExplosionPlants,
+    Butter,
     BloverChomper,
     HypnoJackbox,
     CobCannon,
@@ -116,6 +117,7 @@ impl From<Checkpoint> for SceneKind {
             Checkpoint::IceShroom => Self::Night,
             Checkpoint::PotatoMine => Self::Day,
             Checkpoint::ExplosionPlants => Self::Night,
+            Checkpoint::Butter => Self::Day,
             Checkpoint::BloverChomper => Self::Day,
             Checkpoint::HypnoJackbox => Self::Night,
             Checkpoint::CobCannon => Self::Day,
@@ -1177,6 +1179,7 @@ impl App {
             Some(Checkpoint::GardenWater | Checkpoint::GardenFertilize) => {
                 Game::new_mode(0, ModeKind::ZenGarden, 0)
             }
+            Some(Checkpoint::Butter) => Game::new(0, SceneKind::Day),
             Some(Checkpoint::ExplosionPlants) => Game::new(0, SceneKind::Night),
             Some(Checkpoint::BloverChomper) => Game::new(0, SceneKind::Day),
             Some(Checkpoint::HypnoJackbox) => Game::new(0, SceneKind::Night),
@@ -1210,6 +1213,7 @@ impl App {
             Some(Checkpoint::IceShroom) => game.debug_prepare_ice_shroom(),
             Some(Checkpoint::PotatoMine) => game.debug_prepare_potato_mine(),
             Some(Checkpoint::ExplosionPlants) => game.debug_prepare_explosion_plants(),
+            Some(Checkpoint::Butter) => startup_events = game.debug_prepare_butter(),
             Some(Checkpoint::BloverChomper) => game.debug_prepare_blover_chomper(),
             Some(Checkpoint::HypnoJackbox) => game.debug_prepare_hypno_jackbox(),
             Some(Checkpoint::CobCannon) => game.debug_prepare_cob_cannon(),
@@ -2258,6 +2262,7 @@ fn audio_for_event(event: &GameEvent) -> Option<(AudioKind, &'static str)> {
         }
         GameEvent::JackboxExploded { .. } => Some((AudioKind::Effect, "sounds/explosion.ogg")),
         GameEvent::ZombieChilled { .. } => Some((AudioKind::Effect, "sounds/frozen.ogg")),
+        GameEvent::ZombieButtered { .. } => Some((AudioKind::Effect, "sounds/butter.ogg")),
         GameEvent::CobCannonFired { .. } => Some((AudioKind::Effect, "sounds/coblaunch.ogg")),
         GameEvent::PortalOpened { .. } => Some((AudioKind::Effect, "sounds/portal.ogg")),
         GameEvent::ProjectileHit { .. } | GameEvent::ProjectileSplashHit { .. } => {
@@ -2490,6 +2495,10 @@ mod tests {
                 duration: 1_000,
             }),
             Some((AudioKind::Effect, "sounds/frozen.ogg"))
+        );
+        assert_eq!(
+            audio_for_event(&GameEvent::ZombieButtered { entity: 1 }),
+            Some((AudioKind::Effect, "sounds/butter.ogg"))
         );
         assert_eq!(
             audio_for_event(&GameEvent::CobCannonFired {

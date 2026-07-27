@@ -3411,6 +3411,18 @@ impl Game {
     }
 
     #[doc(hidden)]
+    pub fn debug_prepare_butter(&mut self) -> Vec<GameEvent> {
+        self.state.level_scene = SceneKind::Day;
+        self.state.scene = SceneKind::Day;
+        self.state.board.zombies.clear();
+        let mut setup_events = Vec::new();
+        let zombie = self.spawn_normal_zombie(2, 0, Some(500 * POSITION_SCALE), &mut setup_events);
+        let mut events = Vec::new();
+        self.apply_projectile_chill(zombie, ProjectileType::Butter, &mut events);
+        events
+    }
+
+    #[doc(hidden)]
     pub fn debug_prepare_blover_chomper(&mut self) {
         self.state.level_scene = SceneKind::Day;
         self.state.scene = SceneKind::Day;
