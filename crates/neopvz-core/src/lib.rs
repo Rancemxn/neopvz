@@ -3538,6 +3538,35 @@ impl Game {
         self.state.board.plants[0].special_counter = 1;
     }
 
+    #[doc(hidden)]
+    pub fn debug_prepare_coffee(&mut self) {
+        self.state.level_scene = SceneKind::Day;
+        self.state.scene = SceneKind::Day;
+        self.state.sun = 150;
+        self.state.board.plants.clear();
+        self.advance(InputFrame {
+            actions: vec![
+                InputAction::SelectSeed { slot: 10 },
+                InputAction::Plant { row: 2, column: 2 },
+            ],
+        });
+        self.advance(InputFrame {
+            actions: vec![
+                InputAction::SelectSeed { slot: 35 },
+                InputAction::Plant { row: 2, column: 2 },
+            ],
+        });
+        if let Some(coffee) = self
+            .state
+            .board
+            .plants
+            .iter_mut()
+            .find(|plant| plant.plant_type == PlantType::Other(35))
+        {
+            coffee.special_counter = 1;
+        }
+    }
+
     fn new_with_mode(seed: u64, mode: ModeKind, level: u8, scene: SceneKind) -> Self {
         let mut rng = Mt19937::new(seed);
         let mut board = BoardState::new(scene, mode, level, &mut rng);
@@ -15419,6 +15448,20 @@ mod tests {
             }
         )));
         assert!(game.state.board.graves.is_empty());
+    }
+
+    #[test]
+    fn debug_coffee_checkpoint_emits_special_audio_event() {
+        let mut game = Game::new(0, SceneKind::Day);
+        game.debug_prepare_coffee();
+        let events = game.advance(InputFrame::default());
+        assert!(events.iter().any(|event| matches!(
+            event,
+            GameEvent::PlantSpecialTriggered {
+                plant_type: PlantType::Other(35),
+                ..
+            }
+        )));
     }
 
     #[test]

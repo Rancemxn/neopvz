@@ -90,6 +90,7 @@ enum Checkpoint {
     CobCannon,
     Portal,
     GraveBuster,
+    Coffee,
 }
 
 impl From<Checkpoint> for SceneKind {
@@ -115,6 +116,7 @@ impl From<Checkpoint> for SceneKind {
             Checkpoint::CobCannon => Self::Day,
             Checkpoint::Portal => Self::Day,
             Checkpoint::GraveBuster => Self::Day,
+            Checkpoint::Coffee => Self::Day,
         }
     }
 }
@@ -1170,6 +1172,7 @@ impl App {
             Some(Checkpoint::HypnoJackbox) => Game::new(0, SceneKind::Night),
             Some(Checkpoint::CobCannon) => Game::new(0, SceneKind::Day),
             Some(Checkpoint::GraveBuster) => Game::new(0, SceneKind::Day),
+            Some(Checkpoint::Coffee) => Game::new(0, SceneKind::Day),
             _ => new_scene_game(initial_scene),
         };
         let mut pending_input = Vec::new();
@@ -1197,6 +1200,7 @@ impl App {
             Some(Checkpoint::CobCannon) => game.debug_prepare_cob_cannon(),
             Some(Checkpoint::Portal) => startup_events = game.debug_prepare_portal(),
             Some(Checkpoint::GraveBuster) => game.debug_prepare_gravebuster(),
+            Some(Checkpoint::Coffee) => game.debug_prepare_coffee(),
             _ => {}
         }
         Self {
@@ -2191,6 +2195,10 @@ fn audio_for_event(event: &GameEvent) -> Option<(AudioKind, &'static str)> {
             ..
         } => Some((AudioKind::Effect, "sounds/gravebusterchomp.ogg")),
         GameEvent::PlantSpecialTriggered {
+            plant_type: neopvz_core::PlantType::Other(35),
+            ..
+        } => Some((AudioKind::Effect, "sounds/coffee.ogg")),
+        GameEvent::PlantSpecialTriggered {
             plant_type: neopvz_core::PlantType::Other(4),
             ..
         } => Some((AudioKind::Effect, "sounds/potato_mine.ogg")),
@@ -2374,6 +2382,7 @@ mod tests {
                 neopvz_core::PlantType::Other(11),
                 "sounds/gravebusterchomp.ogg",
             ),
+            (neopvz_core::PlantType::Other(35), "sounds/coffee.ogg"),
         ] {
             assert_eq!(
                 audio_for_event(&GameEvent::PlantSpecialTriggered {
