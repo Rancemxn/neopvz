@@ -89,6 +89,7 @@ enum Checkpoint {
     HypnoJackbox,
     CobCannon,
     Portal,
+    GraveBuster,
 }
 
 impl From<Checkpoint> for SceneKind {
@@ -113,6 +114,7 @@ impl From<Checkpoint> for SceneKind {
             Checkpoint::HypnoJackbox => Self::Night,
             Checkpoint::CobCannon => Self::Day,
             Checkpoint::Portal => Self::Day,
+            Checkpoint::GraveBuster => Self::Day,
         }
     }
 }
@@ -1167,6 +1169,7 @@ impl App {
             Some(Checkpoint::BloverChomper) => Game::new(0, SceneKind::Day),
             Some(Checkpoint::HypnoJackbox) => Game::new(0, SceneKind::Night),
             Some(Checkpoint::CobCannon) => Game::new(0, SceneKind::Day),
+            Some(Checkpoint::GraveBuster) => Game::new(0, SceneKind::Day),
             _ => new_scene_game(initial_scene),
         };
         let mut pending_input = Vec::new();
@@ -1193,6 +1196,7 @@ impl App {
             Some(Checkpoint::HypnoJackbox) => game.debug_prepare_hypno_jackbox(),
             Some(Checkpoint::CobCannon) => game.debug_prepare_cob_cannon(),
             Some(Checkpoint::Portal) => startup_events = game.debug_prepare_portal(),
+            Some(Checkpoint::GraveBuster) => game.debug_prepare_gravebuster(),
             _ => {}
         }
         Self {
@@ -2183,6 +2187,10 @@ fn audio_for_event(event: &GameEvent) -> Option<(AudioKind, &'static str)> {
             ..
         } => Some((AudioKind::Effect, "sounds/frozen.ogg")),
         GameEvent::PlantSpecialTriggered {
+            plant_type: neopvz_core::PlantType::Other(11),
+            ..
+        } => Some((AudioKind::Effect, "sounds/gravebusterchomp.ogg")),
+        GameEvent::PlantSpecialTriggered {
             plant_type: neopvz_core::PlantType::Other(4),
             ..
         } => Some((AudioKind::Effect, "sounds/potato_mine.ogg")),
@@ -2362,6 +2370,10 @@ mod tests {
             (neopvz_core::PlantType::Other(20), "sounds/jalapeno.ogg"),
             (neopvz_core::PlantType::Other(15), "sounds/doomshroom.ogg"),
             (neopvz_core::PlantType::Other(6), "sounds/bigchomp.ogg"),
+            (
+                neopvz_core::PlantType::Other(11),
+                "sounds/gravebusterchomp.ogg",
+            ),
         ] {
             assert_eq!(
                 audio_for_event(&GameEvent::PlantSpecialTriggered {
