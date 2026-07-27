@@ -2195,6 +2195,7 @@ fn audio_for_event(event: &GameEvent) -> Option<(AudioKind, &'static str)> {
             Some((AudioKind::Effect, "sounds/mindcontrolled.ogg"))
         }
         GameEvent::JackboxExploded { .. } => Some((AudioKind::Effect, "sounds/explosion.ogg")),
+        GameEvent::ZombieChilled { .. } => Some((AudioKind::Effect, "sounds/frozen.ogg")),
         GameEvent::ProjectileHit { .. } | GameEvent::ProjectileSplashHit { .. } => {
             Some((AudioKind::Effect, "sounds/splat.ogg"))
         }
@@ -2371,6 +2372,13 @@ mod tests {
                 column: 5,
             }),
             Some((AudioKind::Effect, "sounds/explosion.ogg"))
+        );
+        assert_eq!(
+            audio_for_event(&GameEvent::ZombieChilled {
+                entity: 1,
+                duration: 1_000,
+            }),
+            Some((AudioKind::Effect, "sounds/frozen.ogg"))
         );
         assert_eq!(audio_for_event(&GameEvent::Resumed), None);
         assert_eq!(audio_for_event(&GameEvent::StateChanged), None);
