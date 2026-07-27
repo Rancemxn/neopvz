@@ -3635,6 +3635,34 @@ impl Game {
         }
     }
 
+    #[doc(hidden)]
+    pub fn debug_prepare_magnet(&mut self) {
+        self.state.level_scene = SceneKind::Night;
+        self.state.scene = SceneKind::Night;
+        self.state.sun = 1_000;
+        self.state.board.plants.clear();
+        self.state.board.zombies.clear();
+        self.advance(InputFrame {
+            actions: vec![
+                InputAction::SelectSeed { slot: 31 },
+                InputAction::Plant { row: 2, column: 4 },
+            ],
+        });
+        let mut setup_events = Vec::new();
+        let bucket =
+            self.spawn_buckethead_zombie(2, 0, Some(520 * POSITION_SCALE), &mut setup_events);
+        for zombie in &mut self.state.board.zombies {
+            zombie.speed = 0;
+        }
+        debug_assert!(
+            self.state
+                .board
+                .zombies
+                .iter()
+                .any(|zombie| zombie.id == bucket)
+        );
+    }
+
     fn new_with_mode(seed: u64, mode: ModeKind, level: u8, scene: SceneKind) -> Self {
         let mut rng = Mt19937::new(seed);
         let mut board = BoardState::new(scene, mode, level, &mut rng);
@@ -16309,6 +16337,20 @@ mod tests {
                 .iter()
                 .any(|event| matches!(event, GameEvent::DiggerSurfaced { .. }))
         );
+    }
+
+    #[test]
+    fn debug_magnet_checkpoint_emits_steal_audio_event() {
+        let mut game = Game::new(0, SceneKind::Night);
+        game.debug_prepare_magnet();
+        let events = game.advance(InputFrame::default());
+        assert!(events.iter().any(|event| matches!(
+            event,
+            GameEvent::MetalStolen {
+                zombie: Some(_),
+                ..
+            }
+        )));
     }
 
     #[test]

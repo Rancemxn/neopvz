@@ -94,6 +94,7 @@ enum Checkpoint {
     TangleKelp,
     Spikeweed,
     Digger,
+    Magnet,
 }
 
 impl From<Checkpoint> for SceneKind {
@@ -123,6 +124,7 @@ impl From<Checkpoint> for SceneKind {
             Checkpoint::TangleKelp => Self::Pool,
             Checkpoint::Spikeweed => Self::Day,
             Checkpoint::Digger => Self::Day,
+            Checkpoint::Magnet => Self::Night,
         }
     }
 }
@@ -1182,6 +1184,7 @@ impl App {
             Some(Checkpoint::TangleKelp) => Game::new(0, SceneKind::Pool),
             Some(Checkpoint::Spikeweed) => Game::new(0, SceneKind::Day),
             Some(Checkpoint::Digger) => Game::new(0, SceneKind::Day),
+            Some(Checkpoint::Magnet) => Game::new(0, SceneKind::Night),
             _ => new_scene_game(initial_scene),
         };
         let mut pending_input = Vec::new();
@@ -1213,6 +1216,7 @@ impl App {
             Some(Checkpoint::TangleKelp) => game.debug_prepare_tangle_kelp(),
             Some(Checkpoint::Spikeweed) => game.debug_prepare_spikeweed(),
             Some(Checkpoint::Digger) => game.debug_prepare_digger(),
+            Some(Checkpoint::Magnet) => game.debug_prepare_magnet(),
             _ => {}
         }
         Self {
@@ -2216,6 +2220,7 @@ fn audio_for_event(event: &GameEvent) -> Option<(AudioKind, &'static str)> {
         }
         GameEvent::PotatoMineArmed { .. } => Some((AudioKind::Effect, "sounds/dirt_rise.ogg")),
         GameEvent::DiggerSurfaced { .. } => Some((AudioKind::Effect, "sounds/dirt_rise.ogg")),
+        GameEvent::MetalStolen { .. } => Some((AudioKind::Effect, "sounds/magnetshroom.ogg")),
         GameEvent::PlantSpecialTriggered {
             plant_type: neopvz_core::PlantType::Other(21),
             ..
@@ -2430,6 +2435,13 @@ mod tests {
         assert_eq!(
             audio_for_event(&GameEvent::DiggerSurfaced { entity: 1 }),
             Some((AudioKind::Effect, "sounds/dirt_rise.ogg"))
+        );
+        assert_eq!(
+            audio_for_event(&GameEvent::MetalStolen {
+                plant: 1,
+                zombie: Some(2),
+            }),
+            Some((AudioKind::Effect, "sounds/magnetshroom.ogg"))
         );
         assert_eq!(
             audio_for_event(&GameEvent::BloverTriggered { entity: 1, row: 2 }),
