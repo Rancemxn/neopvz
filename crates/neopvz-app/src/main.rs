@@ -80,6 +80,7 @@ enum Checkpoint {
     GameLost,
     GameWon,
     Pickups,
+    GardenWater,
 }
 
 impl From<Checkpoint> for SceneKind {
@@ -95,6 +96,7 @@ impl From<Checkpoint> for SceneKind {
             Checkpoint::GameLost => Self::Day,
             Checkpoint::GameWon => Self::Day,
             Checkpoint::Pickups => Self::Day,
+            Checkpoint::GardenWater => Self::Garden,
         }
     }
 }
@@ -1140,7 +1142,11 @@ impl App {
         fullscreen: bool,
         checkpoint: Option<Checkpoint>,
     ) -> Self {
-        let mut game = new_scene_game(initial_scene);
+        let mut game = if matches!(checkpoint, Some(Checkpoint::GardenWater)) {
+            Game::new_mode(0, ModeKind::ZenGarden, 0)
+        } else {
+            new_scene_game(initial_scene)
+        };
         let mut pending_input = Vec::new();
         match checkpoint {
             Some(Checkpoint::GameOver) => game.debug_force_game_over(),
@@ -1150,6 +1156,9 @@ impl App {
                 let (sun, coin) = game.debug_prepare_pickups();
                 pending_input.push(InputAction::CollectSun { entity: sun });
                 pending_input.push(InputAction::CollectCoin { entity: coin });
+            }
+            Some(Checkpoint::GardenWater) => {
+                pending_input.push(InputAction::GardenWater { plant: 0 });
             }
             _ => {}
         }
@@ -2131,6 +2140,7 @@ fn audio_for_event(event: &GameEvent) -> Option<(AudioKind, &'static str)> {
         GameEvent::PlantShoveled { .. } => Some((AudioKind::Effect, "sounds/plant2.ogg")),
         GameEvent::SunCollected { .. } => Some((AudioKind::Effect, "sounds/points.ogg")),
         GameEvent::CoinCollected { .. } => Some((AudioKind::Effect, "sounds/coin.ogg")),
+        GameEvent::GardenWatered { .. } => Some((AudioKind::Effect, "sounds/watering.ogg")),
         GameEvent::ProjectileHit { .. } | GameEvent::ProjectileSplashHit { .. } => {
             Some((AudioKind::Effect, "sounds/splat.ogg"))
         }
@@ -2249,6 +2259,13 @@ mod tests {
                 coin_total: 1,
             }),
             Some((AudioKind::Effect, "sounds/coin.ogg"))
+        );
+        assert_eq!(
+            audio_for_event(&GameEvent::GardenWatered {
+                plant: 0,
+                age_ticks: 1,
+            }),
+            Some((AudioKind::Effect, "sounds/watering.ogg"))
         );
         assert_eq!(audio_for_event(&GameEvent::Resumed), None);
         assert_eq!(audio_for_event(&GameEvent::StateChanged), None);
