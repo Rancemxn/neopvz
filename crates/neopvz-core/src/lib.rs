@@ -3471,6 +3471,43 @@ impl Game {
         }
     }
 
+    #[doc(hidden)]
+    pub fn debug_prepare_cob_cannon(&mut self) {
+        self.state.level_scene = SceneKind::Day;
+        self.state.scene = SceneKind::Day;
+        self.state.sun = 1_000;
+        self.state.board.zombies.clear();
+        self.advance(InputFrame {
+            actions: vec![
+                InputAction::SelectSeed { slot: 34 },
+                InputAction::Plant { row: 2, column: 1 },
+            ],
+        });
+        self.state.board.seed_packets[34].refresh_remaining = 0;
+        self.advance(InputFrame {
+            actions: vec![
+                InputAction::SelectSeed { slot: 34 },
+                InputAction::Plant { row: 2, column: 2 },
+            ],
+        });
+        self.advance(InputFrame {
+            actions: vec![
+                InputAction::SelectSeed { slot: 47 },
+                InputAction::Plant { row: 2, column: 1 },
+            ],
+        });
+        if let Some(cob) = self
+            .state
+            .board
+            .plants
+            .iter_mut()
+            .find(|plant| plant.plant_type == PlantType::Other(47))
+        {
+            cob.special_counter = 1;
+            cob.special_armed = true;
+        }
+    }
+
     fn new_with_mode(seed: u64, mode: ModeKind, level: u8, scene: SceneKind) -> Self {
         let mut rng = Mt19937::new(seed);
         let mut board = BoardState::new(scene, mode, level, &mut rng);
@@ -15292,6 +15329,36 @@ mod tests {
         }
         assert!(saw_hypno);
         assert!(saw_jackbox);
+    }
+
+    #[test]
+    fn debug_cob_cannon_checkpoint_emits_fire_audio_event() {
+        let mut game = Game::new(0, SceneKind::Day);
+        game.debug_prepare_cob_cannon();
+        let cannon = game
+            .state
+            .board
+            .plants
+            .iter()
+            .find(|plant| plant.plant_type == PlantType::Other(47))
+            .expect("debug checkpoint must prepare a CobCannon");
+        assert!(cannon.special_armed);
+        let entity = cannon.id;
+        let events = game.advance(InputFrame {
+            actions: vec![InputAction::FireCobCannon {
+                entity,
+                row: 2,
+                column: 4,
+            }],
+        });
+        assert!(events.iter().any(|event| matches!(
+            event,
+            GameEvent::CobCannonFired {
+                entity: fired,
+                target_row: 2,
+                target_column: 4,
+            } if *fired == entity
+        )));
     }
 
     #[test]

@@ -87,6 +87,7 @@ enum Checkpoint {
     ExplosionPlants,
     BloverChomper,
     HypnoJackbox,
+    CobCannon,
 }
 
 impl From<Checkpoint> for SceneKind {
@@ -109,6 +110,7 @@ impl From<Checkpoint> for SceneKind {
             Checkpoint::ExplosionPlants => Self::Night,
             Checkpoint::BloverChomper => Self::Day,
             Checkpoint::HypnoJackbox => Self::Night,
+            Checkpoint::CobCannon => Self::Day,
         }
     }
 }
@@ -1161,6 +1163,7 @@ impl App {
             Some(Checkpoint::ExplosionPlants) => Game::new(0, SceneKind::Night),
             Some(Checkpoint::BloverChomper) => Game::new(0, SceneKind::Day),
             Some(Checkpoint::HypnoJackbox) => Game::new(0, SceneKind::Night),
+            Some(Checkpoint::CobCannon) => Game::new(0, SceneKind::Day),
             _ => new_scene_game(initial_scene),
         };
         let mut pending_input = Vec::new();
@@ -1184,6 +1187,7 @@ impl App {
             Some(Checkpoint::ExplosionPlants) => game.debug_prepare_explosion_plants(),
             Some(Checkpoint::BloverChomper) => game.debug_prepare_blover_chomper(),
             Some(Checkpoint::HypnoJackbox) => game.debug_prepare_hypno_jackbox(),
+            Some(Checkpoint::CobCannon) => game.debug_prepare_cob_cannon(),
             _ => {}
         }
         Self {
@@ -2196,6 +2200,7 @@ fn audio_for_event(event: &GameEvent) -> Option<(AudioKind, &'static str)> {
         }
         GameEvent::JackboxExploded { .. } => Some((AudioKind::Effect, "sounds/explosion.ogg")),
         GameEvent::ZombieChilled { .. } => Some((AudioKind::Effect, "sounds/frozen.ogg")),
+        GameEvent::CobCannonFired { .. } => Some((AudioKind::Effect, "sounds/coblaunch.ogg")),
         GameEvent::ProjectileHit { .. } | GameEvent::ProjectileSplashHit { .. } => {
             Some((AudioKind::Effect, "sounds/splat.ogg"))
         }
@@ -2379,6 +2384,14 @@ mod tests {
                 duration: 1_000,
             }),
             Some((AudioKind::Effect, "sounds/frozen.ogg"))
+        );
+        assert_eq!(
+            audio_for_event(&GameEvent::CobCannonFired {
+                entity: 1,
+                target_row: 2,
+                target_column: 4,
+            }),
+            Some((AudioKind::Effect, "sounds/coblaunch.ogg"))
         );
         assert_eq!(audio_for_event(&GameEvent::Resumed), None);
         assert_eq!(audio_for_event(&GameEvent::StateChanged), None);
