@@ -3346,6 +3346,25 @@ impl Game {
         (self.state.board.suns[0].id, self.state.board.coins[0].id)
     }
 
+    #[doc(hidden)]
+    pub fn debug_prepare_ice_shroom(&mut self) {
+        self.state.level_scene = SceneKind::Night;
+        self.state.scene = SceneKind::Night;
+        self.state.sun = 200;
+        self.state.board.zombies.clear();
+        self.advance(InputFrame {
+            actions: vec![
+                InputAction::SelectSeed { slot: 14 },
+                InputAction::Plant { row: 2, column: 2 },
+            ],
+        });
+        self.state.board.plants[0].special_counter = 1;
+        let center = grid_x(2);
+        let mut setup_events = Vec::new();
+        self.spawn_normal_zombie(0, 0, Some(center), &mut setup_events);
+        self.spawn_normal_zombie(4, 0, Some(center), &mut setup_events);
+    }
+
     fn new_with_mode(seed: u64, mode: ModeKind, level: u8, scene: SceneKind) -> Self {
         let mut rng = Mt19937::new(seed);
         let mut board = BoardState::new(scene, mode, level, &mut rng);

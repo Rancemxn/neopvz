@@ -82,6 +82,7 @@ enum Checkpoint {
     Pickups,
     GardenWater,
     GardenFertilize,
+    IceShroom,
 }
 
 impl From<Checkpoint> for SceneKind {
@@ -99,6 +100,7 @@ impl From<Checkpoint> for SceneKind {
             Checkpoint::Pickups => Self::Day,
             Checkpoint::GardenWater => Self::Garden,
             Checkpoint::GardenFertilize => Self::Garden,
+            Checkpoint::IceShroom => Self::Night,
         }
     }
 }
@@ -1168,6 +1170,7 @@ impl App {
             Some(Checkpoint::GardenFertilize) => {
                 pending_input.push(InputAction::GardenFertilize { plant: 0 });
             }
+            Some(Checkpoint::IceShroom) => game.debug_prepare_ice_shroom(),
             _ => {}
         }
         Self {
@@ -2150,6 +2153,10 @@ fn audio_for_event(event: &GameEvent) -> Option<(AudioKind, &'static str)> {
         GameEvent::CoinCollected { .. } => Some((AudioKind::Effect, "sounds/coin.ogg")),
         GameEvent::GardenWatered { .. } => Some((AudioKind::Effect, "sounds/watering.ogg")),
         GameEvent::GardenFertilized { .. } => Some((AudioKind::Effect, "sounds/fertilizer.ogg")),
+        GameEvent::PlantSpecialTriggered {
+            plant_type: neopvz_core::PlantType::Other(14),
+            ..
+        } => Some((AudioKind::Effect, "sounds/frozen.ogg")),
         GameEvent::ProjectileHit { .. } | GameEvent::ProjectileSplashHit { .. } => {
             Some((AudioKind::Effect, "sounds/splat.ogg"))
         }
@@ -2282,6 +2289,13 @@ mod tests {
                 age_ticks: 100,
             }),
             Some((AudioKind::Effect, "sounds/fertilizer.ogg"))
+        );
+        assert_eq!(
+            audio_for_event(&GameEvent::PlantSpecialTriggered {
+                entity: 1,
+                plant_type: neopvz_core::PlantType::Other(14),
+            }),
+            Some((AudioKind::Effect, "sounds/frozen.ogg"))
         );
         assert_eq!(audio_for_event(&GameEvent::Resumed), None);
         assert_eq!(audio_for_event(&GameEvent::StateChanged), None);
