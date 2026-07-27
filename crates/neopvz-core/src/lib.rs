@@ -1096,6 +1096,7 @@ fn initial_garden_state(service: GardenServiceKind) -> GardenState {
                 plant_type,
                 age_ticks: 0,
                 watered: false,
+                happy: false,
             })
             .collect(),
     }
@@ -2019,6 +2020,10 @@ pub enum InputAction {
     GardenFertilize {
         plant: u8,
     },
+    // ponytail: one action covers bug spray and phonograph until their tool UI lands.
+    GardenFulfillNeed {
+        plant: u8,
+    },
     PlantImitater {
         plant_slot: u8,
         row: u8,
@@ -2853,6 +2858,10 @@ pub enum GameEvent {
     GardenFertilized {
         plant: u8,
         age_ticks: u32,
+    },
+    GardenBecameHappy {
+        plant: u8,
+        aquatic: bool,
     },
     GardenTreeGrew {
         height: u16,
@@ -3997,6 +4006,7 @@ impl Game {
             } => self.deploy_zombie(zombie_type, row, column, events),
             InputAction::GardenWater { plant } => self.garden_water(plant, events),
             InputAction::GardenFertilize { plant } => self.garden_fertilize(plant, events),
+            InputAction::GardenFulfillNeed { plant } => self.garden_fulfill_need(plant, events),
             InputAction::GardenFeedTree => self.garden_feed_tree(events),
             InputAction::GardenLeave => self.garden_leave(events),
             InputAction::ChallengeSpin => self.challenge_spin(events),
@@ -4049,6 +4059,30 @@ impl Game {
         events.push(GameEvent::GardenFertilized {
             plant,
             age_ticks: target.age_ticks,
+        });
+    }
+
+    fn garden_fulfill_need(&mut self, plant: u8, events: &mut Vec<GameEvent>) {
+        let action = InputAction::GardenFulfillNeed { plant };
+        if self.state.scene != SceneKind::Garden
+            || self.state.garden_service.is_none()
+            || self.state.garden.plants.get(usize::from(plant)).is_none()
+        {
+            events.push(GameEvent::InputRejected {
+                action,
+                reason: InputRejectReason::InvalidGardenTarget,
+            });
+            return;
+        }
+
+        let target = &mut self.state.garden.plants[usize::from(plant)];
+        if target.happy {
+            return;
+        }
+        target.happy = true;
+        events.push(GameEvent::GardenBecameHappy {
+            plant,
+            aquatic: matches!(target.plant_type.slot(), 16 | 19 | 24 | 43),
         });
     }
 
@@ -5002,6 +5036,7 @@ impl Game {
                 plant_type: coin.plant_type.unwrap_or(PlantType::Peashooter),
                 age_ticks: 0,
                 watered: false,
+                happy: false,
             });
             value = 1;
         } else if coin.coin_type == CoinType::UsableSeedPacket {
@@ -15851,6 +15886,7 @@ mod tests {
                     actions: vec![
                         InputAction::GardenWater { plant: 0 },
                         InputAction::GardenFertilize { plant: 0 },
+                        InputAction::GardenFulfillNeed { plant: 0 },
                     ],
                 });
                 assert!(
@@ -15865,8 +15901,23 @@ mod tests {
                         age_ticks: 100
                     }
                 )));
+                assert!(events.iter().any(|event| matches!(
+                    event,
+                    GameEvent::GardenBecameHappy { plant: 0, aquatic }
+                        if *aquatic == (service == GardenServiceKind::Aquarium)
+                )));
                 assert!(game.state().garden.plants[0].watered);
+                assert!(game.state().garden.plants[0].happy);
                 assert!(game.state().garden.plants[0].age_ticks > 100);
+
+                let repeated = game.advance(InputFrame {
+                    actions: vec![InputAction::GardenFulfillNeed { plant: 0 }],
+                });
+                assert!(
+                    !repeated
+                        .iter()
+                        .any(|event| matches!(event, GameEvent::GardenBecameHappy { .. }))
+                );
             } else {
                 assert!(game.state().garden.plants.is_empty());
                 let events = game.advance(InputFrame {

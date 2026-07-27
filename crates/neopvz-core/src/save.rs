@@ -61,6 +61,8 @@ pub struct GardenPlant {
     pub plant_type: PlantType,
     pub age_ticks: u32,
     pub watered: bool,
+    #[serde(default)]
+    pub happy: bool,
 }
 
 #[derive(Clone, Debug, Default, Deserialize, Eq, PartialEq, Serialize)]
@@ -256,6 +258,7 @@ mod tests {
             plant_type: PlantType::Sunflower,
             age_ticks: 240,
             watered: true,
+            happy: true,
         });
         profile.mode_completion.push(ModeCompletion {
             mode: ModeKind::Adventure,

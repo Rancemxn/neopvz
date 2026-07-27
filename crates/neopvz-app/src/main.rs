@@ -1036,6 +1036,10 @@ impl App {
             KeyCode::Digit2 if self.game.state().scene == SceneKind::SeedChooser => {
                 self.seed_chooser_selection[1] = !self.seed_chooser_selection[1];
             }
+            KeyCode::KeyH if self.game.state().scene == SceneKind::Garden => {
+                self.pending_input
+                    .push(InputAction::GardenFulfillNeed { plant: 0 });
+            }
             KeyCode::Digit1 if is_board_scene(self.game.state().scene) => {
                 self.pending_input.push(InputAction::SelectSeed { slot: 0 });
             }
