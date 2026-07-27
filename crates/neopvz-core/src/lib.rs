@@ -3663,6 +3663,23 @@ impl Game {
         );
     }
 
+    #[doc(hidden)]
+    pub fn debug_prepare_zamboni(&mut self) {
+        self.state.level_scene = SceneKind::Day;
+        self.state.scene = SceneKind::Day;
+        self.state.sun = 1_000;
+        self.state.board.plants.clear();
+        self.state.board.zombies.clear();
+        self.advance(InputFrame {
+            actions: vec![
+                InputAction::SelectSeed { slot: 21 },
+                InputAction::Plant { row: 2, column: 5 },
+            ],
+        });
+        let mut setup_events = Vec::new();
+        self.spawn_zamboni_zombie(2, 0, Some(grid_x(5)), &mut setup_events);
+    }
+
     fn new_with_mode(seed: u64, mode: ModeKind, level: u8, scene: SceneKind) -> Self {
         let mut rng = Mt19937::new(seed);
         let mut board = BoardState::new(scene, mode, level, &mut rng);
@@ -16351,6 +16368,20 @@ mod tests {
                 ..
             }
         )));
+    }
+
+    #[test]
+    fn debug_zamboni_checkpoint_emits_vehicle_audio_event() {
+        let mut game = Game::new(0, SceneKind::Day);
+        game.debug_prepare_zamboni();
+        let events = (0..100)
+            .flat_map(|_| game.advance(InputFrame::default()))
+            .collect::<Vec<_>>();
+        assert!(
+            events
+                .iter()
+                .any(|event| matches!(event, GameEvent::VehicleDisabled { .. }))
+        );
     }
 
     #[test]
