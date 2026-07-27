@@ -3438,6 +3438,39 @@ impl Game {
         }
     }
 
+    #[doc(hidden)]
+    pub fn debug_prepare_hypno_jackbox(&mut self) {
+        self.state.level_scene = SceneKind::Night;
+        self.state.scene = SceneKind::Night;
+        self.state.sun = 75;
+        self.state.board.zombies.clear();
+        self.advance(InputFrame {
+            actions: vec![
+                InputAction::SelectSeed { slot: 12 },
+                InputAction::Plant { row: 2, column: 2 },
+            ],
+        });
+        let mut setup_events = Vec::new();
+        self.spawn_normal_zombie(
+            2,
+            0,
+            Some(grid_x(2) + 30 * POSITION_SCALE),
+            &mut setup_events,
+        );
+        let jackbox =
+            self.spawn_jackbox_zombie(0, 0, Some(780 * POSITION_SCALE), &mut setup_events);
+        if let Some(zombie) = self
+            .state
+            .board
+            .zombies
+            .iter_mut()
+            .find(|zombie| zombie.id == jackbox)
+        {
+            zombie.jackbox_timer = 1;
+            zombie.speed = 0;
+        }
+    }
+
     fn new_with_mode(seed: u64, mode: ModeKind, level: u8, scene: SceneKind) -> Self {
         let mut rng = Mt19937::new(seed);
         let mut board = BoardState::new(scene, mode, level, &mut rng);
@@ -15240,6 +15273,25 @@ mod tests {
                 ..
             }
         )));
+    }
+
+    #[test]
+    fn debug_hypno_jackbox_checkpoint_triggers_both_audio_events() {
+        let mut game = Game::new(0, SceneKind::Night);
+        game.debug_prepare_hypno_jackbox();
+        let mut saw_hypno = false;
+        let mut saw_jackbox = false;
+        for _ in 0..700 {
+            for event in game.advance(InputFrame::default()) {
+                saw_hypno |= matches!(event, GameEvent::ZombieHypnotized { .. });
+                saw_jackbox |= matches!(event, GameEvent::JackboxExploded { .. });
+            }
+            if saw_hypno && saw_jackbox {
+                break;
+            }
+        }
+        assert!(saw_hypno);
+        assert!(saw_jackbox);
     }
 
     #[test]

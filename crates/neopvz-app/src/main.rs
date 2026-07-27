@@ -86,6 +86,7 @@ enum Checkpoint {
     PotatoMine,
     ExplosionPlants,
     BloverChomper,
+    HypnoJackbox,
 }
 
 impl From<Checkpoint> for SceneKind {
@@ -107,6 +108,7 @@ impl From<Checkpoint> for SceneKind {
             Checkpoint::PotatoMine => Self::Day,
             Checkpoint::ExplosionPlants => Self::Night,
             Checkpoint::BloverChomper => Self::Day,
+            Checkpoint::HypnoJackbox => Self::Night,
         }
     }
 }
@@ -1158,6 +1160,7 @@ impl App {
             }
             Some(Checkpoint::ExplosionPlants) => Game::new(0, SceneKind::Night),
             Some(Checkpoint::BloverChomper) => Game::new(0, SceneKind::Day),
+            Some(Checkpoint::HypnoJackbox) => Game::new(0, SceneKind::Night),
             _ => new_scene_game(initial_scene),
         };
         let mut pending_input = Vec::new();
@@ -1180,6 +1183,7 @@ impl App {
             Some(Checkpoint::PotatoMine) => game.debug_prepare_potato_mine(),
             Some(Checkpoint::ExplosionPlants) => game.debug_prepare_explosion_plants(),
             Some(Checkpoint::BloverChomper) => game.debug_prepare_blover_chomper(),
+            Some(Checkpoint::HypnoJackbox) => game.debug_prepare_hypno_jackbox(),
             _ => {}
         }
         Self {
@@ -2187,6 +2191,10 @@ fn audio_for_event(event: &GameEvent) -> Option<(AudioKind, &'static str)> {
             ..
         } => Some((AudioKind::Effect, "sounds/bigchomp.ogg")),
         GameEvent::BloverTriggered { .. } => Some((AudioKind::Effect, "sounds/blover.ogg")),
+        GameEvent::ZombieHypnotized { .. } => {
+            Some((AudioKind::Effect, "sounds/mindcontrolled.ogg"))
+        }
+        GameEvent::JackboxExploded { .. } => Some((AudioKind::Effect, "sounds/explosion.ogg")),
         GameEvent::ProjectileHit { .. } | GameEvent::ProjectileSplashHit { .. } => {
             Some((AudioKind::Effect, "sounds/splat.ogg"))
         }
@@ -2351,6 +2359,18 @@ mod tests {
         assert_eq!(
             audio_for_event(&GameEvent::BloverTriggered { entity: 1, row: 2 }),
             Some((AudioKind::Effect, "sounds/blover.ogg"))
+        );
+        assert_eq!(
+            audio_for_event(&GameEvent::ZombieHypnotized { entity: 1 }),
+            Some((AudioKind::Effect, "sounds/mindcontrolled.ogg"))
+        );
+        assert_eq!(
+            audio_for_event(&GameEvent::JackboxExploded {
+                entity: 1,
+                row: 2,
+                column: 5,
+            }),
+            Some((AudioKind::Effect, "sounds/explosion.ogg"))
         );
         assert_eq!(audio_for_event(&GameEvent::Resumed), None);
         assert_eq!(audio_for_event(&GameEvent::StateChanged), None);
