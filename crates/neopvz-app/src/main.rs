@@ -546,7 +546,7 @@ fn load_assets(resources: &ResourceProvider) -> Result<Vec<ImageAsset>, String> 
         load_image(
             resources,
             BOSS_BACKGROUND_IMAGE_ID,
-            "images/background6.jpg",
+            "images/background6boss.jpg",
         )?,
     ];
     for index in 0..22 {
