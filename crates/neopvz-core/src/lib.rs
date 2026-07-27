@@ -3365,6 +3365,23 @@ impl Game {
         self.spawn_normal_zombie(4, 0, Some(center), &mut setup_events);
     }
 
+    #[doc(hidden)]
+    pub fn debug_prepare_potato_mine(&mut self) {
+        self.state.level_scene = SceneKind::Day;
+        self.state.scene = SceneKind::Day;
+        self.state.sun = 50;
+        self.state.board.zombies.clear();
+        self.advance(InputFrame {
+            actions: vec![
+                InputAction::SelectSeed { slot: 4 },
+                InputAction::Plant { row: 2, column: 2 },
+            ],
+        });
+        self.state.board.plants[0].special_counter = 1;
+        let mut setup_events = Vec::new();
+        self.spawn_normal_zombie(2, 0, Some(grid_x(2)), &mut setup_events);
+    }
+
     fn new_with_mode(seed: u64, mode: ModeKind, level: u8, scene: SceneKind) -> Self {
         let mut rng = Mt19937::new(seed);
         let mut board = BoardState::new(scene, mode, level, &mut rng);

@@ -83,6 +83,7 @@ enum Checkpoint {
     GardenWater,
     GardenFertilize,
     IceShroom,
+    PotatoMine,
 }
 
 impl From<Checkpoint> for SceneKind {
@@ -101,6 +102,7 @@ impl From<Checkpoint> for SceneKind {
             Checkpoint::GardenWater => Self::Garden,
             Checkpoint::GardenFertilize => Self::Garden,
             Checkpoint::IceShroom => Self::Night,
+            Checkpoint::PotatoMine => Self::Day,
         }
     }
 }
@@ -1171,6 +1173,7 @@ impl App {
                 pending_input.push(InputAction::GardenFertilize { plant: 0 });
             }
             Some(Checkpoint::IceShroom) => game.debug_prepare_ice_shroom(),
+            Some(Checkpoint::PotatoMine) => game.debug_prepare_potato_mine(),
             _ => {}
         }
         Self {
@@ -2157,6 +2160,10 @@ fn audio_for_event(event: &GameEvent) -> Option<(AudioKind, &'static str)> {
             plant_type: neopvz_core::PlantType::Other(14),
             ..
         } => Some((AudioKind::Effect, "sounds/frozen.ogg")),
+        GameEvent::PlantSpecialTriggered {
+            plant_type: neopvz_core::PlantType::Other(4),
+            ..
+        } => Some((AudioKind::Effect, "sounds/potato_mine.ogg")),
         GameEvent::ProjectileHit { .. } | GameEvent::ProjectileSplashHit { .. } => {
             Some((AudioKind::Effect, "sounds/splat.ogg"))
         }
@@ -2296,6 +2303,13 @@ mod tests {
                 plant_type: neopvz_core::PlantType::Other(14),
             }),
             Some((AudioKind::Effect, "sounds/frozen.ogg"))
+        );
+        assert_eq!(
+            audio_for_event(&GameEvent::PlantSpecialTriggered {
+                entity: 1,
+                plant_type: neopvz_core::PlantType::Other(4),
+            }),
+            Some((AudioKind::Effect, "sounds/potato_mine.ogg"))
         );
         assert_eq!(audio_for_event(&GameEvent::Resumed), None);
         assert_eq!(audio_for_event(&GameEvent::StateChanged), None);
