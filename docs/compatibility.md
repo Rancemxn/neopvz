@@ -13,7 +13,7 @@ evidence; a reviewer assertion alone is never sufficient.
 Status is `verified`, `partial`, or `missing`. The progress quantity is the sum
 of `total - accepted` across all rows.
 
-Current baseline: **1260 accepted / 1809 total; 549 unresolved**.
+Current baseline: **1262 accepted / 1809 total; 547 unresolved**.
 
 ## Foundation and Boundaries
 
@@ -109,7 +109,7 @@ Kernel, Butter, Melon, WinterMelon, Fireball, Star, Spike, Cob, ZombiePea, and G
 | VIS-ZOMBIE | Zombie animation, layering, clipping, and feedback review units | 0 | 33 | missing | Issue `#14` |
 | VIS-PROJECTILE | Projectile animation and impact review units | 0 | 14 | missing | Issue `#14` |
 | VIS-EFFECT | Effect and particle review units | 0 | 105 | missing | Issue `#14` |
-| AUD-SFX | Simulation-tick and decoded-output sound-event units | 0 | 167 | missing | Issue `#19` |
+| AUD-SFX | Simulation-tick and decoded-output sound-event units | 2 | 167 | partial | `SeedSelected` → `sounds/tap.ogg` and `InputRejected` → `sounds/buzzer.ogg`; source cross-checks, decoded PCM hashes, and local app tick/`playback started` trace in ignored `artifacts/local-audio/verification.md`; remaining SFX units and device timing remain under Issue `#19` |
 | AUD-MUSIC | Music playback, loop, and stem units | 1 | 2 | partial | Main/hihats MO3 loop duration and source track mapping verified in ignored `artifacts/music-loop/verification.md`; runtime playback/stem synchronization remains |
 | AUD-SYNC | Event-to-device timing and music synchronization contract | 0 | 1 | missing | Issue `#19` |
 

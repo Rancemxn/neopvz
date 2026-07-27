@@ -1620,13 +1620,14 @@ impl App {
             let input = InputFrame {
                 actions: std::mem::take(&mut self.pending_input),
             };
+            let tick = self.game.state().tick;
             let events = self.game.advance(input);
-            self.play_audio(&events);
+            self.play_audio(tick, &events);
             self.simulation_accumulator -= SIMULATION_STEP;
         }
     }
 
-    fn play_audio(&mut self, events: &[GameEvent]) {
+    fn play_audio(&mut self, tick: u64, events: &[GameEvent]) {
         for event in events {
             let Some((kind, path)) = audio_for_event(event) else {
                 continue;
@@ -1635,10 +1636,12 @@ impl App {
                 tracing::debug!(path, "audio resource is unavailable");
                 continue;
             };
-            if let Some(audio) = &mut self.audio
-                && let Err(error) = audio.play_bytes(kind, path, bytes)
-            {
-                tracing::warn!(%error, path, "audio playback failed");
+            tracing::debug!(tick, ?kind, ?event, path, "audio event queued");
+            if let Some(audio) = &mut self.audio {
+                match audio.play_bytes(kind, path, bytes) {
+                    Ok(()) => tracing::debug!(tick, ?kind, path, "audio playback started"),
+                    Err(error) => tracing::warn!(%error, path, "audio playback failed"),
+                }
             }
         }
     }
