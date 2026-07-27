@@ -3720,6 +3720,28 @@ impl Game {
         self.spawn_zamboni_zombie(2, 0, Some(grid_x(5)), &mut setup_events);
     }
 
+    #[doc(hidden)]
+    pub fn debug_prepare_pogo_block(&mut self) {
+        self.state.level_scene = SceneKind::Day;
+        self.state.scene = SceneKind::Day;
+        self.state.sun = 1_000;
+        self.state.board.plants.clear();
+        self.state.board.zombies.clear();
+        self.advance(InputFrame {
+            actions: vec![
+                InputAction::SelectSeed { slot: 23 },
+                InputAction::Plant { row: 2, column: 5 },
+            ],
+        });
+        let mut setup_events = Vec::new();
+        self.spawn_pogo_zombie(
+            2,
+            0,
+            Some(grid_x(5) + 40 * POSITION_SCALE),
+            &mut setup_events,
+        );
+    }
+
     fn new_with_mode(seed: u64, mode: ModeKind, level: u8, scene: SceneKind) -> Self {
         let mut rng = Mt19937::new(seed);
         let mut board = BoardState::new(scene, mode, level, &mut rng);
