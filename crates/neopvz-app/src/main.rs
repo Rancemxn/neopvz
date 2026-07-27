@@ -2111,7 +2111,7 @@ fn audio_for_event(event: &GameEvent) -> Option<(AudioKind, &'static str)> {
         }
         GameEvent::ZombieDied { .. } => Some((AudioKind::Effect, "sounds/splat2.ogg")),
         GameEvent::MowerTriggered { .. } => Some((AudioKind::Effect, "sounds/lawnmower.ogg")),
-        GameEvent::Paused | GameEvent::Resumed => Some((AudioKind::Effect, "sounds/pause.ogg")),
+        GameEvent::Paused => Some((AudioKind::Effect, "sounds/pause.ogg")),
         GameEvent::GameLost { .. } => Some((AudioKind::Music, "sounds/losemusic.ogg")),
         GameEvent::GameWon => Some((AudioKind::Music, "sounds/winmusic.ogg")),
         _ => None,
@@ -2196,6 +2196,11 @@ mod tests {
             audio_for_event(&GameEvent::GameWon),
             Some((AudioKind::Music, "sounds/winmusic.ogg"))
         );
+        assert_eq!(
+            audio_for_event(&GameEvent::Paused),
+            Some((AudioKind::Effect, "sounds/pause.ogg"))
+        );
+        assert_eq!(audio_for_event(&GameEvent::Resumed), None);
         assert_eq!(audio_for_event(&GameEvent::StateChanged), None);
     }
 
