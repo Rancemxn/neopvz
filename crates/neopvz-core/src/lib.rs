@@ -3323,6 +3323,29 @@ impl Game {
         self.state.board.wave.current = self.state.board.wave.total;
     }
 
+    #[doc(hidden)]
+    pub fn debug_prepare_pickups(&mut self) -> (EntityId, EntityId) {
+        self.state.level_scene = SceneKind::Day;
+        self.state.scene = SceneKind::Day;
+        self.state.board.suns.clear();
+        self.state.board.coins.clear();
+        let mut setup_events = Vec::new();
+        self.spawn_sun_value(
+            SunSource::Sky,
+            NORMAL_SUN_VALUE,
+            200 * POSITION_SCALE,
+            200 * POSITION_SCALE,
+            &mut setup_events,
+        );
+        self.spawn_pickup(
+            CoinType::Silver,
+            300 * POSITION_SCALE,
+            200 * POSITION_SCALE,
+            &mut setup_events,
+        );
+        (self.state.board.suns[0].id, self.state.board.coins[0].id)
+    }
+
     fn new_with_mode(seed: u64, mode: ModeKind, level: u8, scene: SceneKind) -> Self {
         let mut rng = Mt19937::new(seed);
         let mut board = BoardState::new(scene, mode, level, &mut rng);

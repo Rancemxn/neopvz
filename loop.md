@@ -25,13 +25,16 @@
 - **Current-run build-gate override:** For this run only, the user's explicit
   authorization accepts local stable `fmt --check`, locked Clippy, locked
   workspace tests, and a locked non-release workspace debug build in place of
-  waiting for GitHub Actions. Do not run a release build. This does not weaken
-  the repository's CI requirements for later merges.
+  waiting for GitHub Actions. After starting a compile/test command, wait at
+  least 20 seconds before reading its result, even if the process exits sooner.
+  Do not run a release build. This does not weaken the repository's CI
+  requirements for later merges.
 - **Current-run app-validation override:** For this run only, the user's
   explicit authorization accepts the locally built `target/debug/neopvz.exe`
   with the external 1.0.0.1051 resources for GUI, visual, audio, and runtime
-  checks. Do not download or use a Windows artifact for these checks; retain the
-  normal external-resource and evidence-boundary requirements.
+  checks. This override supersedes the Windows-artifact measurement row for
+  this run only: do not download or use a Windows artifact; retain the normal
+  external-resource and evidence-boundary requirements.
 - **Deterministic success signal:** With the same build, resource version,
   initial save, random seed, and input sequence, damage, cooldowns, resources,
   waves, entity state, event order, and input results are identical, including

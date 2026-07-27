@@ -79,6 +79,7 @@ enum Checkpoint {
     GameOver,
     GameLost,
     GameWon,
+    Pickups,
 }
 
 impl From<Checkpoint> for SceneKind {
@@ -93,6 +94,7 @@ impl From<Checkpoint> for SceneKind {
             Checkpoint::GameOver => Self::GameOver,
             Checkpoint::GameLost => Self::Day,
             Checkpoint::GameWon => Self::Day,
+            Checkpoint::Pickups => Self::Day,
         }
     }
 }
@@ -285,7 +287,8 @@ fn main() -> ExitCode {
     let force_game_over = matches!(cli.checkpoint, Some(Checkpoint::GameOver));
     let force_game_lost = matches!(cli.checkpoint, Some(Checkpoint::GameLost));
     let force_game_won = matches!(cli.checkpoint, Some(Checkpoint::GameWon));
-    let initial_scene = if force_game_over || force_game_lost || force_game_won {
+    let force_pickups = matches!(cli.checkpoint, Some(Checkpoint::Pickups));
+    let initial_scene = if force_game_over || force_game_lost || force_game_won || force_pickups {
         SceneKind::Day
     } else {
         cli.checkpoint
@@ -1138,10 +1141,16 @@ impl App {
         checkpoint: Option<Checkpoint>,
     ) -> Self {
         let mut game = new_scene_game(initial_scene);
+        let mut pending_input = Vec::new();
         match checkpoint {
             Some(Checkpoint::GameOver) => game.debug_force_game_over(),
             Some(Checkpoint::GameLost) => game.debug_prepare_game_lost(),
             Some(Checkpoint::GameWon) => game.debug_prepare_game_won(),
+            Some(Checkpoint::Pickups) => {
+                let (sun, coin) = game.debug_prepare_pickups();
+                pending_input.push(InputAction::CollectSun { entity: sun });
+                pending_input.push(InputAction::CollectCoin { entity: coin });
+            }
             _ => {}
         }
         Self {
@@ -1150,7 +1159,7 @@ impl App {
             resources,
             audio,
             game,
-            pending_input: Vec::new(),
+            pending_input,
             last_update: None,
             simulation_accumulator: Duration::ZERO,
             cursor_position: None,
@@ -2120,9 +2129,8 @@ fn audio_for_event(event: &GameEvent) -> Option<(AudioKind, &'static str)> {
         GameEvent::InputRejected { .. } => Some((AudioKind::Effect, "sounds/buzzer.ogg")),
         GameEvent::PlantPlaced { .. } => Some((AudioKind::Effect, "sounds/plant.ogg")),
         GameEvent::PlantShoveled { .. } => Some((AudioKind::Effect, "sounds/plant2.ogg")),
-        GameEvent::SunCollected { .. } | GameEvent::CoinCollected { .. } => {
-            Some((AudioKind::Effect, "sounds/points.ogg"))
-        }
+        GameEvent::SunCollected { .. } => Some((AudioKind::Effect, "sounds/points.ogg")),
+        GameEvent::CoinCollected { .. } => Some((AudioKind::Effect, "sounds/coin.ogg")),
         GameEvent::ProjectileHit { .. } | GameEvent::ProjectileSplashHit { .. } => {
             Some((AudioKind::Effect, "sounds/splat.ogg"))
         }
@@ -2224,6 +2232,23 @@ mod tests {
         assert_eq!(
             audio_for_event(&GameEvent::MowerTriggered { row: 2 }),
             Some((AudioKind::Effect, "sounds/lawnmower.ogg"))
+        );
+        assert_eq!(
+            audio_for_event(&GameEvent::SunCollected {
+                entity: 1,
+                value: 25,
+                sun_total: 25,
+            }),
+            Some((AudioKind::Effect, "sounds/points.ogg"))
+        );
+        assert_eq!(
+            audio_for_event(&GameEvent::CoinCollected {
+                entity: 2,
+                coin_type: neopvz_core::CoinType::Silver,
+                value: 1,
+                coin_total: 1,
+            }),
+            Some((AudioKind::Effect, "sounds/coin.ogg"))
         );
         assert_eq!(audio_for_event(&GameEvent::Resumed), None);
         assert_eq!(audio_for_event(&GameEvent::StateChanged), None);
