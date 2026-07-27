@@ -93,6 +93,7 @@ enum Checkpoint {
     Coffee,
     TangleKelp,
     Spikeweed,
+    Digger,
 }
 
 impl From<Checkpoint> for SceneKind {
@@ -121,6 +122,7 @@ impl From<Checkpoint> for SceneKind {
             Checkpoint::Coffee => Self::Day,
             Checkpoint::TangleKelp => Self::Pool,
             Checkpoint::Spikeweed => Self::Day,
+            Checkpoint::Digger => Self::Day,
         }
     }
 }
@@ -1179,6 +1181,7 @@ impl App {
             Some(Checkpoint::Coffee) => Game::new(0, SceneKind::Day),
             Some(Checkpoint::TangleKelp) => Game::new(0, SceneKind::Pool),
             Some(Checkpoint::Spikeweed) => Game::new(0, SceneKind::Day),
+            Some(Checkpoint::Digger) => Game::new(0, SceneKind::Day),
             _ => new_scene_game(initial_scene),
         };
         let mut pending_input = Vec::new();
@@ -1209,6 +1212,7 @@ impl App {
             Some(Checkpoint::Coffee) => game.debug_prepare_coffee(),
             Some(Checkpoint::TangleKelp) => game.debug_prepare_tangle_kelp(),
             Some(Checkpoint::Spikeweed) => game.debug_prepare_spikeweed(),
+            Some(Checkpoint::Digger) => game.debug_prepare_digger(),
             _ => {}
         }
         Self {
@@ -2211,6 +2215,7 @@ fn audio_for_event(event: &GameEvent) -> Option<(AudioKind, &'static str)> {
             Some((AudioKind::Effect, "sounds/zombiesplash.ogg"))
         }
         GameEvent::PotatoMineArmed { .. } => Some((AudioKind::Effect, "sounds/dirt_rise.ogg")),
+        GameEvent::DiggerSurfaced { .. } => Some((AudioKind::Effect, "sounds/dirt_rise.ogg")),
         GameEvent::PlantSpecialTriggered {
             plant_type: neopvz_core::PlantType::Other(21),
             ..
@@ -2420,6 +2425,10 @@ mod tests {
         );
         assert_eq!(
             audio_for_event(&GameEvent::PotatoMineArmed { entity: 1 }),
+            Some((AudioKind::Effect, "sounds/dirt_rise.ogg"))
+        );
+        assert_eq!(
+            audio_for_event(&GameEvent::DiggerSurfaced { entity: 1 }),
             Some((AudioKind::Effect, "sounds/dirt_rise.ogg"))
         );
         assert_eq!(

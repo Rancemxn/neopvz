@@ -3617,6 +3617,24 @@ impl Game {
         );
     }
 
+    #[doc(hidden)]
+    pub fn debug_prepare_digger(&mut self) {
+        self.state.level_scene = SceneKind::Day;
+        self.state.scene = SceneKind::Day;
+        self.state.board.zombies.clear();
+        let mut setup_events = Vec::new();
+        let digger = self.spawn_digger_zombie(2, 0, Some(5 * POSITION_SCALE), &mut setup_events);
+        if let Some(zombie) = self
+            .state
+            .board
+            .zombies
+            .iter_mut()
+            .find(|zombie| zombie.id == digger)
+        {
+            zombie.speed = 0;
+        }
+    }
+
     fn new_with_mode(seed: u64, mode: ModeKind, level: u8, scene: SceneKind) -> Self {
         let mut rng = Mt19937::new(seed);
         let mut board = BoardState::new(scene, mode, level, &mut rng);
@@ -16279,6 +16297,18 @@ mod tests {
                 ..
             }
         )));
+    }
+
+    #[test]
+    fn debug_digger_checkpoint_emits_surface_audio_event() {
+        let mut game = Game::new(0, SceneKind::Day);
+        game.debug_prepare_digger();
+        let events = game.advance(InputFrame::default());
+        assert!(
+            events
+                .iter()
+                .any(|event| matches!(event, GameEvent::DiggerSurfaced { .. }))
+        );
     }
 
     #[test]
