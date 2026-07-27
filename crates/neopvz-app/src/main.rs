@@ -77,6 +77,7 @@ enum Checkpoint {
     ModeSelect,
     Day,
     GameOver,
+    GameLost,
 }
 
 impl From<Checkpoint> for SceneKind {
@@ -89,6 +90,7 @@ impl From<Checkpoint> for SceneKind {
             Checkpoint::ModeSelect => Self::ModeSelect,
             Checkpoint::Day => Self::Day,
             Checkpoint::GameOver => Self::GameOver,
+            Checkpoint::GameLost => Self::Day,
         }
     }
 }
@@ -279,7 +281,8 @@ fn main() -> ExitCode {
     );
 
     let force_game_over = matches!(cli.checkpoint, Some(Checkpoint::GameOver));
-    let initial_scene = if force_game_over {
+    let force_game_lost = matches!(cli.checkpoint, Some(Checkpoint::GameLost));
+    let initial_scene = if force_game_over || force_game_lost {
         SceneKind::Day
     } else {
         cli.checkpoint
@@ -316,6 +319,7 @@ fn main() -> ExitCode {
         initial_scene,
         cli.fullscreen,
         force_game_over,
+        force_game_lost,
     );
     let run_result = event_loop.run_app(&mut app);
 
@@ -1130,10 +1134,13 @@ impl App {
         initial_scene: SceneKind,
         fullscreen: bool,
         force_game_over: bool,
+        force_game_lost: bool,
     ) -> Self {
         let mut game = new_scene_game(initial_scene);
         if force_game_over {
             game.debug_force_game_over();
+        } else if force_game_lost {
+            game.debug_prepare_game_lost();
         }
         Self {
             renderer: None,
@@ -2203,6 +2210,10 @@ mod tests {
         assert_eq!(
             audio_for_event(&GameEvent::GameWon),
             Some((AudioKind::Music, "sounds/winmusic.ogg"))
+        );
+        assert_eq!(
+            audio_for_event(&GameEvent::GameLost { zombie: 1 }),
+            Some((AudioKind::Music, "sounds/losemusic.ogg"))
         );
         assert_eq!(
             audio_for_event(&GameEvent::Paused),

@@ -3305,6 +3305,16 @@ impl Game {
         self.state.scene = SceneKind::GameOver;
     }
 
+    #[doc(hidden)]
+    pub fn debug_prepare_game_lost(&mut self) {
+        self.state.level_scene = SceneKind::Day;
+        self.state.scene = SceneKind::Day;
+        self.state.board.mowers.clear();
+        self.state.board.zombies.clear();
+        let mut setup_events = Vec::new();
+        self.spawn_normal_zombie(2, 0, Some(-100 * POSITION_SCALE), &mut setup_events);
+    }
+
     fn new_with_mode(seed: u64, mode: ModeKind, level: u8, scene: SceneKind) -> Self {
         let mut rng = Mt19937::new(seed);
         let mut board = BoardState::new(scene, mode, level, &mut rng);
@@ -15044,6 +15054,19 @@ mod tests {
             event,
             GameEvent::GameLost { zombie: id } if *id == zombie
         )));
+        assert!(matches!(game.state.scene, SceneKind::GameOver));
+    }
+
+    #[test]
+    fn debug_game_lost_checkpoint_emits_terminal_audio_event() {
+        let mut game = Game::new_mode(7, ModeKind::Adventure, 1);
+        game.debug_prepare_game_lost();
+        let events = game.advance(InputFrame::default());
+        assert!(
+            events
+                .iter()
+                .any(|event| matches!(event, GameEvent::GameLost { .. }))
+        );
         assert!(matches!(game.state.scene, SceneKind::GameOver));
     }
 
