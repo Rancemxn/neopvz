@@ -3382,6 +3382,28 @@ impl Game {
         self.spawn_normal_zombie(2, 0, Some(grid_x(2)), &mut setup_events);
     }
 
+    #[doc(hidden)]
+    pub fn debug_prepare_explosion_plants(&mut self) {
+        self.state.level_scene = SceneKind::Night;
+        self.state.scene = SceneKind::Night;
+        self.state.sun = 500;
+        self.state.board.zombies.clear();
+        self.state.board.craters.clear();
+        self.advance(InputFrame {
+            actions: vec![
+                InputAction::SelectSeed { slot: 2 },
+                InputAction::Plant { row: 0, column: 0 },
+                InputAction::SelectSeed { slot: 20 },
+                InputAction::Plant { row: 1, column: 2 },
+                InputAction::SelectSeed { slot: 15 },
+                InputAction::Plant { row: 2, column: 4 },
+            ],
+        });
+        for plant in &mut self.state.board.plants {
+            plant.special_counter = 1;
+        }
+    }
+
     fn new_with_mode(seed: u64, mode: ModeKind, level: u8, scene: SceneKind) -> Self {
         let mut rng = Mt19937::new(seed);
         let mut board = BoardState::new(scene, mode, level, &mut rng);
@@ -15148,6 +15170,23 @@ mod tests {
                 .any(|event| matches!(event, GameEvent::GameWon))
         );
         assert!(matches!(game.state.scene, SceneKind::Complete));
+    }
+
+    #[test]
+    fn debug_explosion_checkpoint_triggers_all_three_specials() {
+        let mut game = Game::new(0, SceneKind::Night);
+        game.debug_prepare_explosion_plants();
+        assert_eq!(game.state.board.plants.len(), 3);
+        let events = game.advance(InputFrame::default());
+        for plant_type in [2, 20, 15] {
+            assert!(events.iter().any(|event| matches!(
+                event,
+                GameEvent::PlantSpecialTriggered {
+                    plant_type: PlantType::Other(actual),
+                    ..
+                } if *actual == plant_type
+            )));
+        }
     }
 
     #[test]
