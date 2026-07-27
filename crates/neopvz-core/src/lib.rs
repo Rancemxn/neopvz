@@ -3315,6 +3315,14 @@ impl Game {
         self.spawn_normal_zombie(2, 0, Some(-100 * POSITION_SCALE), &mut setup_events);
     }
 
+    #[doc(hidden)]
+    pub fn debug_prepare_game_won(&mut self) {
+        self.state.level_scene = SceneKind::Day;
+        self.state.scene = SceneKind::Day;
+        self.state.board.zombies.clear();
+        self.state.board.wave.current = self.state.board.wave.total;
+    }
+
     fn new_with_mode(seed: u64, mode: ModeKind, level: u8, scene: SceneKind) -> Self {
         let mut rng = Mt19937::new(seed);
         let mut board = BoardState::new(scene, mode, level, &mut rng);
@@ -15068,6 +15076,19 @@ mod tests {
                 .any(|event| matches!(event, GameEvent::GameLost { .. }))
         );
         assert!(matches!(game.state.scene, SceneKind::GameOver));
+    }
+
+    #[test]
+    fn debug_game_won_checkpoint_emits_terminal_audio_event() {
+        let mut game = Game::new_mode(7, ModeKind::Adventure, 1);
+        game.debug_prepare_game_won();
+        let events = game.advance(InputFrame::default());
+        assert!(
+            events
+                .iter()
+                .any(|event| matches!(event, GameEvent::GameWon))
+        );
+        assert!(matches!(game.state.scene, SceneKind::Complete));
     }
 
     #[test]

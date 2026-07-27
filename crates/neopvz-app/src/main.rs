@@ -78,6 +78,7 @@ enum Checkpoint {
     Day,
     GameOver,
     GameLost,
+    GameWon,
 }
 
 impl From<Checkpoint> for SceneKind {
@@ -91,6 +92,7 @@ impl From<Checkpoint> for SceneKind {
             Checkpoint::Day => Self::Day,
             Checkpoint::GameOver => Self::GameOver,
             Checkpoint::GameLost => Self::Day,
+            Checkpoint::GameWon => Self::Day,
         }
     }
 }
@@ -282,7 +284,8 @@ fn main() -> ExitCode {
 
     let force_game_over = matches!(cli.checkpoint, Some(Checkpoint::GameOver));
     let force_game_lost = matches!(cli.checkpoint, Some(Checkpoint::GameLost));
-    let initial_scene = if force_game_over || force_game_lost {
+    let force_game_won = matches!(cli.checkpoint, Some(Checkpoint::GameWon));
+    let initial_scene = if force_game_over || force_game_lost || force_game_won {
         SceneKind::Day
     } else {
         cli.checkpoint
@@ -318,8 +321,7 @@ fn main() -> ExitCode {
         audio,
         initial_scene,
         cli.fullscreen,
-        force_game_over,
-        force_game_lost,
+        cli.checkpoint,
     );
     let run_result = event_loop.run_app(&mut app);
 
@@ -1133,14 +1135,14 @@ impl App {
         audio: Option<KiraAudioBackend>,
         initial_scene: SceneKind,
         fullscreen: bool,
-        force_game_over: bool,
-        force_game_lost: bool,
+        checkpoint: Option<Checkpoint>,
     ) -> Self {
         let mut game = new_scene_game(initial_scene);
-        if force_game_over {
-            game.debug_force_game_over();
-        } else if force_game_lost {
-            game.debug_prepare_game_lost();
+        match checkpoint {
+            Some(Checkpoint::GameOver) => game.debug_force_game_over(),
+            Some(Checkpoint::GameLost) => game.debug_prepare_game_lost(),
+            Some(Checkpoint::GameWon) => game.debug_prepare_game_won(),
+            _ => {}
         }
         Self {
             renderer: None,
