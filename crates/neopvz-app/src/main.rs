@@ -2308,6 +2308,7 @@ fn audio_companion_for_event(event: &GameEvent) -> Option<(AudioKind, &'static s
             ..
         } => Some((AudioKind::Effect, "sounds/juicy.ogg")),
         GameEvent::UmbrellaDeflected { .. } => Some((AudioKind::Effect, "sounds/throw2.ogg")),
+        GameEvent::DiggerSurfaced { .. } => Some((AudioKind::Effect, "sounds/wakeup.ogg")),
         _ => None,
     }
 }
@@ -2482,6 +2483,10 @@ mod tests {
         assert_eq!(
             audio_for_event(&GameEvent::DiggerSurfaced { entity: 1 }),
             Some((AudioKind::Effect, "sounds/dirt_rise.ogg"))
+        );
+        assert_eq!(
+            audio_companion_for_event(&GameEvent::DiggerSurfaced { entity: 1 }),
+            Some((AudioKind::Effect, "sounds/wakeup.ogg"))
         );
         assert_eq!(
             audio_for_event(&GameEvent::MetalStolen {
