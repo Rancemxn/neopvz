@@ -86,6 +86,7 @@ enum Checkpoint {
     PotatoMine,
     ExplosionPlants,
     Butter,
+    VaseBreak,
     BloverChomper,
     HypnoJackbox,
     CobCannon,
@@ -118,6 +119,7 @@ impl From<Checkpoint> for SceneKind {
             Checkpoint::PotatoMine => Self::Day,
             Checkpoint::ExplosionPlants => Self::Night,
             Checkpoint::Butter => Self::Day,
+            Checkpoint::VaseBreak => Self::Day,
             Checkpoint::BloverChomper => Self::Day,
             Checkpoint::HypnoJackbox => Self::Night,
             Checkpoint::CobCannon => Self::Day,
@@ -1180,6 +1182,7 @@ impl App {
                 Game::new_mode(0, ModeKind::ZenGarden, 0)
             }
             Some(Checkpoint::Butter) => Game::new(0, SceneKind::Day),
+            Some(Checkpoint::VaseBreak) => Game::new_mode(0, ModeKind::Vasebreaker, 0),
             Some(Checkpoint::ExplosionPlants) => Game::new(0, SceneKind::Night),
             Some(Checkpoint::BloverChomper) => Game::new(0, SceneKind::Day),
             Some(Checkpoint::HypnoJackbox) => Game::new(0, SceneKind::Night),
@@ -1214,6 +1217,7 @@ impl App {
             Some(Checkpoint::PotatoMine) => game.debug_prepare_potato_mine(),
             Some(Checkpoint::ExplosionPlants) => game.debug_prepare_explosion_plants(),
             Some(Checkpoint::Butter) => startup_events = game.debug_prepare_butter(),
+            Some(Checkpoint::VaseBreak) => startup_events = game.debug_prepare_vase_break(),
             Some(Checkpoint::BloverChomper) => game.debug_prepare_blover_chomper(),
             Some(Checkpoint::HypnoJackbox) => game.debug_prepare_hypno_jackbox(),
             Some(Checkpoint::CobCannon) => game.debug_prepare_cob_cannon(),
@@ -2263,6 +2267,7 @@ fn audio_for_event(event: &GameEvent) -> Option<(AudioKind, &'static str)> {
         GameEvent::JackboxExploded { .. } => Some((AudioKind::Effect, "sounds/explosion.ogg")),
         GameEvent::ZombieChilled { .. } => Some((AudioKind::Effect, "sounds/frozen.ogg")),
         GameEvent::ZombieButtered { .. } => Some((AudioKind::Effect, "sounds/butter.ogg")),
+        GameEvent::VaseBroken { .. } => Some((AudioKind::Effect, "sounds/vase_breaking.ogg")),
         GameEvent::CobCannonFired { .. } => Some((AudioKind::Effect, "sounds/coblaunch.ogg")),
         GameEvent::PortalOpened { .. } => Some((AudioKind::Effect, "sounds/portal.ogg")),
         GameEvent::ProjectileHit { .. } | GameEvent::ProjectileSplashHit { .. } => {
@@ -2499,6 +2504,14 @@ mod tests {
         assert_eq!(
             audio_for_event(&GameEvent::ZombieButtered { entity: 1 }),
             Some((AudioKind::Effect, "sounds/butter.ogg"))
+        );
+        assert_eq!(
+            audio_for_event(&GameEvent::VaseBroken {
+                entity: 1,
+                row: 2,
+                column: 2,
+            }),
+            Some((AudioKind::Effect, "sounds/vase_breaking.ogg"))
         );
         assert_eq!(
             audio_for_event(&GameEvent::CobCannonFired {

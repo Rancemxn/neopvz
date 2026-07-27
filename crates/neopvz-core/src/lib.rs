@@ -3423,6 +3423,23 @@ impl Game {
     }
 
     #[doc(hidden)]
+    pub fn debug_prepare_vase_break(&mut self) -> Vec<GameEvent> {
+        self.state.level_scene = SceneKind::Day;
+        self.state.scene = SceneKind::Day;
+        self.state.mode = ModeKind::Vasebreaker;
+        self.state.board.vases = vec![VaseState {
+            id: 1,
+            row: 2,
+            column: 2,
+            contents: VaseContents::Plant(PlantType::Peashooter),
+            leaf: false,
+        }];
+        let mut events = Vec::new();
+        self.break_vase(2, 2, &mut events);
+        events
+    }
+
+    #[doc(hidden)]
     pub fn debug_prepare_blover_chomper(&mut self) {
         self.state.level_scene = SceneKind::Day;
         self.state.scene = SceneKind::Day;
