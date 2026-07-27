@@ -2993,6 +2993,11 @@ pub enum GameEvent {
     ZombieDied {
         entity: EntityId,
     },
+    JackboxExploded {
+        entity: EntityId,
+        row: u8,
+        column: u8,
+    },
     ZombieFled {
         entity: EntityId,
     },
@@ -5949,6 +5954,14 @@ impl Game {
             }
         }
 
+        let zombie_column = ((zx - 40 * POSITION_SCALE) / (80 * POSITION_SCALE))
+            .clamp(0, i64::from(self.state.board.columns.saturating_sub(1)))
+            as u8;
+        events.push(GameEvent::JackboxExploded {
+            entity: zombie_id,
+            row: zrow,
+            column: zombie_column,
+        });
         self.emit_zombie_died(zombie_id, events);
     }
 
@@ -14399,6 +14412,15 @@ mod tests {
         let mut game = Game::new(7, SceneKind::Day);
         let mut setup = Vec::new();
         let zombie = game.spawn_jackbox_zombie(2, 0, Some(780 * POSITION_SCALE), &mut setup);
+        let jack = game
+            .state
+            .board
+            .zombies
+            .iter_mut()
+            .find(|jack| jack.id == zombie)
+            .unwrap();
+        jack.jackbox_timer = 1;
+        jack.speed = 0;
 
         assert_eq!(
             game.state
@@ -14431,6 +14453,10 @@ mod tests {
             .filter(|e| matches!(e, GameEvent::ZombieDied { entity: eid } if *eid == zombie))
             .collect();
         assert!(!died.is_empty(), "ZombieDied should be emitted for Jackbox");
+        assert!(events.iter().any(|event| matches!(
+            event,
+            GameEvent::JackboxExploded { entity, row: 2, .. } if *entity == zombie
+        )));
     }
 
     #[test]
