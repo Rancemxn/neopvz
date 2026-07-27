@@ -85,6 +85,7 @@ enum Checkpoint {
     IceShroom,
     PotatoMine,
     ExplosionPlants,
+    BloverChomper,
 }
 
 impl From<Checkpoint> for SceneKind {
@@ -105,6 +106,7 @@ impl From<Checkpoint> for SceneKind {
             Checkpoint::IceShroom => Self::Night,
             Checkpoint::PotatoMine => Self::Day,
             Checkpoint::ExplosionPlants => Self::Night,
+            Checkpoint::BloverChomper => Self::Day,
         }
     }
 }
@@ -1155,6 +1157,7 @@ impl App {
                 Game::new_mode(0, ModeKind::ZenGarden, 0)
             }
             Some(Checkpoint::ExplosionPlants) => Game::new(0, SceneKind::Night),
+            Some(Checkpoint::BloverChomper) => Game::new(0, SceneKind::Day),
             _ => new_scene_game(initial_scene),
         };
         let mut pending_input = Vec::new();
@@ -1176,6 +1179,7 @@ impl App {
             Some(Checkpoint::IceShroom) => game.debug_prepare_ice_shroom(),
             Some(Checkpoint::PotatoMine) => game.debug_prepare_potato_mine(),
             Some(Checkpoint::ExplosionPlants) => game.debug_prepare_explosion_plants(),
+            Some(Checkpoint::BloverChomper) => game.debug_prepare_blover_chomper(),
             _ => {}
         }
         Self {
@@ -2178,6 +2182,11 @@ fn audio_for_event(event: &GameEvent) -> Option<(AudioKind, &'static str)> {
             plant_type: neopvz_core::PlantType::Other(15),
             ..
         } => Some((AudioKind::Effect, "sounds/doomshroom.ogg")),
+        GameEvent::PlantSpecialTriggered {
+            plant_type: neopvz_core::PlantType::Other(6),
+            ..
+        } => Some((AudioKind::Effect, "sounds/bigchomp.ogg")),
+        GameEvent::BloverTriggered { .. } => Some((AudioKind::Effect, "sounds/blover.ogg")),
         GameEvent::ProjectileHit { .. } | GameEvent::ProjectileSplashHit { .. } => {
             Some((AudioKind::Effect, "sounds/splat.ogg"))
         }
@@ -2329,6 +2338,7 @@ mod tests {
             (neopvz_core::PlantType::Other(2), "sounds/cherrybomb.ogg"),
             (neopvz_core::PlantType::Other(20), "sounds/jalapeno.ogg"),
             (neopvz_core::PlantType::Other(15), "sounds/doomshroom.ogg"),
+            (neopvz_core::PlantType::Other(6), "sounds/bigchomp.ogg"),
         ] {
             assert_eq!(
                 audio_for_event(&GameEvent::PlantSpecialTriggered {
@@ -2338,6 +2348,10 @@ mod tests {
                 Some((AudioKind::Effect, path))
             );
         }
+        assert_eq!(
+            audio_for_event(&GameEvent::BloverTriggered { entity: 1, row: 2 }),
+            Some((AudioKind::Effect, "sounds/blover.ogg"))
+        );
         assert_eq!(audio_for_event(&GameEvent::Resumed), None);
         assert_eq!(audio_for_event(&GameEvent::StateChanged), None);
     }

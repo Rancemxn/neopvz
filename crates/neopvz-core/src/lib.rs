@@ -3404,6 +3404,40 @@ impl Game {
         }
     }
 
+    #[doc(hidden)]
+    pub fn debug_prepare_blover_chomper(&mut self) {
+        self.state.level_scene = SceneKind::Day;
+        self.state.scene = SceneKind::Day;
+        self.state.sun = 300;
+        self.state.board.zombies.clear();
+        self.advance(InputFrame {
+            actions: vec![
+                InputAction::SelectSeed { slot: 27 },
+                InputAction::Plant { row: 0, column: 0 },
+                InputAction::SelectSeed { slot: 6 },
+                InputAction::Plant { row: 2, column: 2 },
+            ],
+        });
+        let mut setup_events = Vec::new();
+        let target = self.spawn_normal_zombie(
+            2,
+            0,
+            Some(grid_x(2) + 30 * POSITION_SCALE),
+            &mut setup_events,
+        );
+        for plant in &mut self.state.board.plants {
+            match plant.plant_type {
+                PlantType::Other(27) => plant.special_counter = 1,
+                PlantType::Other(6) => {
+                    plant.special_armed = true;
+                    plant.special_target = Some(target);
+                    plant.special_counter = 1;
+                }
+                _ => {}
+            }
+        }
+    }
+
     fn new_with_mode(seed: u64, mode: ModeKind, level: u8, scene: SceneKind) -> Self {
         let mut rng = Mt19937::new(seed);
         let mut board = BoardState::new(scene, mode, level, &mut rng);
@@ -15187,6 +15221,25 @@ mod tests {
                 } if *actual == plant_type
             )));
         }
+    }
+
+    #[test]
+    fn debug_blover_chomper_checkpoint_triggers_both_audio_events() {
+        let mut game = Game::new(0, SceneKind::Day);
+        game.debug_prepare_blover_chomper();
+        let events = game.advance(InputFrame::default());
+        assert!(
+            events
+                .iter()
+                .any(|event| matches!(event, GameEvent::BloverTriggered { .. }))
+        );
+        assert!(events.iter().any(|event| matches!(
+            event,
+            GameEvent::PlantSpecialTriggered {
+                plant_type: PlantType::Other(6),
+                ..
+            }
+        )));
     }
 
     #[test]
