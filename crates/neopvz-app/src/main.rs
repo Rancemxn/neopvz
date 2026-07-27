@@ -2096,6 +2096,8 @@ fn mode_level_at(mode: ModeKind, x: f32, y: f32) -> Option<u8> {
 
 fn audio_for_event(event: &GameEvent) -> Option<(AudioKind, &'static str)> {
     match event {
+        GameEvent::SeedSelected { .. } => Some((AudioKind::Effect, "sounds/tap.ogg")),
+        GameEvent::InputRejected { .. } => Some((AudioKind::Effect, "sounds/buzzer.ogg")),
         GameEvent::PlantPlaced { .. } => Some((AudioKind::Effect, "sounds/plant.ogg")),
         GameEvent::PlantShoveled { .. } => Some((AudioKind::Effect, "sounds/shovel.ogg")),
         GameEvent::SunCollected { .. } | GameEvent::CoinCollected { .. } => {
@@ -2172,6 +2174,20 @@ mod tests {
         assert_eq!(
             audio_for_event(&GameEvent::PlantShoveled { entity: 1 }),
             Some((AudioKind::Effect, "sounds/shovel.ogg"))
+        );
+        assert_eq!(
+            audio_for_event(&GameEvent::SeedSelected {
+                slot: 1,
+                plant_type: neopvz_core::PlantType::Peashooter,
+            }),
+            Some((AudioKind::Effect, "sounds/tap.ogg"))
+        );
+        assert_eq!(
+            audio_for_event(&GameEvent::InputRejected {
+                action: InputAction::Pause,
+                reason: neopvz_core::InputRejectReason::OutsideBoard,
+            }),
+            Some((AudioKind::Effect, "sounds/buzzer.ogg"))
         );
         assert_eq!(
             audio_for_event(&GameEvent::GameWon),
