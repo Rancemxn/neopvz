@@ -2920,6 +2920,10 @@ pub enum GameEvent {
         value: u32,
         coin_total: u32,
     },
+    SeedPacketReady {
+        slot: u8,
+        plant_type: PlantType,
+    },
     PickupCollected {
         entity: EntityId,
         coin_type: CoinType,
@@ -3404,7 +3408,7 @@ impl Game {
                 self.update_zombies(&mut events);
                 self.update_mowers(&mut events);
                 self.update_projectiles(&mut events);
-                self.update_seed_packets();
+                self.update_seed_packets(&mut events);
                 // Board.cpp:1416: the sky-sun clock is only armed when the
                 // stage is not a night stage.
                 if self.state.mode != ModeKind::IZombie && !scene_is_night(self.state.scene) {
@@ -7825,9 +7829,16 @@ impl Game {
         }
     }
 
-    fn update_seed_packets(&mut self) {
+    fn update_seed_packets(&mut self, events: &mut Vec<GameEvent>) {
         for packet in &mut self.state.board.seed_packets {
+            let was_refreshing = packet.refresh_remaining > 0;
             packet.refresh_remaining = packet.refresh_remaining.saturating_sub(1);
+            if was_refreshing && packet.refresh_remaining == 0 {
+                events.push(GameEvent::SeedPacketReady {
+                    slot: packet.slot,
+                    plant_type: packet.plant_type,
+                });
+            }
         }
     }
 
@@ -10199,6 +10210,19 @@ mod tests {
                 1_030_590_208,
             ]
         );
+    }
+
+    #[test]
+    fn seed_packet_ready_anchor_fires_when_cooldown_reaches_zero() {
+        let mut game = Game::new(7, SceneKind::Day);
+        game.state.board.seed_packets[1].refresh_remaining = 1;
+        let events = game.advance(InputFrame::default());
+        assert!(
+            events
+                .iter()
+                .any(|event| matches!(event, GameEvent::SeedPacketReady { slot: 1, .. }))
+        );
+        assert_eq!(game.state.board.seed_packets[1].refresh_remaining, 0);
     }
 
     #[test]
