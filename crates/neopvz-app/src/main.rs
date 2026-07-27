@@ -92,6 +92,7 @@ enum Checkpoint {
     GraveBuster,
     Coffee,
     TangleKelp,
+    Spikeweed,
 }
 
 impl From<Checkpoint> for SceneKind {
@@ -119,6 +120,7 @@ impl From<Checkpoint> for SceneKind {
             Checkpoint::GraveBuster => Self::Day,
             Checkpoint::Coffee => Self::Day,
             Checkpoint::TangleKelp => Self::Pool,
+            Checkpoint::Spikeweed => Self::Day,
         }
     }
 }
@@ -1176,6 +1178,7 @@ impl App {
             Some(Checkpoint::GraveBuster) => Game::new(0, SceneKind::Day),
             Some(Checkpoint::Coffee) => Game::new(0, SceneKind::Day),
             Some(Checkpoint::TangleKelp) => Game::new(0, SceneKind::Pool),
+            Some(Checkpoint::Spikeweed) => Game::new(0, SceneKind::Day),
             _ => new_scene_game(initial_scene),
         };
         let mut pending_input = Vec::new();
@@ -1205,6 +1208,7 @@ impl App {
             Some(Checkpoint::GraveBuster) => game.debug_prepare_gravebuster(),
             Some(Checkpoint::Coffee) => game.debug_prepare_coffee(),
             Some(Checkpoint::TangleKelp) => game.debug_prepare_tangle_kelp(),
+            Some(Checkpoint::Spikeweed) => game.debug_prepare_spikeweed(),
             _ => {}
         }
         Self {
@@ -2206,6 +2210,11 @@ fn audio_for_event(event: &GameEvent) -> Option<(AudioKind, &'static str)> {
         GameEvent::TangleKelpWaterEntry { .. } => {
             Some((AudioKind::Effect, "sounds/zombiesplash.ogg"))
         }
+        GameEvent::PotatoMineArmed { .. } => Some((AudioKind::Effect, "sounds/dirt_rise.ogg")),
+        GameEvent::PlantSpecialTriggered {
+            plant_type: neopvz_core::PlantType::Other(21),
+            ..
+        } => Some((AudioKind::Effect, "sounds/throw.ogg")),
         GameEvent::PlantSpecialTriggered {
             plant_type: neopvz_core::PlantType::Other(4),
             ..
@@ -2391,6 +2400,7 @@ mod tests {
                 "sounds/gravebusterchomp.ogg",
             ),
             (neopvz_core::PlantType::Other(35), "sounds/coffee.ogg"),
+            (neopvz_core::PlantType::Other(21), "sounds/throw.ogg"),
         ] {
             assert_eq!(
                 audio_for_event(&GameEvent::PlantSpecialTriggered {
@@ -2407,6 +2417,10 @@ mod tests {
         assert_eq!(
             audio_for_event(&GameEvent::TangleKelpWaterEntry { entity: 1 }),
             Some((AudioKind::Effect, "sounds/zombiesplash.ogg"))
+        );
+        assert_eq!(
+            audio_for_event(&GameEvent::PotatoMineArmed { entity: 1 }),
+            Some((AudioKind::Effect, "sounds/dirt_rise.ogg"))
         );
         assert_eq!(
             audio_for_event(&GameEvent::BloverTriggered { entity: 1, row: 2 }),
