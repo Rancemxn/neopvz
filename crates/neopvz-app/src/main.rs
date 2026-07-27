@@ -2102,7 +2102,7 @@ fn audio_for_event(event: &GameEvent) -> Option<(AudioKind, &'static str)> {
         GameEvent::SeedSelected { .. } => Some((AudioKind::Effect, "sounds/tap.ogg")),
         GameEvent::InputRejected { .. } => Some((AudioKind::Effect, "sounds/buzzer.ogg")),
         GameEvent::PlantPlaced { .. } => Some((AudioKind::Effect, "sounds/plant.ogg")),
-        GameEvent::PlantShoveled { .. } => Some((AudioKind::Effect, "sounds/shovel.ogg")),
+        GameEvent::PlantShoveled { .. } => Some((AudioKind::Effect, "sounds/plant2.ogg")),
         GameEvent::SunCollected { .. } | GameEvent::CoinCollected { .. } => {
             Some((AudioKind::Effect, "sounds/points.ogg"))
         }
@@ -2176,7 +2176,7 @@ mod tests {
     fn maps_terminal_and_player_events_to_audio_resources() {
         assert_eq!(
             audio_for_event(&GameEvent::PlantShoveled { entity: 1 }),
-            Some((AudioKind::Effect, "sounds/shovel.ogg"))
+            Some((AudioKind::Effect, "sounds/plant2.ogg"))
         );
         assert_eq!(
             audio_for_event(&GameEvent::SeedSelected {
