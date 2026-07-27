@@ -3299,6 +3299,12 @@ impl Game {
         Self::new_with_mode(seed, mode, level, mode_level_scene(mode, level))
     }
 
+    #[doc(hidden)]
+    pub fn debug_force_game_over(&mut self) {
+        self.state.level_scene = self.state.scene;
+        self.state.scene = SceneKind::GameOver;
+    }
+
     fn new_with_mode(seed: u64, mode: ModeKind, level: u8, scene: SceneKind) -> Self {
         let mut rng = Mt19937::new(seed);
         let mut board = BoardState::new(scene, mode, level, &mut rng);
@@ -15572,7 +15578,7 @@ mod tests {
             ],
         });
         game.state.tick = 42;
-        game.state.scene = SceneKind::GameOver;
+        game.debug_force_game_over();
         game.state.sun = 25;
 
         let events = game.advance(InputFrame {

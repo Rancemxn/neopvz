@@ -76,6 +76,7 @@ enum Checkpoint {
     SeedChooser,
     ModeSelect,
     Day,
+    GameOver,
 }
 
 impl From<Checkpoint> for SceneKind {
@@ -87,6 +88,7 @@ impl From<Checkpoint> for SceneKind {
             Checkpoint::SeedChooser => Self::SeedChooser,
             Checkpoint::ModeSelect => Self::ModeSelect,
             Checkpoint::Day => Self::Day,
+            Checkpoint::GameOver => Self::GameOver,
         }
     }
 }
@@ -276,10 +278,14 @@ fn main() -> ExitCode {
         "resource inventory verified"
     );
 
-    let initial_scene = cli
-        .checkpoint
-        .map(SceneKind::from)
-        .unwrap_or(SceneKind::Title);
+    let force_game_over = matches!(cli.checkpoint, Some(Checkpoint::GameOver));
+    let initial_scene = if force_game_over {
+        SceneKind::Day
+    } else {
+        cli.checkpoint
+            .map(SceneKind::from)
+            .unwrap_or(SceneKind::Title)
+    };
     let assets = match load_assets(&resources) {
         Ok(assets) => assets,
         Err(error) => {
@@ -303,7 +309,14 @@ fn main() -> ExitCode {
         }
     };
     event_loop.set_control_flow(ControlFlow::Poll);
-    let mut app = App::new(assets, resources, audio, initial_scene, cli.fullscreen);
+    let mut app = App::new(
+        assets,
+        resources,
+        audio,
+        initial_scene,
+        cli.fullscreen,
+        force_game_over,
+    );
     let run_result = event_loop.run_app(&mut app);
 
     if let Err(error) = run_result {
@@ -1116,13 +1129,18 @@ impl App {
         audio: Option<KiraAudioBackend>,
         initial_scene: SceneKind,
         fullscreen: bool,
+        force_game_over: bool,
     ) -> Self {
+        let mut game = Game::new(0, initial_scene);
+        if force_game_over {
+            game.debug_force_game_over();
+        }
         Self {
             renderer: None,
             assets,
             resources,
             audio,
-            game: Game::new(0, initial_scene),
+            game,
             pending_input: Vec::new(),
             last_update: None,
             simulation_accumulator: Duration::ZERO,
