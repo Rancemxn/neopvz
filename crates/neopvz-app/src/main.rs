@@ -14,15 +14,16 @@ use neopvz_core::{
 };
 use neopvz_data::{AssetLayout, ResourceProvider};
 use neopvz_render::{
-    BOSS_BACKGROUND_IMAGE_ID, CHALLENGE_THUMBNAIL_BASE_IMAGE_ID, CRAZY_DAVE_BEARD_IMAGE_ID,
-    CRAZY_DAVE_BODY_IMAGE_ID, CRAZY_DAVE_EYE_IMAGE_ID, CRAZY_DAVE_EYEBROW_IMAGE_ID,
-    CRAZY_DAVE_HEAD_IMAGE_ID, CRAZY_DAVE_INNER_ARM_IMAGE_ID, CRAZY_DAVE_INNER_FINGER1_IMAGE_ID,
-    CRAZY_DAVE_INNER_FINGER2_IMAGE_ID, CRAZY_DAVE_INNER_FINGER3_IMAGE_ID,
-    CRAZY_DAVE_INNER_FINGER4_IMAGE_ID, CRAZY_DAVE_INNER_HAND_IMAGE_ID, CRAZY_DAVE_MOUTH_IMAGE_ID,
-    CRAZY_DAVE_OUTER_ARM_IMAGE_ID, CRAZY_DAVE_OUTER_FINGER1_IMAGE_ID,
-    CRAZY_DAVE_OUTER_FINGER2_IMAGE_ID, CRAZY_DAVE_OUTER_FINGER3_IMAGE_ID,
-    CRAZY_DAVE_OUTER_FINGER4_IMAGE_ID, CRAZY_DAVE_OUTER_HAND_IMAGE_ID, CRAZY_DAVE_POT_IMAGE_ID,
-    DAY_BACKGROUND_IMAGE_ID, FOG_BACKGROUND_IMAGE_ID, GpuRenderer, ImageAsset, LogicalViewport,
+    AffineSpriteCommand, BOSS_BACKGROUND_IMAGE_ID, CHALLENGE_THUMBNAIL_BASE_IMAGE_ID,
+    CRAZY_DAVE_BEARD_IMAGE_ID, CRAZY_DAVE_BODY_IMAGE_ID, CRAZY_DAVE_EYE_IMAGE_ID,
+    CRAZY_DAVE_EYEBROW_IMAGE_ID, CRAZY_DAVE_HEAD_IMAGE_ID, CRAZY_DAVE_INNER_ARM_IMAGE_ID,
+    CRAZY_DAVE_INNER_FINGER1_IMAGE_ID, CRAZY_DAVE_INNER_FINGER2_IMAGE_ID,
+    CRAZY_DAVE_INNER_FINGER3_IMAGE_ID, CRAZY_DAVE_INNER_FINGER4_IMAGE_ID,
+    CRAZY_DAVE_INNER_HAND_IMAGE_ID, CRAZY_DAVE_MOUTH_IMAGE_ID, CRAZY_DAVE_OUTER_ARM_IMAGE_ID,
+    CRAZY_DAVE_OUTER_FINGER1_IMAGE_ID, CRAZY_DAVE_OUTER_FINGER2_IMAGE_ID,
+    CRAZY_DAVE_OUTER_FINGER3_IMAGE_ID, CRAZY_DAVE_OUTER_FINGER4_IMAGE_ID,
+    CRAZY_DAVE_OUTER_HAND_IMAGE_ID, CRAZY_DAVE_POT_IMAGE_ID, DAY_BACKGROUND_IMAGE_ID,
+    FOG_BACKGROUND_IMAGE_ID, GpuRenderer, ImageAsset, LogicalViewport,
     MODE_SELECT_BACKGROUND_IMAGE_ID, MODE_SELECT_BLANK_IMAGE_ID, MODE_SELECT_WINDOW_IMAGE_ID,
     NIGHT_BACKGROUND_IMAGE_ID, POOL_BACKGROUND_IMAGE_ID, ROOF_BACKGROUND_IMAGE_ID, RenderFrame,
     SCREEN_PIXEL_IMAGE_ID, SEED_CHOOSER_BUTTON_IMAGE_ID, SEED_CHOOSER_IMAGE_ID,
@@ -35,7 +36,10 @@ use neopvz_render::{
     SELECTOR_TROPHY_IMAGE_ID, SELECTOR_VASEBREAKER_IMAGE_ID, SELECTOR_WOODSIGN1_IMAGE_ID,
     SELECTOR_WOODSIGN2_IMAGE_ID, SELECTOR_WOODSIGN3_IMAGE_ID, SELECTOR_ZEN_GARDEN_IMAGE_ID,
     SURVIVAL_THUMBNAIL_BASE_IMAGE_ID, SpriteCommand, TITLE_IMAGE_ID, TITLE_LOAD_BAR_DIRT_IMAGE_ID,
-    TITLE_LOAD_BAR_GRASS_IMAGE_ID, TITLE_LOGO_IMAGE_ID, TITLE_START_PROMPT_HOVER_IMAGE_ID,
+    TITLE_LOAD_BAR_GRASS_IMAGE_ID, TITLE_LOAD_BAR_ROCK1_IMAGE_ID, TITLE_LOAD_BAR_ROCK3_IMAGE_ID,
+    TITLE_LOAD_BAR_SPROUT_BODY_IMAGE_ID, TITLE_LOAD_BAR_SPROUT_PETAL_IMAGE_ID,
+    TITLE_LOAD_BAR_ZOMBIE_HAIR_IMAGE_ID, TITLE_LOAD_BAR_ZOMBIE_HEAD_IMAGE_ID,
+    TITLE_LOAD_BAR_ZOMBIE_JAW_IMAGE_ID, TITLE_LOGO_IMAGE_ID, TITLE_START_PROMPT_HOVER_IMAGE_ID,
     TITLE_START_PROMPT_IMAGE_ID, TITLE_START_PROMPT_SHADOW_IMAGE_ID, TUTORIAL_BUBBLE_IMAGE_ID,
     TUTORIAL_CONTINUE_IMAGE_ID, TUTORIAL_TEXT1_IMAGE_ID, TUTORIAL_TEXT2_IMAGE_ID,
     UI_PIXEL_IMAGE_ID, logical_position,
@@ -94,9 +98,117 @@ const TITLE_START_BUTTON_Y: f32 = 529.0;
 const TITLE_START_BUTTON_WIDTH: f32 = 314.0;
 const TITLE_START_BUTTON_HEIGHT: f32 = 50.0;
 
+#[derive(Clone, Copy)]
+struct TitleReanimPart {
+    resource_id: u32,
+    x: f32,
+    y: f32,
+    skew_x: f32,
+    skew_y: f32,
+    scale_x: f32,
+    scale_y: f32,
+}
+
+const fn title_reanim_part(
+    resource_id: u32,
+    x: f32,
+    y: f32,
+    skew_x: f32,
+    skew_y: f32,
+    scale_x: f32,
+    scale_y: f32,
+) -> TitleReanimPart {
+    TitleReanimPart {
+        resource_id,
+        x,
+        y,
+        skew_x,
+        skew_y,
+        scale_x,
+        scale_y,
+    }
+}
+
+#[rustfmt::skip]
+const TITLE_SPROUT_PARTS: [TitleReanimPart; 10] = [
+    title_reanim_part(TITLE_LOAD_BAR_ROCK3_IMAGE_ID,          5.2, 22.6,   15.0,   15.0, 0.200, 0.200),
+    title_reanim_part(TITLE_LOAD_BAR_SPROUT_BODY_IMAGE_ID,   -1.5,  4.5,    0.0,    0.0, 0.800, 0.753),
+    title_reanim_part(TITLE_LOAD_BAR_ROCK3_IMAGE_ID,         -0.2, 29.6, -119.9, -119.9, 0.424, 0.424),
+    title_reanim_part(TITLE_LOAD_BAR_ROCK3_IMAGE_ID,          6.0, 22.5,    0.0,    0.0, 0.382, 0.359),
+    title_reanim_part(TITLE_LOAD_BAR_ROCK3_IMAGE_ID,          1.2, 24.1,   15.0,   15.0, 0.200, 0.200),
+    title_reanim_part(TITLE_LOAD_BAR_ROCK3_IMAGE_ID,          6.4, 24.9,   15.0,   15.0, 0.200, 0.200),
+    title_reanim_part(TITLE_LOAD_BAR_ROCK1_IMAGE_ID,          2.1, 28.9, -104.9, -104.9, 0.555, 0.555),
+    title_reanim_part(TITLE_LOAD_BAR_SPROUT_PETAL_IMAGE_ID,   5.0, -6.4,   84.5,   82.5, 0.800, 0.800),
+    title_reanim_part(TITLE_LOAD_BAR_SPROUT_PETAL_IMAGE_ID,  11.1, -4.1,  135.0,  -44.9, 0.800, 0.800),
+    title_reanim_part(TITLE_LOAD_BAR_SPROUT_PETAL_IMAGE_ID,  -5.7,  1.5,    7.3,    7.3, 0.800, 0.800),
+];
+
+#[rustfmt::skip]
+const TITLE_ZOMBIE_PARTS: [TitleReanimPart; 12] = [
+    title_reanim_part(TITLE_LOAD_BAR_ZOMBIE_HEAD_IMAGE_ID, -14.8, -10.1,    1.5,    1.6, 0.799, 0.776),
+    title_reanim_part(TITLE_LOAD_BAR_ZOMBIE_HAIR_IMAGE_ID, -18.5, -12.6,    2.8,    2.8, 0.800, 0.774),
+    title_reanim_part(TITLE_LOAD_BAR_ZOMBIE_JAW_IMAGE_ID,   -9.9,  18.0,    0.0,    0.0, 0.820, 0.792),
+    title_reanim_part(TITLE_LOAD_BAR_ROCK3_IMAGE_ID,         26.3,  28.1,  150.0,  150.0, 0.437, 0.437),
+    title_reanim_part(TITLE_LOAD_BAR_ROCK3_IMAGE_ID,         12.6,  23.4,    0.0,    0.0, 0.400, 0.400),
+    title_reanim_part(TITLE_LOAD_BAR_ROCK1_IMAGE_ID,         19.6,  29.8,  165.0,  165.0, 0.700, 0.700),
+    title_reanim_part(TITLE_LOAD_BAR_ROCK1_IMAGE_ID,         -0.3,  27.6, -179.9, -179.9, 0.555, 0.555),
+    title_reanim_part(TITLE_LOAD_BAR_ROCK1_IMAGE_ID,         16.9,  27.3,  135.0,  135.0, 0.700, 0.700),
+    title_reanim_part(TITLE_LOAD_BAR_ROCK3_IMAGE_ID,         -2.4,  29.2, -179.9, -179.9, 0.471, 0.445),
+    title_reanim_part(TITLE_LOAD_BAR_ROCK3_IMAGE_ID,         -9.3,  28.7,  -59.9,  -59.9, 0.492, 0.555),
+    title_reanim_part(TITLE_LOAD_BAR_ROCK3_IMAGE_ID,          5.1,  23.8,   15.0,   15.0, 0.400, 0.400),
+    title_reanim_part(TITLE_LOAD_BAR_ROCK1_IMAGE_ID,          7.2,  27.5, -224.9, -224.9, 0.648, 0.648),
+];
+
 fn title_start_contains(x: f32, y: f32) -> bool {
     (TITLE_LOAD_BAR_X..TITLE_LOAD_BAR_X + TITLE_START_BUTTON_WIDTH).contains(&x)
         && (TITLE_START_BUTTON_Y..TITLE_START_BUTTON_Y + TITLE_START_BUTTON_HEIGHT).contains(&y)
+}
+
+fn push_title_reanimation(
+    frame: &mut RenderFrame,
+    x: f32,
+    y: f32,
+    overlay_scale_x: f32,
+    overlay_scale_y: f32,
+    parts: &[TitleReanimPart],
+) {
+    for part in parts {
+        let skew_x = -part.skew_x.to_radians();
+        let skew_y = -part.skew_y.to_radians();
+        frame.affine_sprites.push(AffineSpriteCommand {
+            resource_id: part.resource_id,
+            x: x + overlay_scale_x * part.x,
+            y: y + overlay_scale_y * part.y,
+            m00: overlay_scale_x * skew_x.cos() * part.scale_x,
+            m01: overlay_scale_x * skew_y.sin() * part.scale_y,
+            m10: overlay_scale_y * -skew_x.sin() * part.scale_x,
+            m11: overlay_scale_y * skew_y.cos() * part.scale_y,
+            z: 4,
+            alpha: 1.0,
+        });
+    }
+}
+
+fn push_title_load_bar_reanimations(frame: &mut RenderFrame) {
+    for (index, fraction) in [0.11, 0.32, 0.54, 0.72, 0.91].into_iter().enumerate() {
+        let x = TITLE_START_BUTTON_WIDTH * fraction + 225.0;
+        let mut y = 511.0;
+        let mut scale_x = 1.0;
+        let mut scale_y = 1.0;
+        let parts: &[TitleReanimPart] = if index == 4 {
+            &TITLE_ZOMBIE_PARTS
+        } else {
+            if index == 1 || index == 3 {
+                scale_x = -1.0;
+            } else if index == 2 {
+                y -= 5.0;
+                scale_x = 1.1;
+                scale_y = 1.3;
+            }
+            &TITLE_SPROUT_PARTS
+        };
+        push_title_reanimation(frame, x, y, scale_x, scale_y, parts);
+    }
 }
 
 fn main() -> ExitCode {
@@ -233,6 +345,41 @@ fn load_assets(resources: &ResourceProvider) -> Result<Vec<ImageAsset>, String> 
             resources,
             TITLE_LOAD_BAR_GRASS_IMAGE_ID,
             "images/LoadBar_grass.png",
+        )?,
+        load_image(
+            resources,
+            TITLE_LOAD_BAR_ROCK1_IMAGE_ID,
+            "reanim/PotatoMine_rock1.png",
+        )?,
+        load_image(
+            resources,
+            TITLE_LOAD_BAR_ROCK3_IMAGE_ID,
+            "reanim/PotatoMine_rock3.png",
+        )?,
+        load_image(
+            resources,
+            TITLE_LOAD_BAR_SPROUT_BODY_IMAGE_ID,
+            "reanim/sprout_body.png",
+        )?,
+        load_image(
+            resources,
+            TITLE_LOAD_BAR_SPROUT_PETAL_IMAGE_ID,
+            "reanim/sprout_petal.png",
+        )?,
+        load_image(
+            resources,
+            TITLE_LOAD_BAR_ZOMBIE_HEAD_IMAGE_ID,
+            "reanim/Zombie_head.png",
+        )?,
+        load_image(
+            resources,
+            TITLE_LOAD_BAR_ZOMBIE_HAIR_IMAGE_ID,
+            "reanim/Zombie_hair.png",
+        )?,
+        load_image(
+            resources,
+            TITLE_LOAD_BAR_ZOMBIE_JAW_IMAGE_ID,
+            "reanim/Zombie_jaw.png",
         )?,
         render_colored_text_image(
             TITLE_START_PROMPT_SHADOW_IMAGE_ID,
@@ -1593,7 +1740,7 @@ impl App {
                 frame.sprites.push(SpriteCommand {
                     resource_id: TITLE_LOGO_IMAGE_ID,
                     x: 50.0,
-                    y: 0.0,
+                    y: 15.0,
                     z: 1,
                     scale: 1.0,
                     alpha: 1.0,
@@ -1614,11 +1761,13 @@ impl App {
                     scale: 1.0,
                     alpha: 1.0,
                 });
+                // The source holds these load-bar reanimations on their final frame once ready.
+                push_title_load_bar_reanimations(&mut frame);
                 frame.sprites.push(SpriteCommand {
                     resource_id: TITLE_START_PROMPT_SHADOW_IMAGE_ID,
                     x: 341.0,
                     y: 544.0,
-                    z: 4,
+                    z: 5,
                     scale: 1.0,
                     alpha: 1.0,
                 });
@@ -1630,7 +1779,7 @@ impl App {
                     },
                     x: 340.0,
                     y: 543.0,
-                    z: 5,
+                    z: 6,
                     scale: 1.0,
                     alpha: 1.0,
                 });

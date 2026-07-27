@@ -71,6 +71,13 @@ pub const TITLE_LOAD_BAR_GRASS_IMAGE_ID: u32 = 59;
 pub const TITLE_START_PROMPT_SHADOW_IMAGE_ID: u32 = 60;
 pub const TITLE_START_PROMPT_IMAGE_ID: u32 = 61;
 pub const TITLE_START_PROMPT_HOVER_IMAGE_ID: u32 = 62;
+pub const TITLE_LOAD_BAR_ROCK1_IMAGE_ID: u32 = 63;
+pub const TITLE_LOAD_BAR_ROCK3_IMAGE_ID: u32 = 64;
+pub const TITLE_LOAD_BAR_SPROUT_BODY_IMAGE_ID: u32 = 65;
+pub const TITLE_LOAD_BAR_SPROUT_PETAL_IMAGE_ID: u32 = 66;
+pub const TITLE_LOAD_BAR_ZOMBIE_HEAD_IMAGE_ID: u32 = 67;
+pub const TITLE_LOAD_BAR_ZOMBIE_HAIR_IMAGE_ID: u32 = 68;
+pub const TITLE_LOAD_BAR_ZOMBIE_JAW_IMAGE_ID: u32 = 69;
 pub const CHALLENGE_THUMBNAIL_BASE_IMAGE_ID: u32 = 100;
 pub const SURVIVAL_THUMBNAIL_BASE_IMAGE_ID: u32 = 130;
 pub const NIGHT_BACKGROUND_IMAGE_ID: u32 = 160;
@@ -221,14 +228,58 @@ pub struct SpriteCommand {
     pub alpha: f32,
 }
 
+#[derive(Clone, Copy, Debug, PartialEq)]
+pub struct AffineSpriteCommand {
+    pub resource_id: u32,
+    pub x: f32,
+    pub y: f32,
+    pub m00: f32,
+    pub m01: f32,
+    pub m10: f32,
+    pub m11: f32,
+    pub z: i32,
+    pub alpha: f32,
+}
+
 #[derive(Clone, Debug, Default)]
 pub struct RenderFrame {
     pub sprites: Vec<SpriteCommand>,
+    pub affine_sprites: Vec<AffineSpriteCommand>,
 }
 
 impl RenderFrame {
     pub fn sort_for_submission(&mut self) {
         self.sprites.sort_by_key(|sprite| sprite.z);
+        self.affine_sprites.sort_by_key(|sprite| sprite.z);
+    }
+}
+
+#[derive(Clone, Copy)]
+enum BatchSprite<'a> {
+    AxisAligned(&'a SpriteCommand),
+    Affine(&'a AffineSpriteCommand),
+}
+
+impl BatchSprite<'_> {
+    fn resource_id(self) -> u32 {
+        match self {
+            Self::AxisAligned(sprite) => sprite.resource_id,
+            Self::Affine(sprite) => sprite.resource_id,
+        }
+    }
+
+    fn z(self) -> i32 {
+        match self {
+            Self::AxisAligned(sprite) => sprite.z,
+            Self::Affine(sprite) => sprite.z,
+        }
+    }
+
+    fn alpha(self) -> f32 {
+        match self {
+            Self::AxisAligned(sprite) => sprite.alpha,
+            Self::Affine(sprite) => sprite.alpha,
+        }
     }
 }
 
@@ -503,9 +554,7 @@ impl GpuRenderer {
             return Ok(());
         }
 
-        let mut sorted = frame.clone();
-        sorted.sort_for_submission();
-        let (vertices, draw_calls) = self.build_batch(&sorted)?;
+        let (vertices, draw_calls) = self.build_batch(frame)?;
         let viewport = letterbox_rect(self.size.width, self.size.height, self.logical_viewport);
         if viewport.width == 0 || viewport.height == 0 {
             return Ok(());
@@ -597,33 +646,47 @@ impl GpuRenderer {
     ) -> Result<(Vec<SpriteVertex>, Vec<DrawCall>), RendererError> {
         let viewport = letterbox_rect(self.size.width, self.size.height, self.logical_viewport);
         let logical_scale = viewport.width as f32 / self.logical_viewport.width as f32;
-        let mut vertices = Vec::with_capacity(frame.sprites.len() * 6);
-        let mut draw_calls = Vec::with_capacity(frame.sprites.len());
+        let mut sprites = Vec::with_capacity(frame.sprites.len() + frame.affine_sprites.len());
+        sprites.extend(frame.sprites.iter().map(BatchSprite::AxisAligned));
+        sprites.extend(frame.affine_sprites.iter().map(BatchSprite::Affine));
+        sprites.sort_by_key(|sprite| sprite.z());
 
-        for sprite in &frame.sprites {
+        let mut vertices = Vec::with_capacity(sprites.len() * 6);
+        let mut draw_calls = Vec::with_capacity(sprites.len());
+
+        for sprite in sprites {
             let image = self
                 .images
-                .get(&sprite.resource_id)
-                .ok_or(RendererError::MissingImage(sprite.resource_id))?;
-            let x = viewport.x as f32 + sprite.x * logical_scale;
-            let y = viewport.y as f32 + sprite.y * logical_scale;
-            let width = image_width(image) * sprite.scale * logical_scale;
-            let height = image_height(image) * sprite.scale * logical_scale;
-            let x1 = x + width;
-            let y1 = y + height;
-            let color = [1.0, 1.0, 1.0, sprite.alpha.clamp(0.0, 1.0)];
+                .get(&sprite.resource_id())
+                .ok_or(RendererError::MissingImage(sprite.resource_id()))?;
+            let corners = match sprite {
+                BatchSprite::AxisAligned(sprite) => {
+                    let x = viewport.x as f32 + sprite.x * logical_scale;
+                    let y = viewport.y as f32 + sprite.y * logical_scale;
+                    let width = image_width(image) * sprite.scale * logical_scale;
+                    let height = image_height(image) * sprite.scale * logical_scale;
+                    [
+                        [x, y],
+                        [x + width, y],
+                        [x + width, y + height],
+                        [x, y + height],
+                    ]
+                }
+                BatchSprite::Affine(sprite) => {
+                    affine_corners(sprite, image_width(image), image_height(image)).map(|[x, y]| {
+                        [
+                            viewport.x as f32 + x * logical_scale,
+                            viewport.y as f32 + y * logical_scale,
+                        ]
+                    })
+                }
+            };
+            let color = [1.0, 1.0, 1.0, sprite.alpha().clamp(0.0, 1.0)];
             let start = u32::try_from(vertices.len()).unwrap_or(u32::MAX);
-            vertices.extend([
-                SpriteVertex::new(ndc(x, y, self.size), [0.0, 0.0], color),
-                SpriteVertex::new(ndc(x1, y, self.size), [1.0, 0.0], color),
-                SpriteVertex::new(ndc(x1, y1, self.size), [1.0, 1.0], color),
-                SpriteVertex::new(ndc(x, y, self.size), [0.0, 0.0], color),
-                SpriteVertex::new(ndc(x1, y1, self.size), [1.0, 1.0], color),
-                SpriteVertex::new(ndc(x, y1, self.size), [0.0, 1.0], color),
-            ]);
+            append_quad(&mut vertices, corners, color, self.size);
             let end = u32::try_from(vertices.len()).unwrap_or(u32::MAX);
             draw_calls.push(DrawCall {
-                resource_id: sprite.resource_id,
+                resource_id: sprite.resource_id(),
                 start,
                 end,
             });
@@ -639,6 +702,40 @@ fn image_width(image: &GpuImage) -> f32 {
 
 fn image_height(image: &GpuImage) -> f32 {
     image._texture.height() as f32
+}
+
+fn affine_corners(sprite: &AffineSpriteCommand, width: f32, height: f32) -> [[f32; 2]; 4] {
+    let half_width = width * 0.5;
+    let half_height = height * 0.5;
+    [
+        affine_point(sprite, -half_width, -half_height),
+        affine_point(sprite, half_width, -half_height),
+        affine_point(sprite, half_width, half_height),
+        affine_point(sprite, -half_width, half_height),
+    ]
+}
+
+fn affine_point(sprite: &AffineSpriteCommand, x: f32, y: f32) -> [f32; 2] {
+    [
+        sprite.x + sprite.m00 * x + sprite.m01 * y,
+        sprite.y + sprite.m10 * x + sprite.m11 * y,
+    ]
+}
+
+fn append_quad(
+    vertices: &mut Vec<SpriteVertex>,
+    corners: [[f32; 2]; 4],
+    color: [f32; 4],
+    size: PhysicalSize<u32>,
+) {
+    vertices.extend([
+        SpriteVertex::new(ndc(corners[0][0], corners[0][1], size), [0.0, 0.0], color),
+        SpriteVertex::new(ndc(corners[1][0], corners[1][1], size), [1.0, 0.0], color),
+        SpriteVertex::new(ndc(corners[2][0], corners[2][1], size), [1.0, 1.0], color),
+        SpriteVertex::new(ndc(corners[0][0], corners[0][1], size), [0.0, 0.0], color),
+        SpriteVertex::new(ndc(corners[2][0], corners[2][1], size), [1.0, 1.0], color),
+        SpriteVertex::new(ndc(corners[3][0], corners[3][1], size), [0.0, 1.0], color),
+    ]);
 }
 
 fn ndc(x: f32, y: f32, size: PhysicalSize<u32>) -> [f32; 2] {
@@ -735,6 +832,7 @@ mod tests {
                     alpha: 1.0,
                 },
             ],
+            ..Default::default()
         };
 
         frame.sort_for_submission();
@@ -746,6 +844,26 @@ mod tests {
                 .map(|sprite| sprite.resource_id)
                 .collect::<Vec<_>>(),
             vec![2, 1, 3]
+        );
+    }
+
+    #[test]
+    fn affine_sprite_uses_a_centered_transform() {
+        let sprite = AffineSpriteCommand {
+            resource_id: 1,
+            x: 10.0,
+            y: 20.0,
+            m00: 1.0,
+            m01: 0.0,
+            m10: 0.0,
+            m11: 1.0,
+            z: 0,
+            alpha: 1.0,
+        };
+
+        assert_eq!(
+            affine_corners(&sprite, 4.0, 6.0),
+            [[8.0, 17.0], [12.0, 17.0], [12.0, 23.0], [8.0, 23.0]]
         );
     }
 
