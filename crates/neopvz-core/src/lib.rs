@@ -3411,6 +3411,34 @@ impl Game {
     }
 
     #[doc(hidden)]
+    pub fn debug_prepare_explode_o_nut(&mut self) {
+        self.state.level_scene = SceneKind::Day;
+        self.state.scene = SceneKind::Day;
+        self.state.sun = 0;
+        self.state.board.plants.clear();
+        self.state.board.zombies.clear();
+        self.state.board.seed_packets = vec![SeedPacketState {
+            slot: 0,
+            plant_type: PlantType::Other(49),
+            refresh_remaining: 0,
+        }];
+        self.advance(InputFrame {
+            actions: vec![
+                InputAction::SelectSeed { slot: 0 },
+                InputAction::Plant { row: 2, column: 2 },
+            ],
+        });
+        self.state.board.plants[0].health = ZOMBIE_BITE_DAMAGE;
+        let mut setup_events = Vec::new();
+        self.spawn_normal_zombie(
+            2,
+            0,
+            Some(grid_x(2) + 30 * POSITION_SCALE),
+            &mut setup_events,
+        );
+    }
+
+    #[doc(hidden)]
     pub fn debug_prepare_butter(&mut self) -> Vec<GameEvent> {
         self.state.level_scene = SceneKind::Day;
         self.state.scene = SceneKind::Day;
@@ -15549,6 +15577,31 @@ mod tests {
                 } if *actual == plant_type
             )));
         }
+    }
+
+    #[test]
+    fn debug_explode_o_nut_checkpoint_emits_special_event() {
+        let mut game = Game::new_mode(0, ModeKind::MiniGame, 1);
+        game.debug_prepare_explode_o_nut();
+        let mut saw_special = false;
+        for _ in 0..200 {
+            saw_special |= game.advance(InputFrame::default()).iter().any(|event| {
+                matches!(
+                    event,
+                    GameEvent::PlantSpecialTriggered {
+                        plant_type: PlantType::Other(49),
+                        ..
+                    }
+                )
+            });
+            if saw_special {
+                break;
+            }
+        }
+        assert!(
+            saw_special,
+            "Explode-O-Nut bite must emit its special event"
+        );
     }
 
     #[test]
