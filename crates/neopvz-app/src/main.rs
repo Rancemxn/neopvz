@@ -1280,7 +1280,9 @@ impl App {
             }
             Some(Checkpoint::IceShroom) => game.debug_prepare_ice_shroom(),
             Some(Checkpoint::PotatoMine) => game.debug_prepare_potato_mine(),
-            Some(Checkpoint::ExplosionPlants) => game.debug_prepare_explosion_plants(),
+            Some(Checkpoint::ExplosionPlants) => {
+                startup_events = game.debug_prepare_explosion_plants()
+            }
             Some(Checkpoint::ExplodeONut) => game.debug_prepare_explode_o_nut(),
             Some(Checkpoint::Squash) => startup_events = game.debug_prepare_squash(),
             Some(Checkpoint::SquashHum) => startup_events = game.debug_prepare_squash_hum(),
@@ -2505,6 +2507,10 @@ fn audio_for_event(event: &GameEvent) -> Option<(AudioKind, &'static str)> {
 
 fn audio_companion_for_event(event: &GameEvent) -> Option<(AudioKind, &'static str)> {
     match event {
+        GameEvent::PlantPlaced {
+            plant_type: neopvz_core::PlantType::Other(2 | 20),
+            ..
+        } => Some((AudioKind::Effect, "sounds/reverse_explosion.ogg")),
         GameEvent::PlantSpecialTriggered {
             plant_type: neopvz_core::PlantType::Other(2),
             ..
@@ -3135,7 +3141,32 @@ mod tests {
     }
 
     #[test]
-    fn maps_explosive_plant_companions_to_juicy() {
+    fn maps_explosive_plant_companions() {
+        for plant_type in [
+            neopvz_core::PlantType::Other(2),
+            neopvz_core::PlantType::Other(20),
+        ] {
+            assert_eq!(
+                audio_companion_for_event(&GameEvent::PlantPlaced {
+                    entity: 1,
+                    plant_type,
+                    row: 2,
+                    column: 3,
+                    sun_remaining: 50,
+                }),
+                Some((AudioKind::Effect, "sounds/reverse_explosion.ogg"))
+            );
+        }
+        assert_eq!(
+            audio_companion_for_event(&GameEvent::PlantPlaced {
+                entity: 1,
+                plant_type: neopvz_core::PlantType::Other(15),
+                row: 2,
+                column: 3,
+                sun_remaining: 50,
+            }),
+            None
+        );
         for plant_type in [
             neopvz_core::PlantType::Other(2),
             neopvz_core::PlantType::Other(20),

@@ -3551,13 +3551,13 @@ impl Game {
     }
 
     #[doc(hidden)]
-    pub fn debug_prepare_explosion_plants(&mut self) {
+    pub fn debug_prepare_explosion_plants(&mut self) -> Vec<GameEvent> {
         self.state.level_scene = SceneKind::Night;
         self.state.scene = SceneKind::Night;
         self.state.sun = 500;
         self.state.board.zombies.clear();
         self.state.board.craters.clear();
-        self.advance(InputFrame {
+        let events = self.advance(InputFrame {
             actions: vec![
                 InputAction::SelectSeed { slot: 2 },
                 InputAction::Plant { row: 0, column: 0 },
@@ -3570,6 +3570,7 @@ impl Game {
         for plant in &mut self.state.board.plants {
             plant.special_counter = 1;
         }
+        events
     }
 
     #[doc(hidden)]
@@ -17969,10 +17970,19 @@ mod tests {
     }
 
     #[test]
-    fn debug_explosion_checkpoint_triggers_all_three_specials() {
+    fn debug_explosion_checkpoint_preserves_placement_audio_and_triggers_specials() {
         let mut game = Game::new(0, SceneKind::Night);
-        game.debug_prepare_explosion_plants();
+        let placement_events = game.debug_prepare_explosion_plants();
         assert_eq!(game.state.board.plants.len(), 3);
+        for plant_type in [2, 20] {
+            assert!(placement_events.iter().any(|event| matches!(
+                event,
+                GameEvent::PlantPlaced {
+                    plant_type: PlantType::Other(actual),
+                    ..
+                } if *actual == plant_type
+            )));
+        }
         let events = game.advance(InputFrame::default());
         for plant_type in [2, 20, 15] {
             assert!(events.iter().any(|event| matches!(
