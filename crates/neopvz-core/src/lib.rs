@@ -194,7 +194,8 @@ const GIGAGARGANTUAR_HEALTH: i32 = 6_000;
 // Zombie_UpdateJack pops it 110 updates after its run phase ends; on Scary
 // Potter levels the run phase counter is forced to 10.
 const JACKBOX_HEALTH: i32 = 500;
-const VASE_JACKBOX_POP_TICKS: u32 = 120;
+const JACKBOX_POP_TICKS: u32 = 110;
+const VASE_JACKBOX_POP_TICKS: u32 = 10 + JACKBOX_POP_TICKS;
 // KillAllPlantsInRadius uses JackInTheBoxPlantRadius (90); zombies use 115.
 const JACKBOX_PLANT_RADIUS: i64 = 90;
 // Zombie_Init in 1.0.0.1051 gives Newspaper the 270-HP body plus a 150-HP
@@ -7967,7 +7968,10 @@ impl Game {
             // Jack-in-the-Box: decrement timer and explode when zero.
             {
                 let zombie = &mut self.state.board.zombies[zombie_index];
-                if zombie.zombie_type == ZombieType::Jackbox && zombie.jackbox_timer > 0 {
+                if zombie.zombie_type == ZombieType::Jackbox
+                    && zombie.jackbox_timer > 0
+                    && zombie.frozen_counter == 0
+                {
                     zombie.jackbox_timer = zombie.jackbox_timer.saturating_sub(1);
                     if zombie.jackbox_timer == 0 {
                         zombie.health = 0;
@@ -10980,29 +10984,14 @@ impl Game {
         position_override: Option<i64>,
         events: &mut Vec<GameEvent>,
     ) -> EntityId {
-        let id = self._spawn_zombie_inner(
+        self._spawn_zombie_inner(
             ZombieType::Jackbox,
             JACKBOX_HEALTH,
             row,
             wave,
             position_override,
             events,
-        );
-        // Zombie_UpdateJack: the pop fires after (450 + Rand(300)) distance
-        // units at the limp-doubled travel time, ~1323-2272 ticks at 0.66-0.68.
-        let pop_distance = 450 + i64::from(self.rng.range(301));
-        let jack_speed = self
-            .state
-            .board
-            .zombies
-            .iter()
-            .find(|z| z.id == id)
-            .map(|z| z.speed.max(1))
-            .unwrap_or(660_000);
-        if let Some(zombie) = self.state.board.zombies.iter_mut().find(|z| z.id == id) {
-            zombie.jackbox_timer = (pop_distance * 2 * POSITION_SCALE / jack_speed) as u32;
-        }
-        id
+        )
     }
 
     #[allow(dead_code)]
@@ -11122,6 +11111,16 @@ impl Game {
         } else {
             speed
         };
+        let jackbox_timer = if zombie_type == ZombieType::Jackbox {
+            // Zombie_Init draws both values before the Scary Potter override.
+            let mut pop_distance = 450 + i64::from(self.rng.range(300));
+            if self.rng.range(20) == 0 {
+                pop_distance /= 3;
+            }
+            (pop_distance * POSITION_SCALE / speed) as u32 * 2 + JACKBOX_POP_TICKS
+        } else {
+            0
+        };
         self.state.board.zombies.push(ZombieState {
             id,
             zombie_type,
@@ -11141,7 +11140,7 @@ impl Game {
             hypnotized: false,
             has_vaulted: false,
             newspaper_health: 0,
-            jackbox_timer: 0,
+            jackbox_timer,
             yeti_counter: 0,
             yeti_running: false,
             yeti_loot_dropped: false,
@@ -15866,6 +15865,51 @@ mod tests {
             game.state.board.wave.current, 10,
             "the wave releases the tick the pause expires"
         );
+    }
+
+    #[test]
+    fn jackbox_spawn_schedule_matches_source_and_pauses_while_frozen() {
+        let mut game = Game::new(7, SceneKind::Day);
+        game.rng = Mt19937::new(1);
+        let mut setup = Vec::new();
+        let zombie = game.spawn_jackbox_zombie(2, 0, Some(780 * POSITION_SCALE), &mut setup);
+        let index = game
+            .state
+            .board
+            .zombies
+            .iter()
+            .position(|jack| jack.id == zombie)
+            .unwrap();
+
+        // Seed 1 exercises the source's Rand(20) == 0 early-pop branch.
+        assert_eq!(game.state.board.zombies[index].speed, 679_887);
+        assert_eq!(game.state.board.zombies[index].jackbox_timer, 624);
+        assert_eq!(game.rng.snapshot().index, 4);
+
+        let jack = &mut game.state.board.zombies[index];
+        jack.jackbox_timer = 1;
+        jack.frozen_counter = 2;
+        jack.speed = 0;
+        let exploded = |events: &[GameEvent]| {
+            events.iter().any(|event| {
+                matches!(event, GameEvent::JackboxExploded { entity, .. } if *entity == zombie)
+            })
+        };
+
+        for frozen_counter in [1, 0] {
+            let events = game.advance(InputFrame::default());
+            assert!(!exploded(&events));
+            let jack = &game.state.board.zombies[index];
+            assert_eq!((jack.jackbox_timer, jack.frozen_counter), (1, frozen_counter));
+        }
+        assert!(exploded(&game.advance(InputFrame::default())));
+
+        let mut vase = Game::new(7, SceneKind::Day);
+        vase.rng = Mt19937::new(1);
+        let mut setup = Vec::new();
+        vase.spawn_vase_zombie(ZombieType::Jackbox, 2, 5, &mut setup);
+        assert_eq!(vase.state.board.zombies[0].jackbox_timer, VASE_JACKBOX_POP_TICKS);
+        assert_eq!(vase.rng.snapshot().index, 4);
     }
 
     #[test]
