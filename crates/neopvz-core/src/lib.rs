@@ -6138,6 +6138,7 @@ impl Game {
             let mut spikeweed_started = false;
             let mut chomper_bite_target = None;
             let mut squash_hit_target = None;
+            let mut squash_finished = false;
             let mut tangle_grab_target = None;
             let mut tangle_started = false;
             let mut tangle_water_entry = false;
@@ -6210,8 +6211,13 @@ impl Game {
                     if plant.special_armed {
                         plant.special_counter = plant.special_counter.saturating_sub(1);
                         if plant.special_counter == 0 {
-                            squash_hit_target = plant.special_target.take().or(squash_target);
-                            plant.health = 0;
+                            if let Some(target) = plant.special_target.take() {
+                                squash_hit_target = Some(target);
+                                plant.special_counter = SQUASH_LANDING_HIT_TICKS;
+                            } else {
+                                plant.health = 0;
+                                squash_finished = true;
+                            }
                         }
                     } else if plant.special_target.is_some() {
                         plant.special_counter = plant.special_counter.saturating_sub(1);
@@ -6364,6 +6370,9 @@ impl Game {
                         self.state.board.zombies.remove(zombie_index);
                     }
                 }
+                continue;
+            }
+            if squash_finished {
                 events.push(GameEvent::PlantDied { entity: id });
                 continue;
             }
@@ -12795,11 +12804,15 @@ mod tests {
             )
         );
         assert!(
-            events
+            !events
                 .iter()
                 .any(|event| matches!(event, GameEvent::PlantDied { entity } if *entity == squash))
         );
-        assert!(game.state.board.plants.is_empty());
+        assert_eq!(game.state.board.plants[0].id, squash);
+        assert_eq!(
+            game.state.board.plants[0].special_counter,
+            SQUASH_LANDING_HIT_TICKS
+        );
         assert_eq!(
             game.state
                 .board
@@ -12809,6 +12822,21 @@ mod tests {
                 .collect::<Vec<_>>(),
             vec![far, other_row]
         );
+
+        for _ in 1..SQUASH_LANDING_HIT_TICKS {
+            let events = game.advance(InputFrame::default());
+            assert!(
+                !events.iter().any(
+                    |event| matches!(event, GameEvent::PlantDied { entity } if *entity == squash)
+                )
+            );
+            assert_eq!(game.state.board.plants[0].id, squash);
+        }
+        let finished = game.advance(InputFrame::default());
+        assert!(finished
+            .iter()
+            .any(|event| matches!(event, GameEvent::PlantDied { entity } if *entity == squash)));
+        assert!(game.state.board.plants.is_empty());
     }
 
     #[test]
