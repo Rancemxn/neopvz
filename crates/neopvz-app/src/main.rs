@@ -86,6 +86,7 @@ enum Checkpoint {
     PotatoMine,
     ExplosionPlants,
     ExplodeONut,
+    BrainEaten,
     Butter,
     VaseBreak,
     Rake,
@@ -123,6 +124,7 @@ impl From<Checkpoint> for SceneKind {
             Checkpoint::PotatoMine => Self::Day,
             Checkpoint::ExplosionPlants => Self::Night,
             Checkpoint::ExplodeONut => Self::Day,
+            Checkpoint::BrainEaten => Self::Night,
             Checkpoint::Butter => Self::Day,
             Checkpoint::VaseBreak => Self::Day,
             Checkpoint::Rake => Self::Day,
@@ -1194,6 +1196,7 @@ impl App {
             Some(Checkpoint::Rake) => Game::new(0, SceneKind::Day),
             Some(Checkpoint::ExplosionPlants) => Game::new(0, SceneKind::Night),
             Some(Checkpoint::ExplodeONut) => Game::new_mode(0, ModeKind::MiniGame, 1),
+            Some(Checkpoint::BrainEaten) => Game::new_mode(0, ModeKind::IZombie, 0),
             Some(Checkpoint::BloverChomper) => Game::new(0, SceneKind::Day),
             Some(Checkpoint::HypnoJackbox) => Game::new(0, SceneKind::Night),
             Some(Checkpoint::CobCannon) => Game::new(0, SceneKind::Day),
@@ -1229,6 +1232,7 @@ impl App {
             Some(Checkpoint::PotatoMine) => game.debug_prepare_potato_mine(),
             Some(Checkpoint::ExplosionPlants) => game.debug_prepare_explosion_plants(),
             Some(Checkpoint::ExplodeONut) => game.debug_prepare_explode_o_nut(),
+            Some(Checkpoint::BrainEaten) => game.debug_prepare_brain_finished(),
             Some(Checkpoint::Butter) => startup_events = game.debug_prepare_butter(),
             Some(Checkpoint::VaseBreak) => startup_events = game.debug_prepare_vase_break(),
             Some(Checkpoint::Rake) => startup_events = game.debug_prepare_rake(),
@@ -2285,6 +2289,7 @@ fn audio_for_event(event: &GameEvent) -> Option<(AudioKind, &'static str)> {
             Some((AudioKind::Effect, "sounds/mindcontrolled.ogg"))
         }
         GameEvent::JackboxExploded { .. } => Some((AudioKind::Effect, "sounds/explosion.ogg")),
+        GameEvent::BrainFinished { .. } => Some((AudioKind::Effect, "sounds/gulp.ogg")),
         GameEvent::ZombieChilled { .. } => Some((AudioKind::Effect, "sounds/frozen.ogg")),
         GameEvent::ZombieButtered { .. } => Some((AudioKind::Effect, "sounds/butter.ogg")),
         GameEvent::VaseBroken { .. } => Some((AudioKind::Effect, "sounds/vase_breaking.ogg")),
@@ -2534,6 +2539,14 @@ mod tests {
                 duration: 1_000,
             }),
             Some((AudioKind::Effect, "sounds/frozen.ogg"))
+        );
+        assert_eq!(
+            audio_for_event(&GameEvent::BrainFinished {
+                zombie: 1,
+                row: 0,
+                brains_remaining: 4,
+            }),
+            Some((AudioKind::Effect, "sounds/gulp.ogg"))
         );
         assert_eq!(
             audio_for_event(&GameEvent::ZombieButtered { entity: 1 }),

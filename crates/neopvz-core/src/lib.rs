@@ -2876,6 +2876,11 @@ pub enum GameEvent {
         row: u8,
         brains_remaining: u8,
     },
+    BrainFinished {
+        zombie: EntityId,
+        row: u8,
+        brains_remaining: u8,
+    },
     PlantDamaged {
         entity: EntityId,
         damage: i32,
@@ -3436,6 +3441,19 @@ impl Game {
             Some(grid_x(2) + 30 * POSITION_SCALE),
             &mut setup_events,
         );
+    }
+
+    #[doc(hidden)]
+    pub fn debug_prepare_brain_finished(&mut self) {
+        self.state.level_scene = SceneKind::Night;
+        self.state.scene = SceneKind::Night;
+        self.state.board.zombies.clear();
+        if let Some(brain) = self.state.board.brains.first_mut() {
+            brain.remaining = 1;
+            brain.squished = false;
+        }
+        let mut setup_events = Vec::new();
+        self.spawn_normal_zombie(0, 0, Some(-101 * POSITION_SCALE), &mut setup_events);
     }
 
     #[doc(hidden)]
@@ -6527,6 +6545,13 @@ impl Game {
             row,
             brains_remaining,
         });
+        if finished {
+            events.push(GameEvent::BrainFinished {
+                zombie: self.state.board.zombies[zombie_index].id,
+                row,
+                brains_remaining,
+            });
+        }
         if finished {
             self.state.board.zombies[zombie_index].health = 0;
             self.state.board.zombies[zombie_index].eating = false;
@@ -17488,8 +17513,31 @@ mod tests {
                 ..
             }
         )));
+        assert!(events.iter().any(|event| matches!(
+            event,
+            GameEvent::BrainFinished {
+                row: 0,
+                brains_remaining: 4,
+                ..
+            }
+        )));
         assert!(game.state().board.brains[0].squished);
         assert_ne!(game.state().scene, SceneKind::Complete);
+    }
+
+    #[test]
+    fn debug_brain_finished_checkpoint_emits_terminal_bite_event() {
+        let mut game = Game::new_mode(0, ModeKind::IZombie, 0);
+        game.debug_prepare_brain_finished();
+        let events = game.advance(InputFrame::default());
+        assert!(events.iter().any(|event| matches!(
+            event,
+            GameEvent::BrainFinished {
+                row: 0,
+                brains_remaining: 4,
+                ..
+            }
+        )));
     }
 
     #[test]
