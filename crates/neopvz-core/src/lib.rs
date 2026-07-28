@@ -6130,7 +6130,10 @@ impl Game {
                 // Only Cactus (slot 26) and homing Cattail spikes target fliers.
                 let targets_fliers =
                     plant_type.slot() == 26 || plant_type.firing_pattern() == FiringPattern::Homing;
-                if (balloon_is_airborne(zombie) || zombie.imp_flight_ticks > 0) && !targets_fliers {
+                if zombie.imp_flight_ticks > 0 && !targets_fliers {
+                    return false;
+                }
+                if balloon_is_airborne(zombie) && (!balloon_is_flying(zombie) || !targets_fliers) {
                     return false;
                 }
                 let row_distance = zombie.row.abs_diff(row);
@@ -6191,12 +6194,14 @@ impl Game {
                 && self.state.board.zombies.iter().any(|zombie| {
                     zombie.health > 0
                         && zombie.row == row
+                        && !balloon_is_airborne(zombie)
                         && (zombie.position_x - grid_x(column)).abs() <= 60 * POSITION_SCALE
                 });
             let spikeweed_target = plant_type.is_spikeweed()
                 && self.state.board.zombies.iter().any(|zombie| {
                     zombie.health > 0
                         && zombie.row == row
+                        && !balloon_is_airborne(zombie)
                         && spikeweed_hits(zombie.position_x, column)
                 });
             let gold_magnet_target = if plant_type.is_gold_magnet() {
@@ -7616,6 +7621,9 @@ impl Game {
         spike: bool,
         events: &mut Vec<GameEvent>,
     ) {
+        if balloon_is_airborne(&self.state.board.zombies[zombie_index]) {
+            return;
+        }
         if self.state.board.zombies[zombie_index].zombie_type == ZombieType::Bobsled {
             self.damage_zombie(zombie_index, damage, events);
             return;
@@ -9610,7 +9618,10 @@ impl Game {
         let mut zombie_index = 0;
         while zombie_index < self.state.board.zombies.len() {
             let zombie = &self.state.board.zombies[zombie_index];
-            if zombie.health <= 0 || zombie.row != row || !spikeweed_hits(zombie.position_x, column)
+            if zombie.health <= 0
+                || zombie.row != row
+                || balloon_is_airborne(zombie)
+                || !spikeweed_hits(zombie.position_x, column)
             {
                 zombie_index += 1;
                 continue;
@@ -11703,8 +11714,11 @@ fn projectile_can_hit_zombie(zombie: &ZombieState, projectile_type: ProjectileTy
     }
     // Only Cactus/Cattail spikes carry the flying damage-range flag; airborne
     // balloons and mid-flight thrown imps reject every other projectile.
-    if (balloon_is_airborne(zombie) || zombie.imp_flight_ticks > 0)
-        && projectile_type != ProjectileType::Spike
+    if zombie.imp_flight_ticks > 0 && projectile_type != ProjectileType::Spike {
+        return false;
+    }
+    if balloon_is_airborne(zombie)
+        && (!balloon_is_flying(zombie) || projectile_type != ProjectileType::Spike)
     {
         return false;
     }
@@ -11717,6 +11731,10 @@ fn balloon_is_airborne(zombie: &ZombieState) -> bool {
             zombie.balloon_phase,
             BALLOON_FLYING_PHASE | BALLOON_POPPING_PHASE
         )
+}
+
+fn balloon_is_flying(zombie: &ZombieState) -> bool {
+    zombie.zombie_type == ZombieType::Balloon && zombie.balloon_phase == BALLOON_FLYING_PHASE
 }
 
 fn zamboni_speed(position_x: i64) -> i64 {
@@ -14744,6 +14762,38 @@ mod tests {
         assert_eq!(state.balloon_flying_health, 0);
         assert_eq!(state.balloon_phase, BALLOON_POPPING_PHASE);
 
+        let mut setup_events = Vec::new();
+        game.fire_projectile(
+            0,
+            ProjectileType::Spike,
+            2,
+            ProjectileTrajectory {
+                motion: ProjectileMotion::Straight,
+                position_x: balloon_position,
+                position_y: grid_y(2),
+                velocity_x: 0,
+                velocity_y: 0,
+            },
+            &mut setup_events,
+        );
+        let popping_events = game.advance(InputFrame::default());
+        assert!(!popping_events.iter().any(
+            |event| matches!(event, GameEvent::ProjectileHit { zombie, .. } if *zombie == balloon)
+        ));
+        assert_eq!(
+            game.state
+                .board
+                .zombies
+                .iter()
+                .find(|candidate| candidate.id == balloon)
+                .unwrap()
+                .health,
+            270
+        );
+
+        // Do not let the intentionally rejected popping-phase projectiles hit
+        // on the transition tick before the landed-phase check below.
+        game.state.board.projectiles.clear();
         for _ in 0..BALLOON_POP_TICKS {
             game.advance(InputFrame::default());
         }
@@ -14757,6 +14807,123 @@ mod tests {
                 .balloon_phase,
             BALLOON_WALKING_PHASE
         );
+
+        let walking_index = game
+            .state
+            .board
+            .zombies
+            .iter()
+            .position(|candidate| candidate.id == balloon)
+            .unwrap();
+        game.state.board.zombies[walking_index].position_x = balloon_position;
+        game.state.board.zombies[walking_index].speed = 0;
+        let mut setup_events = Vec::new();
+        game.fire_projectile(
+            0,
+            ProjectileType::Pea,
+            2,
+            ProjectileTrajectory {
+                motion: ProjectileMotion::Straight,
+                position_x: balloon_position,
+                position_y: grid_y(2),
+                velocity_x: 0,
+                velocity_y: 0,
+            },
+            &mut setup_events,
+        );
+        let landed_events = game.advance(InputFrame::default());
+        assert!(landed_events.iter().any(|event| matches!(
+            event,
+            GameEvent::ProjectileHit {
+                zombie,
+                damage: 20,
+                health_remaining: 250,
+                ..
+            } if *zombie == balloon
+        )));
+    }
+
+    #[test]
+    fn ground_attacks_ignore_an_airborne_balloon() {
+        let cases = [
+            (4, grid_x(2) + 50 * POSITION_SCALE),
+            (21, grid_x(0) + 10 * POSITION_SCALE),
+        ];
+        for (slot, position_x) in cases {
+            let mut game = Game::new(7, SceneKind::Day);
+            game.state.sun = 200;
+            let column = if slot == 4 { 2 } else { 0 };
+            game.advance(InputFrame {
+                actions: vec![
+                    InputAction::SelectSeed { slot },
+                    InputAction::Plant { row: 2, column },
+                ],
+            });
+            let plant = game.state.board.plants[0].id;
+            if slot == 4 {
+                game.state.board.plants[0].special_armed = true;
+            } else {
+                game.state.board.plants[0].special_armed = true;
+                game.state.board.plants[0].special_counter = SPIKEWEED_DAMAGE_COUNTDOWN + 1;
+            }
+            let mut setup = Vec::new();
+            let balloon = game.spawn_balloon_zombie(2, 0, Some(position_x), &mut setup);
+            let balloon_state = game
+                .state
+                .board
+                .zombies
+                .iter_mut()
+                .find(|candidate| candidate.id == balloon)
+                .unwrap();
+            balloon_state.speed = 0;
+            balloon_state.age = 3;
+
+            let events = (0..110)
+                .flat_map(|_| game.advance(InputFrame::default()))
+                .collect::<Vec<_>>();
+
+            assert!(!events.iter().any(|event| matches!(
+                event,
+                GameEvent::PlantSpecialTriggered { entity, .. } if *entity == plant
+            )));
+            assert!(!events.iter().any(|event| matches!(
+                event,
+                GameEvent::PlantSpecialHit { plant: hit_plant, zombie, .. }
+                    if *hit_plant == plant && *zombie == balloon
+            )));
+            let state = game
+                .state
+                .board
+                .zombies
+                .iter()
+                .find(|candidate| candidate.id == balloon)
+                .unwrap();
+            assert_eq!(state.health, 270);
+            assert_eq!(state.balloon_flying_health, BALLOON_FLYING_HEALTH);
+            assert_eq!(state.balloon_phase, BALLOON_FLYING_PHASE);
+        }
+    }
+
+    #[test]
+    fn bypass_shield_damage_ignores_an_airborne_balloon() {
+        let mut game = Game::new(7, SceneKind::Day);
+        let mut setup = Vec::new();
+        let balloon = game.spawn_balloon_zombie(2, 0, Some(500 * POSITION_SCALE), &mut setup);
+        let index = game
+            .state
+            .board
+            .zombies
+            .iter()
+            .position(|candidate| candidate.id == balloon)
+            .unwrap();
+        let mut events = Vec::new();
+        game.damage_zombie_bypassing_shield(index, 20, false, &mut events);
+
+        let state = &game.state.board.zombies[index];
+        assert_eq!(state.health, 270);
+        assert_eq!(state.balloon_flying_health, BALLOON_FLYING_HEALTH);
+        assert_eq!(state.balloon_phase, BALLOON_FLYING_PHASE);
+        assert!(events.is_empty());
     }
 
     #[test]
