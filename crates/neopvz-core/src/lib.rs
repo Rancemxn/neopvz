@@ -15900,7 +15900,10 @@ mod tests {
             let events = game.advance(InputFrame::default());
             assert!(!exploded(&events));
             let jack = &game.state.board.zombies[index];
-            assert_eq!((jack.jackbox_timer, jack.frozen_counter), (1, frozen_counter));
+            assert_eq!(
+                (jack.jackbox_timer, jack.frozen_counter),
+                (1, frozen_counter)
+            );
         }
         assert!(exploded(&game.advance(InputFrame::default())));
 
@@ -15908,7 +15911,10 @@ mod tests {
         vase.rng = Mt19937::new(1);
         let mut setup = Vec::new();
         vase.spawn_vase_zombie(ZombieType::Jackbox, 2, 5, &mut setup);
-        assert_eq!(vase.state.board.zombies[0].jackbox_timer, VASE_JACKBOX_POP_TICKS);
+        assert_eq!(
+            vase.state.board.zombies[0].jackbox_timer,
+            VASE_JACKBOX_POP_TICKS
+        );
         assert_eq!(vase.rng.snapshot().index, 4);
     }
 
