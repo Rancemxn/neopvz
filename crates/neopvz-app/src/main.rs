@@ -9,8 +9,9 @@ use std::{
 use clap::{Parser, ValueEnum};
 use neopvz_audio::{AudioBackend, AudioKind, KiraAudioBackend};
 use neopvz_core::{
-    Game, GameEvent, GardenServiceKind, InputAction, InputFrame, ModeKind, SaveError, SaveProfile,
-    SceneKind, mode_level_name, mode_level_names,
+    CoinType, Game, GameEvent, GardenServiceKind, InputAction, InputFrame, ModeKind,
+    ProjectileImpactSound, SaveError, SaveProfile, SceneKind, SunSource, mode_level_name,
+    mode_level_names,
 };
 use neopvz_data::{AssetLayout, ResourceProvider};
 use neopvz_render::{
@@ -80,15 +81,21 @@ enum Checkpoint {
     GameLost,
     GameWon,
     Pickups,
+    PrizeChime,
+    SunProduction,
     GardenWater,
     GardenFertilize,
     IceShroom,
     PotatoMine,
     ExplosionPlants,
     ExplodeONut,
+    Squash,
+    SquashHum,
     BrainEaten,
     ImpThrow,
+    NewspaperRip,
     Butter,
+    ProjectileImpacts,
     VaseBreak,
     Rake,
     BloverChomper,
@@ -98,11 +105,17 @@ enum Checkpoint {
     GraveBuster,
     Coffee,
     TangleKelp,
+    DolphinJump,
+    PoolEntry,
     Spikeweed,
     Digger,
     Magnet,
+    ShieldHit,
     Zamboni,
+    Catapult,
+    BalloonAppearance,
     PogoBlock,
+    PogoBounce,
     UmbrellaDeflect,
 }
 
@@ -119,15 +132,21 @@ impl From<Checkpoint> for SceneKind {
             Checkpoint::GameLost => Self::Day,
             Checkpoint::GameWon => Self::Day,
             Checkpoint::Pickups => Self::Day,
+            Checkpoint::PrizeChime => Self::Day,
+            Checkpoint::SunProduction => Self::Day,
             Checkpoint::GardenWater => Self::Garden,
             Checkpoint::GardenFertilize => Self::Garden,
             Checkpoint::IceShroom => Self::Night,
             Checkpoint::PotatoMine => Self::Day,
             Checkpoint::ExplosionPlants => Self::Night,
             Checkpoint::ExplodeONut => Self::Day,
+            Checkpoint::Squash => Self::Day,
+            Checkpoint::SquashHum => Self::Day,
             Checkpoint::BrainEaten => Self::Night,
             Checkpoint::ImpThrow => Self::Day,
+            Checkpoint::NewspaperRip => Self::Day,
             Checkpoint::Butter => Self::Day,
+            Checkpoint::ProjectileImpacts => Self::Day,
             Checkpoint::VaseBreak => Self::Day,
             Checkpoint::Rake => Self::Day,
             Checkpoint::BloverChomper => Self::Day,
@@ -137,11 +156,17 @@ impl From<Checkpoint> for SceneKind {
             Checkpoint::GraveBuster => Self::Day,
             Checkpoint::Coffee => Self::Day,
             Checkpoint::TangleKelp => Self::Pool,
+            Checkpoint::DolphinJump => Self::Pool,
+            Checkpoint::PoolEntry => Self::Pool,
             Checkpoint::Spikeweed => Self::Day,
             Checkpoint::Digger => Self::Day,
             Checkpoint::Magnet => Self::Night,
+            Checkpoint::ShieldHit => Self::Day,
             Checkpoint::Zamboni => Self::Day,
+            Checkpoint::Catapult => Self::Day,
+            Checkpoint::BalloonAppearance => Self::Day,
             Checkpoint::PogoBlock => Self::Day,
+            Checkpoint::PogoBounce => Self::Day,
             Checkpoint::UmbrellaDeflect => Self::Day,
         }
     }
@@ -1194,22 +1219,33 @@ impl App {
                 Game::new_mode(0, ModeKind::ZenGarden, 0)
             }
             Some(Checkpoint::Butter) => Game::new(0, SceneKind::Day),
+            Some(Checkpoint::ProjectileImpacts) => Game::new(0, SceneKind::Day),
+            Some(Checkpoint::PrizeChime) => Game::new(0, SceneKind::Day),
+            Some(Checkpoint::SunProduction) => Game::new(0, SceneKind::Day),
             Some(Checkpoint::VaseBreak) => Game::new_mode(0, ModeKind::Vasebreaker, 0),
             Some(Checkpoint::Rake) => Game::new(0, SceneKind::Day),
             Some(Checkpoint::ExplosionPlants) => Game::new(0, SceneKind::Night),
             Some(Checkpoint::ExplodeONut) => Game::new_mode(0, ModeKind::MiniGame, 1),
+            Some(Checkpoint::Squash) => Game::new(0, SceneKind::Day),
+            Some(Checkpoint::SquashHum) => Game::new(0, SceneKind::Day),
             Some(Checkpoint::BrainEaten) => Game::new_mode(0, ModeKind::IZombie, 0),
             Some(Checkpoint::ImpThrow) => Game::new(0, SceneKind::Day),
+            Some(Checkpoint::NewspaperRip) => Game::new(0, SceneKind::Day),
             Some(Checkpoint::BloverChomper) => Game::new(0, SceneKind::Day),
             Some(Checkpoint::HypnoJackbox) => Game::new(0, SceneKind::Night),
             Some(Checkpoint::CobCannon) => Game::new(0, SceneKind::Day),
             Some(Checkpoint::GraveBuster) => Game::new(0, SceneKind::Day),
             Some(Checkpoint::Coffee) => Game::new(0, SceneKind::Day),
             Some(Checkpoint::TangleKelp) => Game::new(0, SceneKind::Pool),
+            Some(Checkpoint::DolphinJump) => Game::new(0, SceneKind::Pool),
+            Some(Checkpoint::PoolEntry) => Game::new(0, SceneKind::Pool),
             Some(Checkpoint::Spikeweed) => Game::new(0, SceneKind::Day),
             Some(Checkpoint::Digger) => Game::new(0, SceneKind::Day),
             Some(Checkpoint::Magnet) => Game::new(0, SceneKind::Night),
+            Some(Checkpoint::ShieldHit) => Game::new(0, SceneKind::Day),
             Some(Checkpoint::Zamboni) => Game::new(0, SceneKind::Day),
+            Some(Checkpoint::Catapult) => Game::new(0, SceneKind::Day),
+            Some(Checkpoint::BalloonAppearance) => Game::new(0, SceneKind::Day),
             Some(Checkpoint::PogoBlock) => Game::new(0, SceneKind::Day),
             Some(Checkpoint::UmbrellaDeflect) => Game::new(0, SceneKind::Day),
             _ => new_scene_game(initial_scene),
@@ -1225,6 +1261,8 @@ impl App {
                 pending_input.push(InputAction::CollectSun { entity: sun });
                 pending_input.push(InputAction::CollectCoin { entity: coin });
             }
+            Some(Checkpoint::SunProduction) => game.debug_prepare_sun_production(),
+            Some(Checkpoint::PrizeChime) => startup_events = game.debug_prepare_prize_chime(),
             Some(Checkpoint::GardenWater) => {
                 pending_input.push(InputAction::GardenWater { plant: 0 });
             }
@@ -1235,9 +1273,15 @@ impl App {
             Some(Checkpoint::PotatoMine) => game.debug_prepare_potato_mine(),
             Some(Checkpoint::ExplosionPlants) => game.debug_prepare_explosion_plants(),
             Some(Checkpoint::ExplodeONut) => game.debug_prepare_explode_o_nut(),
+            Some(Checkpoint::Squash) => startup_events = game.debug_prepare_squash(),
+            Some(Checkpoint::SquashHum) => startup_events = game.debug_prepare_squash_hum(),
             Some(Checkpoint::BrainEaten) => game.debug_prepare_brain_finished(),
             Some(Checkpoint::ImpThrow) => game.debug_prepare_imp_throw(),
+            Some(Checkpoint::NewspaperRip) => startup_events = game.debug_prepare_newspaper_rip(),
             Some(Checkpoint::Butter) => startup_events = game.debug_prepare_butter(),
+            Some(Checkpoint::ProjectileImpacts) => {
+                startup_events = game.debug_prepare_projectile_impacts()
+            }
             Some(Checkpoint::VaseBreak) => startup_events = game.debug_prepare_vase_break(),
             Some(Checkpoint::Rake) => startup_events = game.debug_prepare_rake(),
             Some(Checkpoint::BloverChomper) => game.debug_prepare_blover_chomper(),
@@ -1247,11 +1291,19 @@ impl App {
             Some(Checkpoint::GraveBuster) => game.debug_prepare_gravebuster(),
             Some(Checkpoint::Coffee) => game.debug_prepare_coffee(),
             Some(Checkpoint::TangleKelp) => game.debug_prepare_tangle_kelp(),
+            Some(Checkpoint::DolphinJump) => startup_events = game.debug_prepare_dolphin_jump(),
+            Some(Checkpoint::PoolEntry) => startup_events = game.debug_prepare_pool_entry(),
             Some(Checkpoint::Spikeweed) => game.debug_prepare_spikeweed(),
             Some(Checkpoint::Digger) => game.debug_prepare_digger(),
             Some(Checkpoint::Magnet) => game.debug_prepare_magnet(),
-            Some(Checkpoint::Zamboni) => game.debug_prepare_zamboni(),
+            Some(Checkpoint::ShieldHit) => game.debug_prepare_shield_hit(),
+            Some(Checkpoint::Zamboni) => startup_events = game.debug_prepare_zamboni(),
+            Some(Checkpoint::Catapult) => startup_events = game.debug_prepare_catapult(),
+            Some(Checkpoint::BalloonAppearance) => {
+                startup_events = game.debug_prepare_balloon_appearance()
+            }
             Some(Checkpoint::PogoBlock) => game.debug_prepare_pogo_block(),
+            Some(Checkpoint::PogoBounce) => startup_events = game.debug_prepare_pogo_bounce(),
             Some(Checkpoint::UmbrellaDeflect) => game.debug_prepare_umbrella_deflect(),
             _ => {}
         }
@@ -2236,6 +2288,22 @@ fn audio_for_event(event: &GameEvent) -> Option<(AudioKind, &'static str)> {
         GameEvent::InputRejected { .. } => Some((AudioKind::Effect, "sounds/buzzer.ogg")),
         GameEvent::PlantPlaced { .. } => Some((AudioKind::Effect, "sounds/plant.ogg")),
         GameEvent::PlantShoveled { .. } => Some((AudioKind::Effect, "sounds/plant2.ogg")),
+        GameEvent::SunProduced {
+            source: SunSource::Plant(_),
+            ..
+        } => Some((AudioKind::Effect, "sounds/throw.ogg")),
+        GameEvent::CoinProduced {
+            coin_type:
+                CoinType::Diamond
+                | CoinType::Chocolate
+                | CoinType::AwardChocolate
+                | CoinType::PresentPlant
+                | CoinType::AwardPresent
+                | CoinType::PresentMinigames
+                | CoinType::PresentPuzzleMode
+                | CoinType::PresentSurvivalMode,
+            ..
+        } => Some((AudioKind::Effect, "sounds/chime.ogg")),
         GameEvent::SunCollected { .. } => Some((AudioKind::Effect, "sounds/points.ogg")),
         GameEvent::CoinCollected { .. } => Some((AudioKind::Effect, "sounds/coin.ogg")),
         GameEvent::GardenWatered { .. } => Some((AudioKind::Effect, "sounds/watering.ogg")),
@@ -2285,6 +2353,18 @@ fn audio_for_event(event: &GameEvent) -> Option<(AudioKind, &'static str)> {
             ..
         } => Some((AudioKind::Effect, "sounds/doomshroom.ogg")),
         GameEvent::PlantSpecialTriggered {
+            plant_type: neopvz_core::PlantType::Other(17),
+            ..
+        } => Some((AudioKind::Effect, "sounds/gargantuar_thump.ogg")),
+        GameEvent::SquashHumStarted { variant, .. } => Some((
+            AudioKind::Effect,
+            if *variant < 2 {
+                "sounds/squash_hmm.ogg"
+            } else {
+                "sounds/squash_hmm2.ogg"
+            },
+        )),
+        GameEvent::PlantSpecialTriggered {
             plant_type: neopvz_core::PlantType::Other(6),
             ..
         } => Some((AudioKind::Effect, "sounds/bigchomp.ogg")),
@@ -2295,18 +2375,98 @@ fn audio_for_event(event: &GameEvent) -> Option<(AudioKind, &'static str)> {
         GameEvent::JackboxExploded { .. } => Some((AudioKind::Effect, "sounds/explosion.ogg")),
         GameEvent::BrainFinished { .. } => Some((AudioKind::Effect, "sounds/gulp.ogg")),
         GameEvent::ImpThrown { .. } => Some((AudioKind::Effect, "sounds/swing.ogg")),
+        GameEvent::ZombieSpawned {
+            zombie_type: neopvz_core::ZombieType::DolphinRider,
+            ..
+        } => Some((AudioKind::Effect, "sounds/dolphin_appears.ogg")),
+        GameEvent::ZombieSpawned {
+            zombie_type: neopvz_core::ZombieType::Zamboni,
+            ..
+        } => Some((AudioKind::Effect, "sounds/zamboni.ogg")),
+        GameEvent::ZombieSpawned {
+            zombie_type: neopvz_core::ZombieType::Balloon,
+            ..
+        } => Some((AudioKind::Effect, "sounds/ballooninflate.ogg")),
+        GameEvent::ZombieShieldHit { variant, .. } => Some((
+            AudioKind::Effect,
+            if *variant == 0 {
+                "sounds/shieldhit.ogg"
+            } else {
+                "sounds/shieldhit2.ogg"
+            },
+        )),
+        GameEvent::ZombieNewspaperRipped { .. } => {
+            Some((AudioKind::Effect, "sounds/newspaper_rip.ogg"))
+        }
+        GameEvent::PogoBounceSound { .. } => Some((AudioKind::Effect, "sounds/pogo_zombie.ogg")),
+        GameEvent::DolphinJumpStarted { .. } => {
+            Some((AudioKind::Effect, "sounds/dolphin_before_jumping.ogg"))
+        }
+        GameEvent::ZombieEnteredPool { variant, .. } => Some((
+            AudioKind::Effect,
+            if *variant == 0 {
+                "sounds/plant_water.ogg"
+            } else {
+                "sounds/zombie_entering_water.ogg"
+            },
+        )),
         GameEvent::ZombieChilled { .. } => Some((AudioKind::Effect, "sounds/frozen.ogg")),
-        GameEvent::ZombieButtered { .. } => Some((AudioKind::Effect, "sounds/butter.ogg")),
         GameEvent::VaseBroken { .. } => Some((AudioKind::Effect, "sounds/vase_breaking.ogg")),
         GameEvent::RakeTriggered { .. } => Some((AudioKind::Effect, "sounds/swing.ogg")),
         GameEvent::JumpBlocked { .. } => Some((AudioKind::Effect, "sounds/bonk.ogg")),
         GameEvent::UmbrellaDeflected { .. } => Some((AudioKind::Effect, "sounds/boing.ogg")),
         GameEvent::CobCannonFired { .. } => Some((AudioKind::Effect, "sounds/coblaunch.ogg")),
+        GameEvent::ProjectileFired {
+            projectile_type: neopvz_core::ProjectileType::Other(1),
+            ..
+        } => Some((AudioKind::Effect, "sounds/basketball.ogg")),
         GameEvent::PortalOpened { .. } => Some((AudioKind::Effect, "sounds/portal.ogg")),
-        GameEvent::ProjectileHit { .. } | GameEvent::ProjectileSplashHit { .. } => {
-            Some((AudioKind::Effect, "sounds/splat.ogg"))
-        }
-        GameEvent::ZombieDied { .. } => Some((AudioKind::Effect, "sounds/splat2.ogg")),
+        GameEvent::ProjectileImpact { kind, variant, .. } => Some((
+            AudioKind::Effect,
+            match kind {
+                ProjectileImpactSound::Splat => match variant {
+                    0 => "sounds/splat.ogg",
+                    1 => "sounds/splat2.ogg",
+                    _ => "sounds/splat3.ogg",
+                },
+                ProjectileImpactSound::Kernel => {
+                    if *variant == 0 {
+                        "sounds/kernelpult.ogg"
+                    } else {
+                        "sounds/kernelpult2.ogg"
+                    }
+                }
+                ProjectileImpactSound::Butter => "sounds/butter.ogg",
+                ProjectileImpactSound::Ignite => {
+                    if *variant < 3 {
+                        "sounds/ignite.ogg"
+                    } else {
+                        "sounds/ignite2.ogg"
+                    }
+                }
+                ProjectileImpactSound::Melon => {
+                    if *variant == 0 {
+                        "sounds/melonimpact.ogg"
+                    } else {
+                        "sounds/melonimpact2.ogg"
+                    }
+                }
+                ProjectileImpactSound::Shield => {
+                    if *variant == 0 {
+                        "sounds/shieldhit.ogg"
+                    } else {
+                        "sounds/shieldhit2.ogg"
+                    }
+                }
+                ProjectileImpactSound::Plastic => {
+                    if *variant == 0 {
+                        "sounds/plastichit.ogg"
+                    } else {
+                        "sounds/plastichit2.ogg"
+                    }
+                }
+            },
+        )),
         GameEvent::MowerTriggered { .. } => Some((AudioKind::Effect, "sounds/lawnmower.ogg")),
         GameEvent::Paused => Some((AudioKind::Effect, "sounds/pause.ogg")),
         GameEvent::GameLost { .. } => Some((AudioKind::Music, "sounds/losemusic.ogg")),
@@ -2331,6 +2491,15 @@ fn audio_companion_for_event(event: &GameEvent) -> Option<(AudioKind, &'static s
         } => Some((AudioKind::Effect, "sounds/bowlingimpact2.ogg")),
         GameEvent::UmbrellaDeflected { .. } => Some((AudioKind::Effect, "sounds/throw2.ogg")),
         GameEvent::DiggerSurfaced { .. } => Some((AudioKind::Effect, "sounds/wakeup.ogg")),
+        GameEvent::ImpThrown { imp_variant, .. } => Some((
+            AudioKind::Effect,
+            if *imp_variant == 0 {
+                "sounds/imp.ogg"
+            } else {
+                "sounds/imp2.ogg"
+            },
+        )),
+        GameEvent::DolphinJumpStarted { .. } => Some((AudioKind::Effect, "sounds/plant_water.ogg")),
         _ => None,
     }
 }
@@ -2433,6 +2602,71 @@ mod tests {
             }),
             Some((AudioKind::Effect, "sounds/points.ogg"))
         );
+        assert_eq!(
+            audio_for_event(&GameEvent::SunProduced {
+                entity: 1,
+                source: SunSource::Plant(2),
+                value: 25,
+            }),
+            Some((AudioKind::Effect, "sounds/throw.ogg"))
+        );
+        assert_eq!(
+            audio_for_event(&GameEvent::SunProduced {
+                entity: 1,
+                source: SunSource::Sky,
+                value: 25,
+            }),
+            None
+        );
+        for coin_type in [
+            CoinType::Diamond,
+            CoinType::Chocolate,
+            CoinType::AwardChocolate,
+            CoinType::PresentPlant,
+            CoinType::AwardPresent,
+            CoinType::PresentMinigames,
+            CoinType::PresentPuzzleMode,
+            CoinType::PresentSurvivalMode,
+        ] {
+            assert_eq!(
+                audio_for_event(&GameEvent::CoinProduced {
+                    entity: 1,
+                    coin_type,
+                    value: 0,
+                }),
+                Some((AudioKind::Effect, "sounds/chime.ogg"))
+            );
+        }
+        for coin_type in [
+            CoinType::Silver,
+            CoinType::Gold,
+            CoinType::Sun,
+            CoinType::SmallSun,
+            CoinType::LargeSun,
+            CoinType::FinalSeedPacket,
+            CoinType::Trophy,
+            CoinType::Shovel,
+            CoinType::Almanac,
+            CoinType::CarKeys,
+            CoinType::Vase,
+            CoinType::WateringCan,
+            CoinType::Taco,
+            CoinType::Note,
+            CoinType::UsableSeedPacket,
+            CoinType::AwardMoneyBag,
+            CoinType::AwardBagDiamond,
+            CoinType::AwardSilverSunflower,
+            CoinType::AwardGoldSunflower,
+        ] {
+            assert_eq!(
+                audio_for_event(&GameEvent::CoinProduced {
+                    entity: 1,
+                    coin_type,
+                    value: 1,
+                }),
+                None
+            );
+        }
         assert_eq!(
             audio_for_event(&GameEvent::CoinCollected {
                 entity: 2,
@@ -2557,12 +2791,121 @@ mod tests {
             audio_for_event(&GameEvent::ImpThrown {
                 gargantuar: 1,
                 imp: 2,
+                imp_variant: 0,
             }),
             Some((AudioKind::Effect, "sounds/swing.ogg"))
         );
         assert_eq!(
+            audio_companion_for_event(&GameEvent::ImpThrown {
+                gargantuar: 1,
+                imp: 2,
+                imp_variant: 0,
+            }),
+            Some((AudioKind::Effect, "sounds/imp.ogg"))
+        );
+        assert_eq!(
+            audio_companion_for_event(&GameEvent::ImpThrown {
+                gargantuar: 1,
+                imp: 2,
+                imp_variant: 1,
+            }),
+            Some((AudioKind::Effect, "sounds/imp2.ogg"))
+        );
+        assert_eq!(
+            audio_for_event(&GameEvent::ZombieNewspaperRipped { entity: 1 }),
+            Some((AudioKind::Effect, "sounds/newspaper_rip.ogg"))
+        );
+        assert_eq!(
+            audio_for_event(&GameEvent::PogoBounceSound { entity: 1 }),
+            Some((AudioKind::Effect, "sounds/pogo_zombie.ogg"))
+        );
+        assert_eq!(
+            audio_for_event(&GameEvent::DolphinJumpStarted { entity: 1 }),
+            Some((AudioKind::Effect, "sounds/dolphin_before_jumping.ogg"))
+        );
+        assert_eq!(
+            audio_for_event(&GameEvent::ZombieEnteredPool {
+                entity: 1,
+                variant: 0,
+            }),
+            Some((AudioKind::Effect, "sounds/plant_water.ogg"))
+        );
+        assert_eq!(
+            audio_for_event(&GameEvent::ZombieEnteredPool {
+                entity: 1,
+                variant: 1,
+            }),
+            Some((AudioKind::Effect, "sounds/zombie_entering_water.ogg"))
+        );
+        assert_eq!(
+            audio_for_event(&GameEvent::ZombieSpawned {
+                entity: 1,
+                zombie_type: neopvz_core::ZombieType::DolphinRider,
+                row: 2,
+                wave: 0,
+            }),
+            Some((AudioKind::Effect, "sounds/dolphin_appears.ogg"))
+        );
+        assert_eq!(
+            audio_for_event(&GameEvent::ZombieSpawned {
+                entity: 1,
+                zombie_type: neopvz_core::ZombieType::Zamboni,
+                row: 2,
+                wave: 0,
+            }),
+            Some((AudioKind::Effect, "sounds/zamboni.ogg"))
+        );
+        assert_eq!(
+            audio_for_event(&GameEvent::ZombieSpawned {
+                entity: 1,
+                zombie_type: neopvz_core::ZombieType::Balloon,
+                row: 2,
+                wave: 0,
+            }),
+            Some((AudioKind::Effect, "sounds/ballooninflate.ogg"))
+        );
+        assert_eq!(
+            audio_for_event(&GameEvent::ZombieShieldHit {
+                entity: 1,
+                variant: 0,
+            }),
+            Some((AudioKind::Effect, "sounds/shieldhit.ogg"))
+        );
+        assert_eq!(
+            audio_for_event(&GameEvent::ZombieShieldHit {
+                entity: 1,
+                variant: 1,
+            }),
+            Some((AudioKind::Effect, "sounds/shieldhit2.ogg"))
+        );
+        assert_eq!(
+            audio_companion_for_event(&GameEvent::DolphinJumpStarted { entity: 1 }),
+            Some((AudioKind::Effect, "sounds/plant_water.ogg"))
+        );
+        assert_eq!(
             audio_for_event(&GameEvent::ZombieButtered { entity: 1 }),
-            Some((AudioKind::Effect, "sounds/butter.ogg"))
+            None
+        );
+        assert_eq!(
+            audio_for_event(&GameEvent::PlantSpecialTriggered {
+                entity: 1,
+                plant_type: neopvz_core::PlantType::Other(17),
+            }),
+            Some((AudioKind::Effect, "sounds/gargantuar_thump.ogg"))
+        );
+        assert_eq!(
+            audio_for_event(&GameEvent::SquashHumStarted {
+                entity: 1,
+                variant: 0,
+            }),
+            Some((AudioKind::Effect, "sounds/squash_hmm.ogg"))
+        );
+        assert_eq!(
+            audio_for_event(&GameEvent::SquashHumStarted {
+                entity: 1,
+                variant: 2,
+            }),
+            Some((AudioKind::Effect, "sounds/squash_hmm2.ogg"))
         );
         assert_eq!(
             audio_for_event(&GameEvent::VaseBroken {
@@ -2605,6 +2948,68 @@ mod tests {
             }),
             Some((AudioKind::Effect, "sounds/coblaunch.ogg"))
         );
+        assert_eq!(
+            audio_for_event(&GameEvent::ProjectileFired {
+                entity: 1,
+                source: 2,
+                projectile_type: neopvz_core::ProjectileType::Other(1),
+                row: 2,
+            }),
+            Some((AudioKind::Effect, "sounds/basketball.ogg"))
+        );
+        for (kind, path) in [
+            (ProjectileImpactSound::Splat, "sounds/splat.ogg"),
+            (ProjectileImpactSound::Kernel, "sounds/kernelpult.ogg"),
+            (ProjectileImpactSound::Butter, "sounds/butter.ogg"),
+            (ProjectileImpactSound::Ignite, "sounds/ignite.ogg"),
+            (ProjectileImpactSound::Melon, "sounds/melonimpact.ogg"),
+            (ProjectileImpactSound::Shield, "sounds/shieldhit.ogg"),
+            (ProjectileImpactSound::Plastic, "sounds/plastichit.ogg"),
+        ] {
+            assert_eq!(
+                audio_for_event(&GameEvent::ProjectileImpact {
+                    projectile: 1,
+                    zombie: Some(2),
+                    kind,
+                    variant: match kind {
+                        ProjectileImpactSound::Splat => 2,
+                        ProjectileImpactSound::Ignite => 3,
+                        _ => 1,
+                    },
+                }),
+                Some((
+                    AudioKind::Effect,
+                    match kind {
+                        ProjectileImpactSound::Splat => "sounds/splat3.ogg",
+                        ProjectileImpactSound::Kernel => "sounds/kernelpult2.ogg",
+                        ProjectileImpactSound::Butter => path,
+                        ProjectileImpactSound::Ignite => "sounds/ignite2.ogg",
+                        ProjectileImpactSound::Melon => "sounds/melonimpact2.ogg",
+                        ProjectileImpactSound::Shield => "sounds/shieldhit2.ogg",
+                        ProjectileImpactSound::Plastic => "sounds/plastichit2.ogg",
+                    },
+                ))
+            );
+        }
+        assert_eq!(
+            audio_for_event(&GameEvent::ProjectileHit {
+                projectile: 1,
+                zombie: 2,
+                damage: 20,
+                health_remaining: 250,
+            }),
+            None
+        );
+        assert_eq!(
+            audio_for_event(&GameEvent::ProjectileSplashHit {
+                projectile: 1,
+                zombie: 2,
+                damage: 13,
+                health_remaining: 250,
+            }),
+            None
+        );
+        assert_eq!(audio_for_event(&GameEvent::ZombieDied { entity: 2 }), None);
         assert_eq!(
             audio_for_event(&GameEvent::PortalOpened {
                 row: 2,
