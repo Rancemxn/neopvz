@@ -7559,12 +7559,8 @@ impl Game {
                             zombie.special_phase = 2;
                             zombie.special_counter = GARGANTUAR_THROW_RECOVERY_STEPS;
                             zombie.imp_thrown = true;
-                            throw = Some((
-                                zombie.id,
-                                zombie.row,
-                                zombie.position_x,
-                                zombie.from_wave,
-                            ));
+                            throw =
+                                Some((zombie.id, zombie.row, zombie.position_x, zombie.from_wave));
                         } else {
                             zombie.special_phase = 0;
                         }
@@ -7573,8 +7569,7 @@ impl Game {
             } else if !zombie.imp_thrown
                 && zombie.frozen_counter == 0
                 && zombie.health < zombie.max_health / 2
-                && zombie.position_x - GARGANTUAR_THROW_BASE_X
-                    > GARGANTUAR_THROW_MIN_DISTANCE
+                && zombie.position_x - GARGANTUAR_THROW_BASE_X > GARGANTUAR_THROW_MIN_DISTANCE
             {
                 zombie.special_phase = 1;
                 zombie.special_counter = GARGANTUAR_THROW_EVENT_STEPS;
@@ -14054,10 +14049,7 @@ mod tests {
             .find(|zombie| zombie.id == garg)
             .unwrap();
         assert_eq!(gargantuar.special_phase, 1);
-        assert_eq!(
-            gargantuar.special_counter,
-            GARGANTUAR_THROW_EVENT_STEPS
-        );
+        assert_eq!(gargantuar.special_counter, GARGANTUAR_THROW_EVENT_STEPS);
         assert_eq!(gargantuar.position_x, 490 * POSITION_SCALE);
 
         for _ in 0..104 {
@@ -14194,8 +14186,7 @@ mod tests {
         game.advance(InputFrame::default());
         game.advance(InputFrame::default());
         assert_eq!(
-            game.state.board.zombies[0].special_counter,
-            GARGANTUAR_THROW_EVENT_STEPS,
+            game.state.board.zombies[0].special_counter, GARGANTUAR_THROW_EVENT_STEPS,
             "freeze pauses the animation"
         );
 
