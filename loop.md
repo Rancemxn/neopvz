@@ -25,8 +25,10 @@
 - **Current-run build-gate override:** For this run only, the user's explicit
   authorization accepts local stable `fmt --check`, locked Clippy, locked
   workspace tests, and a locked non-release workspace debug build in place of
-  waiting for GitHub Actions. After starting a compile/test command, wait at
-  least 20 seconds before reading its result, even if the process exits sooner.
+  waiting for GitHub Actions. If a compile/test command is started
+  asynchronously and its result must be polled, wait at least 20 seconds
+  before the first result read. Synchronous commands may be read immediately
+  when they return; do not add a 20-second delay after a successful build.
   Do not run a release build. This does not weaken the repository's CI
   requirements for later merges.
 - **Current-run app-validation override:** For this run only, the user's
