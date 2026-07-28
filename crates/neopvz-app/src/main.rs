@@ -83,6 +83,7 @@ enum Checkpoint {
     Pickups,
     PrizeChime,
     SunProduction,
+    PlantFiring,
     GardenWater,
     GardenFertilize,
     IceShroom,
@@ -134,6 +135,7 @@ impl From<Checkpoint> for SceneKind {
             Checkpoint::Pickups => Self::Day,
             Checkpoint::PrizeChime => Self::Day,
             Checkpoint::SunProduction => Self::Day,
+            Checkpoint::PlantFiring => Self::Night,
             Checkpoint::GardenWater => Self::Garden,
             Checkpoint::GardenFertilize => Self::Garden,
             Checkpoint::IceShroom => Self::Night,
@@ -1222,6 +1224,7 @@ impl App {
             Some(Checkpoint::ProjectileImpacts) => Game::new(0, SceneKind::Day),
             Some(Checkpoint::PrizeChime) => Game::new(0, SceneKind::Day),
             Some(Checkpoint::SunProduction) => Game::new(0, SceneKind::Day),
+            Some(Checkpoint::PlantFiring) => Game::new(0, SceneKind::Night),
             Some(Checkpoint::VaseBreak) => Game::new_mode(0, ModeKind::Vasebreaker, 0),
             Some(Checkpoint::Rake) => Game::new(0, SceneKind::Day),
             Some(Checkpoint::ExplosionPlants) => Game::new(0, SceneKind::Night),
@@ -1262,6 +1265,9 @@ impl App {
                 pending_input.push(InputAction::CollectCoin { entity: coin });
             }
             Some(Checkpoint::SunProduction) => game.debug_prepare_sun_production(),
+            Some(Checkpoint::PlantFiring) => {
+                startup_events = game.debug_prepare_plant_firing_audio()
+            }
             Some(Checkpoint::PrizeChime) => startup_events = game.debug_prepare_prize_chime(),
             Some(Checkpoint::GardenWater) => {
                 pending_input.push(InputAction::GardenWater { plant: 0 });
@@ -2332,6 +2338,22 @@ fn audio_for_event(event: &GameEvent) -> Option<(AudioKind, &'static str)> {
             plant_type: neopvz_core::PlantType::Other(21),
             ..
         } => Some((AudioKind::Effect, "sounds/throw.ogg")),
+        GameEvent::PlantFired {
+            plant_type: neopvz_core::PlantType::Other(10),
+            ..
+        } => Some((AudioKind::Effect, "sounds/fume.ogg")),
+        GameEvent::PlantFired {
+            plant_type: neopvz_core::PlantType::Other(42),
+            ..
+        } => None,
+        GameEvent::PlantFired { variant, .. } => Some((
+            AudioKind::Effect,
+            if *variant < 3 {
+                "sounds/throw.ogg"
+            } else {
+                "sounds/throw2.ogg"
+            },
+        )),
         GameEvent::PlantSpecialTriggered {
             plant_type: neopvz_core::PlantType::Other(4),
             ..
@@ -2500,6 +2522,14 @@ fn audio_companion_for_event(event: &GameEvent) -> Option<(AudioKind, &'static s
             },
         )),
         GameEvent::DolphinJumpStarted { .. } => Some((AudioKind::Effect, "sounds/plant_water.ogg")),
+        GameEvent::PlantFired {
+            plant_type: neopvz_core::PlantType::Other(5 | 44),
+            ..
+        } => Some((AudioKind::Effect, "sounds/snow_pea_sparkles.ogg")),
+        GameEvent::PlantFired {
+            plant_type: neopvz_core::PlantType::Other(8 | 13 | 24),
+            ..
+        } => Some((AudioKind::Effect, "sounds/puff.ogg")),
         _ => None,
     }
 }
@@ -2725,6 +2755,74 @@ mod tests {
                 Some((AudioKind::Effect, path))
             );
         }
+        for (variant, path) in [
+            (0, "sounds/throw.ogg"),
+            (2, "sounds/throw.ogg"),
+            (3, "sounds/throw2.ogg"),
+        ] {
+            assert_eq!(
+                audio_for_event(&GameEvent::PlantFired {
+                    entity: 1,
+                    plant_type: neopvz_core::PlantType::Peashooter,
+                    variant,
+                }),
+                Some((AudioKind::Effect, path))
+            );
+        }
+        for plant_type in [
+            neopvz_core::PlantType::Other(5),
+            neopvz_core::PlantType::Other(44),
+        ] {
+            let event = GameEvent::PlantFired {
+                entity: 1,
+                plant_type,
+                variant: 0,
+            };
+            assert_eq!(
+                audio_for_event(&event),
+                Some((AudioKind::Effect, "sounds/throw.ogg"))
+            );
+            assert_eq!(
+                audio_companion_for_event(&event),
+                Some((AudioKind::Effect, "sounds/snow_pea_sparkles.ogg"))
+            );
+        }
+        for plant_type in [
+            neopvz_core::PlantType::Other(8),
+            neopvz_core::PlantType::Other(13),
+            neopvz_core::PlantType::Other(24),
+        ] {
+            let event = GameEvent::PlantFired {
+                entity: 1,
+                plant_type,
+                variant: 0,
+            };
+            assert_eq!(
+                audio_for_event(&event),
+                Some((AudioKind::Effect, "sounds/throw.ogg"))
+            );
+            assert_eq!(
+                audio_companion_for_event(&event),
+                Some((AudioKind::Effect, "sounds/puff.ogg"))
+            );
+        }
+        let fume = GameEvent::PlantFired {
+            entity: 1,
+            plant_type: neopvz_core::PlantType::Other(10),
+            variant: 0,
+        };
+        assert_eq!(
+            audio_for_event(&fume),
+            Some((AudioKind::Effect, "sounds/fume.ogg"))
+        );
+        assert_eq!(audio_companion_for_event(&fume), None);
+        let gloom = GameEvent::PlantFired {
+            entity: 1,
+            plant_type: neopvz_core::PlantType::Other(42),
+            variant: 0,
+        };
+        assert_eq!(audio_for_event(&gloom), None);
+        assert_eq!(audio_companion_for_event(&gloom), None);
         assert_eq!(
             audio_for_event(&GameEvent::TangleKelpGrabStarted { entity: 1 }),
             Some((AudioKind::Effect, "sounds/floop.ogg"))
