@@ -7816,8 +7816,12 @@ impl Game {
             {
                 let zombie = &mut self.state.board.zombies[zombie_index];
                 if zombie.zombie_type == ZombieType::Yeti && !zombie.yeti_running {
-                    zombie.yeti_counter = zombie.yeti_counter.saturating_sub(1);
-                    if zombie.yeti_counter == 0 {
+                    // Phase countdown precedes thaw; UpdateYeti checks after thaw.
+                    if zombie.frozen_counter == 0 {
+                        zombie.yeti_counter = zombie.yeti_counter.saturating_sub(1);
+                    }
+                    if zombie.yeti_counter == 0 && !zombie.hypnotized && zombie.frozen_counter <= 1
+                    {
                         zombie.yeti_running = true;
                     }
                 }
@@ -16037,6 +16041,43 @@ mod tests {
                 |event| matches!(event, GameEvent::ZombieFled { entity } if *entity == zombie)
             )
         );
+    }
+
+    #[test]
+    fn yeti_flee_phase_respects_freeze_and_hypnosis() {
+        let mut game = Game::new(7, SceneKind::Day);
+        let mut setup = Vec::new();
+        game.spawn_yeti_zombie(2, 0, Some(500 * POSITION_SCALE), &mut setup);
+        let yeti = &mut game.state.board.zombies[0];
+        yeti.yeti_counter = 1;
+        yeti.frozen_counter = 2;
+        let state = |game: &Game| {
+            let yeti = &game.state.board.zombies[0];
+            (yeti.frozen_counter, yeti.yeti_counter, yeti.yeti_running)
+        };
+
+        game.advance(InputFrame::default());
+        assert_eq!(state(&game), (1, 1, false));
+
+        game.advance(InputFrame::default());
+        assert_eq!(state(&game), (0, 1, false));
+
+        game.advance(InputFrame::default());
+        assert_eq!(state(&game), (0, 0, true));
+
+        let yeti = &mut game.state.board.zombies[0];
+        yeti.yeti_running = false;
+        yeti.yeti_counter = 0;
+        yeti.frozen_counter = 1;
+        game.advance(InputFrame::default());
+        assert_eq!(state(&game), (0, 0, true));
+
+        let yeti = &mut game.state.board.zombies[0];
+        yeti.yeti_running = false;
+        yeti.yeti_counter = 1;
+        yeti.hypnotized = true;
+        game.advance(InputFrame::default());
+        assert_eq!(state(&game), (0, 0, false));
     }
 
     #[test]
