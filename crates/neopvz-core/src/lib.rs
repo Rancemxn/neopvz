@@ -48,6 +48,12 @@ const SQUASH_HIT_DELAY_TICKS: u32 =
     SQUASH_JUMP_UP_TICKS + SQUASH_AIR_TICKS + SQUASH_LANDING_HIT_TICKS;
 const SQUASH_TARGET_GAP: i64 = 70;
 const SQUASH_EATING_TARGET_GAP: i64 = 110;
+// Plant::UpdateSquash / GetPlantAttackRect in 1.0.0.1051.
+const SQUASH_TARGET_LEAD_TICKS: i64 = 30;
+const SQUASH_HALF_WIDTH: i64 = 40;
+const SQUASH_ATTACK_LEFT_OFFSET: i64 = 20;
+const SQUASH_ATTACK_RIGHT_OFFSET: i64 = 65;
+const SQUASH_FOOTBALL_OVERLAP_ALLOWANCE: i64 = 20;
 const ICE_SHROOM_INITIAL_FREEZE_TICKS: u32 = 400;
 const ICE_SHROOM_REFRESH_FREEZE_TICKS: u32 = 300;
 const ICE_SHROOM_CHILL_TICKS: u32 = 2_000;
@@ -2127,6 +2133,8 @@ pub struct PlantState {
     pub special_counter: u32,
     pub special_armed: bool,
     pub special_target: Option<EntityId>,
+    #[serde(default)]
+    pub squash_target_x: Option<i64>,
     pub blink_counter: u32,
     #[serde(default)]
     pub asleep: bool,
@@ -4925,6 +4933,7 @@ impl Game {
             special_counter: 0,
             special_armed: plant_type.is_potato_mine(),
             special_target: None,
+            squash_target_x: None,
             blink_counter: 0,
             asleep: false,
             wake_up_counter: 0,
@@ -5836,6 +5845,7 @@ impl Game {
             special_counter,
             special_armed,
             special_target: None,
+            squash_target_x: None,
             blink_counter,
             asleep,
             wake_up_counter: 0,
@@ -6181,7 +6191,28 @@ impl Game {
                 None
             };
             let squash_target = if plant_type.is_squash() {
-                self.find_squash_target(row, column)
+                self.find_squash_target(row, column).and_then(|target| {
+                    self.state
+                        .board
+                        .zombies
+                        .iter()
+                        .find(|zombie| zombie.id == target)
+                        .map(|zombie| (target, squash_target_x(zombie, 0)))
+                })
+            } else {
+                None
+            };
+            let squash_prelaunch_target_x = if plant_type.is_squash() {
+                self.state.board.plants[index]
+                    .special_target
+                    .and_then(|target| {
+                        self.state
+                            .board
+                            .zombies
+                            .iter()
+                            .find(|zombie| zombie.id == target)
+                    })
+                    .map(|zombie| squash_target_x(zombie, SQUASH_TARGET_LEAD_TICKS))
             } else {
                 None
             };
@@ -6226,7 +6257,7 @@ impl Game {
             let mut spikeweed_hit = false;
             let mut spikeweed_started = false;
             let mut chomper_bite_target = None;
-            let mut squash_hit_target = None;
+            let mut squash_hit_x = None;
             let mut squash_landed = false;
             let mut squash_finished = false;
             let mut tangle_grab_target = None;
@@ -6301,8 +6332,11 @@ impl Game {
                     if plant.special_armed {
                         plant.special_counter = plant.special_counter.saturating_sub(1);
                         if plant.special_counter == 0 {
-                            if let Some(target) = plant.special_target.take() {
-                                squash_hit_target = Some(target);
+                            if plant.special_target.take().is_some()
+                                || plant.squash_target_x.is_some()
+                            {
+                                squash_hit_x =
+                                    plant.squash_target_x.take().or(squash_prelaunch_target_x);
                                 plant.special_counter = SQUASH_LANDING_HIT_TICKS;
                             } else if matches!(self.state.scene, SceneKind::Pool | SceneKind::Fog)
                                 && matches!(row, 2 | 3)
@@ -6318,6 +6352,9 @@ impl Game {
                     } else if plant.special_target.is_some() {
                         plant.special_counter = plant.special_counter.saturating_sub(1);
                         if plant.special_counter == 0 {
+                            if let Some(target_x) = squash_prelaunch_target_x {
+                                plant.squash_target_x = Some(target_x);
+                            }
                             plant.special_armed = true;
                             plant.special_counter = SQUASH_HIT_DELAY_TICKS;
                         }
@@ -6328,8 +6365,9 @@ impl Game {
                             plant.health = 0;
                             squash_finished = true;
                         }
-                    } else if let Some(target) = squash_target {
+                    } else if let Some((target, target_x)) = squash_target {
                         plant.special_target = Some(target);
+                        plant.squash_target_x = Some(target_x);
                         plant.special_counter = SQUASH_LOOK_TICKS;
                         squash_hum_started = true;
                     }
@@ -6448,14 +6486,14 @@ impl Game {
                     plant_type,
                 });
             }
-            if let Some(zombie_id) = squash_hit_target {
-                if let Some(zombie_index) = self
-                    .state
-                    .board
-                    .zombies
-                    .iter()
-                    .position(|zombie| zombie.id == zombie_id && zombie.health > 0)
-                {
+            if let Some(target_x) = squash_hit_x {
+                let mut zombie_index = 0;
+                while zombie_index < self.state.board.zombies.len() {
+                    if !squash_hits_zombie(&self.state.board.zombies[zombie_index], row, target_x) {
+                        zombie_index += 1;
+                        continue;
+                    }
+                    let zombie_id = self.state.board.zombies[zombie_index].id;
                     self.damage_zombie(zombie_index, PLANT_SPECIAL_DAMAGE, events);
                     let health_remaining = self.state.board.zombies[zombie_index].health;
                     events.push(GameEvent::PlantSpecialHit {
@@ -6467,6 +6505,8 @@ impl Game {
                     if health_remaining <= 0 {
                         self.emit_zombie_died(zombie_id, events);
                         self.state.board.zombies.remove(zombie_index);
+                    } else {
+                        zombie_index += 1;
                     }
                 }
                 continue;
@@ -11695,6 +11735,71 @@ fn plant_attack_start(column: u8) -> i64 {
     grid_x(column) + 60 * POSITION_SCALE
 }
 
+fn zombie_horizontal_rect(zombie: &ZombieState) -> (i64, i64) {
+    let (left, width) = match zombie.zombie_type {
+        ZombieType::Bungee => (-20, 110),
+        ZombieType::Football => (50, 57),
+        ZombieType::Digger => (50, 28),
+        ZombieType::Gargantuar | ZombieType::Gigagargantuar => (-17, 125),
+        ZombieType::Zamboni | ZombieType::Catapult => (0, 153),
+        ZombieType::Snorkel => (12, 62),
+        ZombieType::Bobsled if zombie.bobsled_leader && zombie.bobsled_sliding => (-50, 275),
+        ZombieType::Boss => (700, 90),
+        ZombieType::DolphinRider if zombie.dolphin_phase >= 3 => (20, 42),
+        _ => (36, 42),
+    };
+    let left = zombie.position_x + left * POSITION_SCALE;
+    (left, left + width * POSITION_SCALE)
+}
+
+fn squash_target_x(zombie: &ZombieState, lead_ticks: i64) -> i64 {
+    let (left, right) = zombie_horizontal_rect(zombie);
+    let speed = if zombie.eating || zombie.frozen_counter > 0 {
+        0
+    } else if zombie.chilled_counter > 0 {
+        zombie.speed * 2 / 5
+    } else {
+        zombie.speed
+    };
+    let speed = if zombie.hypnotized { -speed } else { speed };
+    (left + right) / 2 - SQUASH_HALF_WIDTH * POSITION_SCALE - speed * lead_ticks
+}
+
+fn squash_hits_zombie(zombie: &ZombieState, row: u8, target_x: i64) -> bool {
+    if zombie.health <= 0
+        || zombie.hypnotized
+        || zombie.departed
+        || zombie.bungee_held
+        || balloon_is_airborne(zombie)
+        || zombie.imp_flight_ticks > 0
+        || (zombie.zombie_type == ZombieType::Digger
+            && (zombie.digger_underground || zombie.digger_counter > 0))
+        || (zombie.zombie_type == ZombieType::DolphinRider && zombie.dolphin_phase == 2)
+        || (zombie.zombie_type == ZombieType::Pogo && zombie.pogo_counter > 0)
+        || (zombie.zombie_type == ZombieType::Dancer
+            && !zombie.dancer_summoned
+            && zombie.dancer_counter > 0)
+        || (zombie.zombie_type == ZombieType::PoleVaulter && zombie.special_phase != 0)
+        || (zombie.zombie_type == ZombieType::Bobsled
+            && zombie.bobsled_sliding
+            && !zombie.bobsled_leader)
+        || (zombie.row != row && zombie.zombie_type != ZombieType::Boss)
+    {
+        return false;
+    }
+
+    let attack_left = target_x + SQUASH_ATTACK_LEFT_OFFSET * POSITION_SCALE;
+    let attack_right = target_x + SQUASH_ATTACK_RIGHT_OFFSET * POSITION_SCALE;
+    let (zombie_left, zombie_right) = zombie_horizontal_rect(zombie);
+    let overlap = attack_right.min(zombie_right) - attack_left.max(zombie_left);
+    let minimum = if zombie.zombie_type == ZombieType::Football {
+        -SQUASH_FOOTBALL_OVERLAP_ALLOWANCE * POSITION_SCALE
+    } else {
+        0
+    };
+    overlap > minimum
+}
+
 fn projectile_hits(projectile_x: i64, zombie_x: i64) -> bool {
     projectile_x + 45 * POSITION_SCALE > zombie_x + 36 * POSITION_SCALE
         && projectile_x - 15 * POSITION_SCALE < zombie_x + 78 * POSITION_SCALE
@@ -13347,6 +13452,196 @@ mod tests {
                 .any(|event| matches!(event, GameEvent::PlantDied { entity } if *entity == squash))
         );
         assert!(game.state.board.plants.is_empty());
+    }
+
+    #[test]
+    fn squash_hits_every_eligible_zombie_in_its_fixed_attack_rectangle() {
+        let mut game = Game::new(7, SceneKind::Day);
+        game.place_izombie_plant(PlantType::Other(17), 2, 2);
+        let squash = game.state.board.plants[0].id;
+        let target_x = grid_x(3);
+        let mut setup = Vec::new();
+        let first = game.spawn_normal_zombie(2, 0, Some(target_x), &mut setup);
+        let shielded =
+            game.spawn_screen_door_zombie(2, 0, Some(target_x - 10 * POSITION_SCALE), &mut setup);
+        let boundary = game.spawn_normal_zombie(
+            2,
+            0,
+            Some(target_x + (SQUASH_ATTACK_RIGHT_OFFSET - 36) * POSITION_SCALE),
+            &mut setup,
+        );
+        let other_row = game.spawn_normal_zombie(1, 0, Some(target_x), &mut setup);
+        let hypnotized = game.spawn_normal_zombie(2, 0, Some(target_x), &mut setup);
+        let departed = game.spawn_normal_zombie(2, 0, Some(target_x), &mut setup);
+        let balloon = game.spawn_balloon_zombie(2, 0, Some(target_x), &mut setup);
+        let thrown_imp = game.spawn_imp_zombie(2, 0, Some(target_x), &mut setup);
+        for zombie in &mut game.state.board.zombies {
+            if zombie.id == hypnotized {
+                zombie.hypnotized = true;
+            } else if zombie.id == departed {
+                zombie.departed = true;
+            } else if zombie.id == thrown_imp {
+                zombie.imp_flight_ticks = 10;
+            }
+        }
+        let plant = &mut game.state.board.plants[0];
+        plant.special_armed = true;
+        plant.special_target = Some(first);
+        plant.squash_target_x = Some(target_x);
+        plant.special_counter = 1;
+
+        let events = game.advance(InputFrame::default());
+        let hit_ids = events
+            .iter()
+            .filter_map(|event| match event {
+                GameEvent::PlantSpecialHit { plant, zombie, .. } if *plant == squash => {
+                    Some(*zombie)
+                }
+                _ => None,
+            })
+            .collect::<Vec<_>>();
+        assert_eq!(hit_ids, vec![first, shielded]);
+        assert!(events.iter().any(|event| matches!(
+            event,
+            GameEvent::ZombieShieldHit { entity, .. } if *entity == shielded
+        )));
+        assert!(
+            events
+                .iter()
+                .any(|event| matches!(event, GameEvent::ZombieDied { entity } if *entity == first))
+        );
+        assert!(
+            events.iter().any(
+                |event| matches!(event, GameEvent::ZombieDied { entity } if *entity == shielded)
+            )
+        );
+        for survivor in [boundary, other_row, hypnotized, balloon, thrown_imp] {
+            assert!(
+                game.state
+                    .board
+                    .zombies
+                    .iter()
+                    .any(|zombie| zombie.id == survivor && zombie.health > 0),
+                "source-ineligible or non-overlapping zombie {survivor} was damaged"
+            );
+        }
+        assert!(!events.iter().any(|event| matches!(
+            event,
+            GameEvent::PlantSpecialHit { zombie, .. } if *zombie == departed
+        )));
+    }
+
+    #[test]
+    fn squash_keeps_its_prelaunch_rectangle_when_the_locked_target_moves_or_disappears() {
+        for remove_target in [false, true] {
+            let mut game = Game::new(7, SceneKind::Day);
+            game.place_izombie_plant(PlantType::Other(17), 2, 2);
+            let squash = game.state.board.plants[0].id;
+            let center = grid_x(2);
+            let mut setup = Vec::new();
+            let original =
+                game.spawn_normal_zombie(2, 0, Some(center + 50 * POSITION_SCALE), &mut setup);
+            game.state.board.zombies[0].speed = 0;
+
+            game.advance(InputFrame::default());
+            let initial_x = game.state.board.plants[0]
+                .squash_target_x
+                .expect("look state stores the initial landing position");
+            game.state.board.zombies[0].position_x = center + 60 * POSITION_SCALE;
+            game.state.board.plants[0].special_counter = 1;
+            game.advance(InputFrame::default());
+            let fixed_x = game.state.board.plants[0]
+                .squash_target_x
+                .expect("pre-launch stores the final landing position");
+            assert_ne!(fixed_x, initial_x, "pre-launch refreshes the target lead");
+
+            if remove_target {
+                game.state
+                    .board
+                    .zombies
+                    .retain(|zombie| zombie.id != original);
+            } else {
+                game.state.board.zombies[0].position_x = fixed_x + 300 * POSITION_SCALE;
+            }
+            let replacement = game.spawn_normal_zombie(2, 0, Some(fixed_x), &mut setup);
+            game.state.board.plants[0].special_counter = 1;
+
+            let events = game.advance(InputFrame::default());
+            assert!(events.iter().any(|event| matches!(
+                event,
+                GameEvent::PlantSpecialHit { plant, zombie, .. }
+                    if *plant == squash && *zombie == replacement
+            )));
+            assert!(!events.iter().any(|event| matches!(
+                event,
+                GameEvent::PlantSpecialHit { zombie, .. } if *zombie == original
+            )));
+            if !remove_target {
+                assert!(
+                    game.state
+                        .board
+                        .zombies
+                        .iter()
+                        .any(|zombie| zombie.id == original && zombie.health > 0)
+                );
+            }
+        }
+    }
+
+    #[test]
+    fn squash_preserves_football_overlap_allowance_and_boss_row_exception() {
+        let mut game = Game::new(7, SceneKind::Day);
+        game.place_izombie_plant(PlantType::Other(17), 2, 2);
+        let squash = game.state.board.plants[0].id;
+        let target_x = grid_x(2);
+        let mut setup = Vec::new();
+        let football =
+            game.spawn_football_zombie(2, 0, Some(target_x + 25 * POSITION_SCALE), &mut setup);
+        let football_at_limit =
+            game.spawn_football_zombie(2, 0, Some(target_x + 35 * POSITION_SCALE), &mut setup);
+        let boss = game.spawn_boss_zombie(4, 0, Some(target_x - 680 * POSITION_SCALE), &mut setup);
+        let boss_health = game
+            .state
+            .board
+            .zombies
+            .iter()
+            .find(|zombie| zombie.id == boss)
+            .unwrap()
+            .health;
+        let plant = &mut game.state.board.plants[0];
+        plant.special_armed = true;
+        plant.special_target = Some(football);
+        plant.squash_target_x = Some(target_x);
+        plant.special_counter = 1;
+
+        let events = game.advance(InputFrame::default());
+        let hit_ids = events
+            .iter()
+            .filter_map(|event| match event {
+                GameEvent::PlantSpecialHit { plant, zombie, .. } if *plant == squash => {
+                    Some(*zombie)
+                }
+                _ => None,
+            })
+            .collect::<Vec<_>>();
+        assert_eq!(hit_ids, vec![football, boss]);
+        assert!(
+            game.state
+                .board
+                .zombies
+                .iter()
+                .any(|zombie| zombie.id == football_at_limit && zombie.health == 1_670)
+        );
+        assert_eq!(
+            game.state
+                .board
+                .zombies
+                .iter()
+                .find(|zombie| zombie.id == boss)
+                .unwrap()
+                .health,
+            boss_health - PLANT_SPECIAL_DAMAGE
+        );
     }
 
     #[test]
