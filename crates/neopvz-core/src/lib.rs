@@ -11160,7 +11160,7 @@ impl Game {
             vehicle_disabled: false,
             damage_tier: 0,
             pogo_counter: if zombie_type == ZombieType::Pogo {
-                POGO_BOUNCE_TICKS
+                self.rng.range(POGO_BOUNCE_TICKS) + 1
             } else {
                 0
             },
@@ -18961,6 +18961,29 @@ mod tests {
                 .health,
             300
         );
+    }
+
+    #[test]
+    fn pogo_initial_bounce_counter_uses_the_source_rng_order() {
+        let mut game = Game::new(7, SceneKind::Day);
+        let mut expected_rng = game.rng.clone();
+        let expected_position = i64::from(780 + expected_rng.range(40)) * POSITION_SCALE;
+        let expected_groan = expected_rng.range_inclusive(300, 400) as i32;
+        let expected_counter = expected_rng.range(POGO_BOUNCE_TICKS) + 1;
+        let mut setup = Vec::new();
+
+        let pogo = game.spawn_pogo_zombie(2, 0, None, &mut setup);
+        let state = game
+            .state
+            .board
+            .zombies
+            .iter()
+            .find(|candidate| candidate.id == pogo)
+            .unwrap();
+        assert_eq!(state.position_x, expected_position);
+        assert_eq!(state.groan_counter, expected_groan);
+        assert_eq!(state.pogo_counter, expected_counter);
+        assert_eq!(game.rng.snapshot(), expected_rng.snapshot());
     }
 
     #[test]
