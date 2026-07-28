@@ -115,6 +115,7 @@ enum Checkpoint {
     Zamboni,
     Catapult,
     BalloonAppearance,
+    PoleVault,
     PogoBlock,
     PogoBounce,
     UmbrellaDeflect,
@@ -167,6 +168,7 @@ impl From<Checkpoint> for SceneKind {
             Checkpoint::Zamboni => Self::Day,
             Checkpoint::Catapult => Self::Day,
             Checkpoint::BalloonAppearance => Self::Day,
+            Checkpoint::PoleVault => Self::Day,
             Checkpoint::PogoBlock => Self::Day,
             Checkpoint::PogoBounce => Self::Day,
             Checkpoint::UmbrellaDeflect => Self::Day,
@@ -1249,6 +1251,7 @@ impl App {
             Some(Checkpoint::Zamboni) => Game::new(0, SceneKind::Day),
             Some(Checkpoint::Catapult) => Game::new(0, SceneKind::Day),
             Some(Checkpoint::BalloonAppearance) => Game::new(0, SceneKind::Day),
+            Some(Checkpoint::PoleVault) => Game::new(0, SceneKind::Day),
             Some(Checkpoint::PogoBlock) => Game::new(0, SceneKind::Day),
             Some(Checkpoint::UmbrellaDeflect) => Game::new(0, SceneKind::Day),
             _ => new_scene_game(initial_scene),
@@ -1308,6 +1311,7 @@ impl App {
             Some(Checkpoint::BalloonAppearance) => {
                 startup_events = game.debug_prepare_balloon_appearance()
             }
+            Some(Checkpoint::PoleVault) => game.debug_prepare_pole_vault(),
             Some(Checkpoint::PogoBlock) => game.debug_prepare_pogo_block(),
             Some(Checkpoint::PogoBounce) => startup_events = game.debug_prepare_pogo_bounce(),
             Some(Checkpoint::UmbrellaDeflect) => game.debug_prepare_umbrella_deflect(),
@@ -2420,6 +2424,8 @@ fn audio_for_event(event: &GameEvent) -> Option<(AudioKind, &'static str)> {
         GameEvent::ZombieNewspaperRipped { .. } => {
             Some((AudioKind::Effect, "sounds/newspaper_rip.ogg"))
         }
+        GameEvent::PoleVaultGrassStep { .. } => Some((AudioKind::Effect, "sounds/grassstep.ogg")),
+        GameEvent::PoleVaultSound { .. } => Some((AudioKind::Effect, "sounds/polevault.ogg")),
         GameEvent::PogoBounceSound { .. } => Some((AudioKind::Effect, "sounds/pogo_zombie.ogg")),
         GameEvent::DolphinJumpStarted { .. } => {
             Some((AudioKind::Effect, "sounds/dolphin_before_jumping.ogg"))
@@ -2912,6 +2918,14 @@ mod tests {
         assert_eq!(
             audio_for_event(&GameEvent::ZombieNewspaperRipped { entity: 1 }),
             Some((AudioKind::Effect, "sounds/newspaper_rip.ogg"))
+        );
+        assert_eq!(
+            audio_for_event(&GameEvent::PoleVaultGrassStep { entity: 1 }),
+            Some((AudioKind::Effect, "sounds/grassstep.ogg"))
+        );
+        assert_eq!(
+            audio_for_event(&GameEvent::PoleVaultSound { entity: 1 }),
+            Some((AudioKind::Effect, "sounds/polevault.ogg"))
         );
         assert_eq!(
             audio_for_event(&GameEvent::PogoBounceSound { entity: 1 }),
