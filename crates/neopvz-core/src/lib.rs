@@ -11449,8 +11449,19 @@ impl Game {
             let _initial_position = self.rng.range(40);
             position_override.unwrap_or(880 * POSITION_SCALE)
         } else {
-            position_override
-                .unwrap_or_else(|| i64::from(780 + self.rng.range(40)) * POSITION_SCALE)
+            let generic_position = self.rng.range(40);
+            position_override.unwrap_or_else(|| {
+                let position = match zombie_type {
+                    ZombieType::PoleVaulter => 870 + self.rng.range(10),
+                    ZombieType::Gargantuar | ZombieType::Gigagargantuar => 845 + self.rng.range(10),
+                    ZombieType::Zamboni => 800 + self.rng.range(10),
+                    ZombieType::Catapult => 825 + self.rng.range(10),
+                    ZombieType::Flag => 800,
+                    ZombieType::Boss => 0,
+                    _ => 780 + generic_position,
+                };
+                i64::from(position) * POSITION_SCALE
+            })
         };
         let groan_counter = self.rng.range_inclusive(300, 400) as i32;
         // Zombie_ResetSpeed in 1.0.0.1051 gives Dancer, Backup Dancer, Pogo,
@@ -14557,6 +14568,8 @@ mod tests {
         game.state.board.plants[0].launch_counter = 10_000;
         let mut setup = Vec::new();
         let mut expected_rng = game.rng.clone();
+        let _variant = expected_rng.range(5) == 0;
+        let _generic_position = expected_rng.range(40);
         expected_rng.range_inclusive(300, 400);
         let expected_speed = expected_rng.fixed_range(660_000, 680_000);
         let snorkel = game.spawn_snorkel_zombie(2, 0, Some(720 * POSITION_SCALE), &mut setup);
@@ -17259,6 +17272,17 @@ mod tests {
     fn jackbox_spawn_schedule_matches_source_and_pauses_while_frozen() {
         let mut game = Game::new(7, SceneKind::Day);
         game.rng = Mt19937::new(1);
+        let mut expected_rng = game.rng.clone();
+        let _variant = expected_rng.range(5) == 0;
+        let _generic_position = expected_rng.range(40);
+        expected_rng.range_inclusive(300, 400);
+        let expected_speed = expected_rng.fixed_range(660_000, 680_000);
+        let mut expected_pop_distance = 450 + i64::from(expected_rng.range(300));
+        if expected_rng.range(20) == 0 {
+            expected_pop_distance /= 3;
+        }
+        let expected_timer = (expected_pop_distance * POSITION_SCALE / expected_speed) as u32 * 2
+            + JACKBOX_POP_TICKS;
         let mut setup = Vec::new();
         let zombie = game.spawn_jackbox_zombie(2, 0, Some(780 * POSITION_SCALE), &mut setup);
         let index = game
@@ -17269,10 +17293,12 @@ mod tests {
             .position(|jack| jack.id == zombie)
             .unwrap();
 
-        // Seed 1 exercises the source's Rand(20) == 0 early-pop branch.
-        assert_eq!(game.state.board.zombies[index].speed, 679_887);
-        assert_eq!(game.state.board.zombies[index].jackbox_timer, 624);
-        assert_eq!(game.rng.snapshot().index, 4);
+        assert_eq!(game.state.board.zombies[index].speed, expected_speed);
+        assert_eq!(
+            game.state.board.zombies[index].jackbox_timer,
+            expected_timer
+        );
+        assert_eq!(game.rng.snapshot(), expected_rng.snapshot());
 
         let jack = &mut game.state.board.zombies[index];
         jack.jackbox_timer = 1;
@@ -17303,7 +17329,7 @@ mod tests {
             vase.state.board.zombies[0].jackbox_timer,
             VASE_JACKBOX_POP_TICKS
         );
-        assert_eq!(vase.rng.snapshot().index, 4);
+        assert_eq!(vase.rng.snapshot(), expected_rng.snapshot());
     }
 
     #[test]
@@ -20482,6 +20508,94 @@ mod tests {
         assert_eq!(state.position_x, expected_position);
         assert_eq!(state.groan_counter, expected_groan);
         assert_eq!(state.pogo_counter, expected_counter);
+        assert_eq!(game.rng.snapshot(), expected_rng.snapshot());
+    }
+
+    #[test]
+    fn special_zombie_positions_use_source_offsets_and_rng_order() {
+        let cases = [
+            (ZombieType::PoleVaulter, 870_i64, true),
+            (ZombieType::Gargantuar, 845, true),
+            (ZombieType::Gigagargantuar, 845, true),
+            (ZombieType::Zamboni, 800, true),
+            (ZombieType::Catapult, 825, true),
+            (ZombieType::Flag, 800, false),
+            (ZombieType::Boss, 0, false),
+        ];
+
+        for (zombie_type, minimum_x, randomized) in cases {
+            let mut game = Game::new(7, SceneKind::Day);
+            let mut expected_rng = game.rng.clone();
+            let _variant = expected_rng.range(5) == 0;
+            let _generic_position = expected_rng.range(40);
+            let expected_position = if randomized {
+                minimum_x + i64::from(expected_rng.range(10))
+            } else {
+                minimum_x
+            };
+            expected_rng.range_inclusive(300, 400);
+            if matches!(
+                zombie_type,
+                ZombieType::Gargantuar | ZombieType::Gigagargantuar | ZombieType::Catapult
+            ) {
+                expected_rng.fixed_range(230_000, 320_000);
+            }
+            if zombie_type == ZombieType::PoleVaulter {
+                expected_rng.fixed_range(660_000, 680_000);
+            }
+            let mut events = Vec::new();
+            let entity = match zombie_type {
+                ZombieType::PoleVaulter => game.spawn_pole_vaulter_zombie(2, 0, None, &mut events),
+                ZombieType::Gargantuar => game.spawn_gargantuar_zombie(2, 0, None, &mut events),
+                ZombieType::Gigagargantuar => {
+                    game.spawn_gigagargantuar_zombie(2, 0, None, &mut events)
+                }
+                ZombieType::Zamboni => game.spawn_zamboni_zombie(2, 0, None, &mut events),
+                ZombieType::Catapult => game.spawn_catapult_zombie(2, 0, None, &mut events),
+                ZombieType::Flag => game.spawn_flag_zombie(2, 0, None, &mut events),
+                ZombieType::Boss => game.spawn_boss_zombie(2, 0, None, &mut events),
+                _ => unreachable!(),
+            };
+            let state = game
+                .state
+                .board
+                .zombies
+                .iter()
+                .find(|zombie| zombie.id == entity)
+                .unwrap();
+            assert_eq!(
+                state.position_x,
+                expected_position * POSITION_SCALE,
+                "{zombie_type:?} position"
+            );
+            if randomized {
+                assert!((minimum_x..=minimum_x + 9).contains(&(state.position_x / POSITION_SCALE)));
+            }
+            assert_eq!(game.rng.snapshot(), expected_rng.snapshot());
+        }
+    }
+
+    #[test]
+    fn special_zombie_position_override_preserves_value_and_rng_order() {
+        let mut game = Game::new(7, SceneKind::Day);
+        let mut expected_rng = game.rng.clone();
+        let _variant = expected_rng.range(5) == 0;
+        let _generic_position = expected_rng.range(40);
+        expected_rng.range_inclusive(300, 400);
+        expected_rng.fixed_range(660_000, 680_000);
+        let mut events = Vec::new();
+        let position = -123 * POSITION_SCALE;
+        let entity = game.spawn_pole_vaulter_zombie(2, 0, Some(position), &mut events);
+        assert_eq!(
+            game.state
+                .board
+                .zombies
+                .iter()
+                .find(|zombie| zombie.id == entity)
+                .unwrap()
+                .position_x,
+            position
+        );
         assert_eq!(game.rng.snapshot(), expected_rng.snapshot());
     }
 
