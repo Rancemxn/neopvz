@@ -14128,15 +14128,19 @@ mod tests {
                 ..
             } if *zombie == balloon
         )));
-        assert!(events
-            .iter()
-            .any(|event| matches!(event, GameEvent::ZombieDied { entity } if *entity == balloon)));
-        assert!(!game
-            .state
-            .board
-            .zombies
-            .iter()
-            .any(|zombie| zombie.id == balloon));
+        assert!(
+            events.iter().any(
+                |event| matches!(event, GameEvent::ZombieDied { entity } if *entity == balloon)
+            )
+        );
+        assert!(
+            !game
+                .state
+                .board
+                .zombies
+                .iter()
+                .any(|zombie| zombie.id == balloon)
+        );
     }
 
     #[test]
