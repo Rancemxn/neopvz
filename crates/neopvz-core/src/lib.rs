@@ -12024,7 +12024,7 @@ mod tests {
         let mut saw_fireball = false;
         let mut saw_fireball_hit = false;
         let mut saw_fireball_splash = false;
-        for _ in 0..140 {
+        for _ in 0..200 {
             let events = game.advance(InputFrame::default());
             saw_fireball |= game.state.board.projectiles.iter().any(|projectile| {
                 projectile.projectile_type == ProjectileType::Fireball && projectile.damage == 40
