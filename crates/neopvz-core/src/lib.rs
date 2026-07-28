@@ -3457,6 +3457,26 @@ impl Game {
     }
 
     #[doc(hidden)]
+    pub fn debug_prepare_imp_throw(&mut self) {
+        self.state.level_scene = SceneKind::Day;
+        self.state.scene = SceneKind::Day;
+        self.state.board.zombies.clear();
+        let mut setup_events = Vec::new();
+        let gargantuar =
+            self.spawn_gargantuar_zombie(0, 0, Some(490 * POSITION_SCALE), &mut setup_events);
+        if let Some(zombie) = self
+            .state
+            .board
+            .zombies
+            .iter_mut()
+            .find(|zombie| zombie.id == gargantuar)
+        {
+            zombie.speed = 0;
+            zombie.health = 1_499;
+        }
+    }
+
+    #[doc(hidden)]
     pub fn debug_prepare_butter(&mut self) -> Vec<GameEvent> {
         self.state.level_scene = SceneKind::Day;
         self.state.scene = SceneKind::Day;
@@ -15626,6 +15646,18 @@ mod tests {
         assert!(
             saw_special,
             "Explode-O-Nut bite must emit its special event"
+        );
+    }
+
+    #[test]
+    fn debug_imp_throw_checkpoint_emits_throw_event() {
+        let mut game = Game::new(0, SceneKind::Day);
+        game.debug_prepare_imp_throw();
+        let events = game.advance(InputFrame::default());
+        assert!(
+            events
+                .iter()
+                .any(|event| matches!(event, GameEvent::ImpThrown { .. }))
         );
     }
 
