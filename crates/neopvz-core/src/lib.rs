@@ -115,8 +115,17 @@ const POLE_VAULT_SOUND_STEPS: u32 = 144;
 const POLE_VAULT_BLOCK_START_STEPS: u32 = 216;
 const POLE_VAULT_BLOCK_END_STEPS: u32 = 250;
 const POLE_VAULT_COMPLETE_STEPS: u32 = 360;
+const POLE_VAULT_IN_VAULT_PHASE: u8 = 1;
+// HEIGHT_UP_LADDER rises 0.8 px to 90.4 in 113 updates. The last rise update
+// immediately performs the first 2 px pre-vault fall, leaving 45 more.
+const POLE_VAULT_LADDER_RISE_STEPS: u32 = 113;
+const POLE_VAULT_LADDER_FALL_STEPS: u32 = 46;
+const POLE_VAULT_UP_LADDER_PHASE: u8 = 3;
+const POLE_VAULT_FALLING_PHASE: u8 = 4;
 // The -29..41 pre-vault attack rect first reaches 20 px of overlap here.
 const POLE_VAULT_TARGET_MAX_OFFSET: i64 = 79 * POSITION_SCALE;
+// IZombieGetBrainTarget substitutes Rect(x + 50, 0, 20, 115) for pre-vault Poles.
+const POLE_VAULT_BRAIN_TARGET_X: i64 = -30 * POSITION_SCALE;
 const POLE_VAULT_JUMP_OFFSET: i64 = 80 * POSITION_SCALE;
 const POLE_VAULT_LANDING_SHIFT: i64 = 150 * POSITION_SCALE;
 const IMP_THROW_SPAWN_OFFSET: i64 = 133 * POSITION_SCALE;
@@ -2229,6 +2238,8 @@ pub struct ZombieState {
     pub shield_max_health: i32,
     #[serde(default)]
     pub ladder_placed: bool,
+    #[serde(default)]
+    pub ladder_column: Option<u8>,
     #[serde(default)]
     pub bobsled_leader: bool,
     #[serde(default)]
@@ -7671,25 +7682,122 @@ impl Game {
             )
         };
 
+        if matches!(phase, POLE_VAULT_UP_LADDER_PHASE | POLE_VAULT_FALLING_PHASE) {
+            if frozen {
+                return true;
+            }
+            let ladder_present = self.state.board.zombies[zombie_index]
+                .ladder_column
+                .is_some_and(|column| {
+                    self.state
+                        .board
+                        .ladders
+                        .iter()
+                        .any(|ladder| ladder.row == row && ladder.column == column)
+                });
+            let zombie = &mut self.state.board.zombies[zombie_index];
+            let speed = if chilled {
+                zombie.speed * 2 / 5
+            } else {
+                zombie.speed
+            };
+            zombie.position_x -= speed;
+
+            if phase == POLE_VAULT_UP_LADDER_PHASE {
+                let rise_steps = if ladder_present {
+                    elapsed.saturating_add(1).min(POLE_VAULT_LADDER_RISE_STEPS)
+                } else {
+                    elapsed
+                };
+                if !ladder_present || rise_steps == POLE_VAULT_LADDER_RISE_STEPS {
+                    let fall_steps = rise_steps
+                        .saturating_mul(2)
+                        .div_ceil(5)
+                        .min(POLE_VAULT_LADDER_FALL_STEPS)
+                        .saturating_sub(1);
+                    zombie.special_phase = if fall_steps == 0 {
+                        0
+                    } else {
+                        POLE_VAULT_FALLING_PHASE
+                    };
+                    zombie.special_counter = fall_steps;
+                } else {
+                    zombie.special_counter = rise_steps;
+                }
+            } else {
+                zombie.special_counter = elapsed.saturating_sub(1);
+                if zombie.special_counter == 0 {
+                    zombie.special_phase = 0;
+                }
+            }
+            return true;
+        }
+
         if phase == 0 {
             if has_vaulted || frozen {
                 return false;
             }
-            let Some(plant_index) = self.find_plant_for_pole_vault(row, position_x, false) else {
-                return false;
-            };
-            let target_x = grid_x(self.state.board.plants[plant_index].column);
-            let anim_rate = if chilled { 12 } else { 24 };
-            let vault_speed =
-                (position_x - target_x - POLE_VAULT_JUMP_OFFSET) * anim_rate / (43 * 100);
-            let zombie = &mut self.state.board.zombies[zombie_index];
-            zombie.has_vaulted = true;
-            zombie.eating = false;
-            zombie.special_phase = 1;
-            zombie.special_counter = 0;
-            zombie.speed = vault_speed;
-            zombie.position_x -= vault_speed;
-            return true;
+            if let Some(plant_index) = self.find_plant_for_pole_vault(row, position_x, false) {
+                let plant = &self.state.board.plants[plant_index];
+                let target_x = grid_x(plant.column);
+                if self
+                    .state
+                    .board
+                    .ladders
+                    .iter()
+                    .any(|ladder| ladder.row == plant.row && ladder.column == plant.column)
+                {
+                    let zombie = &mut self.state.board.zombies[zombie_index];
+                    if target_x + 40 * POSITION_SCALE > position_x
+                        && zombie.ladder_column != Some(plant.column)
+                    {
+                        zombie.eating = false;
+                        zombie.ladder_column = Some(plant.column);
+                        zombie.special_phase = POLE_VAULT_UP_LADDER_PHASE;
+                        zombie.special_counter = 0;
+                        let speed = if chilled {
+                            zombie.speed * 2 / 5
+                        } else {
+                            zombie.speed
+                        };
+                        zombie.position_x -= speed;
+                        return true;
+                    }
+                    return false;
+                }
+
+                let anim_rate = if chilled { 12 } else { 24 };
+                let vault_speed = if self.state.challenge.kind == ChallengeKind::WallnutBowling {
+                    0
+                } else {
+                    (position_x - target_x - POLE_VAULT_JUMP_OFFSET) * anim_rate / (43 * 100)
+                };
+                let zombie = &mut self.state.board.zombies[zombie_index];
+                zombie.has_vaulted = true;
+                zombie.eating = false;
+                zombie.special_phase = POLE_VAULT_IN_VAULT_PHASE;
+                zombie.special_counter = 0;
+                zombie.speed = vault_speed;
+                zombie.position_x -= vault_speed;
+                return true;
+            }
+
+            if self.state.mode == ModeKind::IZombie
+                && position_x <= POLE_VAULT_BRAIN_TARGET_X
+                && self
+                    .state
+                    .board
+                    .brains
+                    .iter()
+                    .any(|brain| brain.row == row && !brain.squished)
+            {
+                let walk_speed = self.rng.fixed_range(230_000, 320_000);
+                let zombie = &mut self.state.board.zombies[zombie_index];
+                zombie.has_vaulted = true;
+                zombie.eating = false;
+                zombie.speed = walk_speed;
+            }
+            return false;
         }
 
         if frozen {
@@ -8947,7 +9055,8 @@ impl Game {
                 .find(|zombie| zombie.id == zombie_id)
                 && !matches!(zombie.zombie_type, ZombieType::Zamboni | ZombieType::Boss)
                 && !(zombie.zombie_type == ZombieType::Bobsled && zombie.bobsled_sliding)
-                && !(zombie.zombie_type == ZombieType::PoleVaulter && zombie.special_phase != 0)
+                && !(zombie.zombie_type == ZombieType::PoleVaulter
+                    && zombie.special_phase == POLE_VAULT_IN_VAULT_PHASE)
                 && !balloon_is_airborne(zombie)
             {
                 zombie.frozen_counter = zombie.frozen_counter.max(BUTTER_TICKS);
@@ -9564,7 +9673,13 @@ impl Game {
     }
 
     fn find_plant_for_pole_vault(&self, row: u8, zombie_x: i64, in_vault: bool) -> Option<usize> {
-        let (attack_offset, attack_width) = if in_vault { (-40, 100) } else { (-29, 70) };
+        let (attack_offset, attack_width) = if in_vault {
+            (-40, 100)
+        } else if self.state.challenge.kind == ChallengeKind::WallnutBowling {
+            (-229, 270)
+        } else {
+            (-29, 70)
+        };
         let attack_left = zombie_x + attack_offset * POSITION_SCALE;
         let attack_right = attack_left + attack_width * POSITION_SCALE;
 
@@ -9575,14 +9690,6 @@ impl Game {
             .enumerate()
             .filter(|(_, plant)| plant.row == row && plant.health > 0)
             .filter(|(_, plant)| !plant.plant_type.is_spikeweed())
-            .filter(|(_, plant)| {
-                !self
-                    .state
-                    .board
-                    .ladders
-                    .iter()
-                    .any(|ladder| ladder.row == plant.row && ladder.column == plant.column)
-            })
             .filter(|(_, plant)| {
                 let plant_x = grid_x(plant.column);
                 let (plant_offset, plant_width) = match plant.plant_type.slot() {
@@ -11386,6 +11493,7 @@ impl Game {
                 _ => 0,
             },
             ladder_placed: false,
+            ladder_column: None,
             bobsled_leader: false,
             bobsled_counter: if zombie_type == ZombieType::Bobsled {
                 BOBSLED_SLIDE_TICKS
@@ -13325,6 +13433,200 @@ mod tests {
     }
 
     #[test]
+    fn pole_vault_special_modes_match_source() {
+        let initial_x = grid_x(2) + 200 * POSITION_SCALE;
+        let mut regular = Game::new(7, SceneKind::Day);
+        regular.place_izombie_plant(PlantType::Sunflower, 2, 2);
+        assert!(
+            regular
+                .find_plant_for_pole_vault(2, initial_x, false)
+                .is_none()
+        );
+
+        let mut bowling = Game::new(7, SceneKind::Day);
+        bowling.state.challenge.kind = ChallengeKind::WallnutBowling;
+        bowling.place_izombie_plant(PlantType::Sunflower, 2, 2);
+        let mut setup = Vec::new();
+        let pole = bowling.spawn_pole_vaulter_zombie(2, 0, Some(initial_x), &mut setup);
+        bowling.advance(InputFrame::default());
+        let vaulting = bowling
+            .state
+            .board
+            .zombies
+            .iter()
+            .find(|zombie| zombie.id == pole)
+            .unwrap();
+        assert!(vaulting.has_vaulted);
+        assert_eq!(vaulting.special_phase, 1);
+        assert_eq!(vaulting.speed, 0);
+        assert_eq!(vaulting.position_x, initial_x);
+
+        let mut izombie = Game::new_mode(7, ModeKind::IZombie, 0);
+        izombie.state.board.plants.clear();
+        izombie.state.board.zombies.clear();
+        let mut setup = Vec::new();
+        let brain_x = POLE_VAULT_BRAIN_TARGET_X;
+        let pole = izombie.spawn_pole_vaulter_zombie(0, 0, Some(brain_x), &mut setup);
+        izombie.state.board.zombies[0].eating = true;
+        izombie.advance(InputFrame::default());
+        let walking = izombie
+            .state
+            .board
+            .zombies
+            .iter()
+            .find(|zombie| zombie.id == pole)
+            .unwrap();
+        assert!(walking.has_vaulted);
+        assert_eq!(walking.special_phase, 0);
+        assert!((230_000..=320_000).contains(&walking.speed));
+        assert_eq!(walking.position_x, brain_x - walking.speed);
+        assert!(!walking.eating);
+
+        let ladder_x = grid_x(2) + 39 * POSITION_SCALE;
+        let ladder_game = || {
+            let mut game = Game::new(7, SceneKind::Day);
+            game.place_izombie_plant(PlantType::Sunflower, 2, 2);
+            game.state
+                .board
+                .ladders
+                .push(LadderState { row: 2, column: 2 });
+            let mut setup = Vec::new();
+            let pole = game.spawn_pole_vaulter_zombie(2, 0, Some(ladder_x), &mut setup);
+            game.advance(InputFrame::default());
+            (game, pole)
+        };
+
+        let (mut ladder, pole) = ladder_game();
+        let climbing = ladder
+            .state
+            .board
+            .zombies
+            .iter()
+            .find(|zombie| zombie.id == pole)
+            .unwrap();
+        assert_eq!(climbing.special_phase, POLE_VAULT_UP_LADDER_PHASE);
+        assert_eq!(climbing.special_counter, 0);
+        assert_eq!(climbing.ladder_column, Some(2));
+        assert!(!climbing.has_vaulted);
+        assert!(!climbing.eating);
+
+        for _ in 1..POLE_VAULT_LADDER_RISE_STEPS {
+            ladder.advance(InputFrame::default());
+        }
+        let last_rise = ladder
+            .state
+            .board
+            .zombies
+            .iter()
+            .find(|zombie| zombie.id == pole)
+            .unwrap();
+        assert_eq!(last_rise.special_phase, POLE_VAULT_UP_LADDER_PHASE);
+        assert_eq!(last_rise.special_counter, POLE_VAULT_LADDER_RISE_STEPS - 1);
+
+        ladder.advance(InputFrame::default());
+        let falling = ladder
+            .state
+            .board
+            .zombies
+            .iter()
+            .find(|zombie| zombie.id == pole)
+            .unwrap();
+        assert_eq!(falling.special_phase, POLE_VAULT_FALLING_PHASE);
+        assert_eq!(falling.special_counter, POLE_VAULT_LADDER_FALL_STEPS - 1);
+        for _ in 1..POLE_VAULT_LADDER_FALL_STEPS - 1 {
+            ladder.advance(InputFrame::default());
+        }
+        assert_eq!(
+            ladder.state.board.zombies[0].special_phase,
+            POLE_VAULT_FALLING_PHASE
+        );
+        assert_eq!(ladder.state.board.zombies[0].special_counter, 1);
+        ladder.advance(InputFrame::default());
+        let passed = ladder
+            .state
+            .board
+            .zombies
+            .iter()
+            .find(|zombie| zombie.id == pole)
+            .unwrap();
+        assert_eq!(passed.special_phase, 0);
+        assert_eq!(passed.special_counter, 0);
+        assert!(!passed.has_vaulted);
+
+        ladder.state.board.zombies[0].position_x = ladder_x;
+        ladder.advance(InputFrame::default());
+        let passed = &ladder.state.board.zombies[0];
+        assert_eq!(passed.special_phase, 0);
+        assert!(!passed.eating);
+
+        let (mut removed, pole) = ladder_game();
+        let speed = removed.state.board.zombies[0].speed;
+        let start_x = removed.state.board.zombies[0].position_x;
+        removed.state.board.zombies[0].chilled_counter = 2;
+        removed.advance(InputFrame::default());
+        assert_eq!(removed.state.board.zombies[0].special_counter, 1);
+        assert_eq!(
+            removed.state.board.zombies[0].position_x,
+            start_x - speed * 2 / 5
+        );
+        for _ in 1..10 {
+            removed.advance(InputFrame::default());
+        }
+
+        let mut butter_events = Vec::new();
+        removed.apply_projectile_chill(pole, ProjectileType::Butter, &mut butter_events);
+        assert!(butter_events.iter().any(|event| matches!(
+            event,
+            GameEvent::ZombieButtered { entity } if *entity == pole
+        )));
+        let paused_x = removed.state.board.zombies[0].position_x;
+        removed.advance(InputFrame::default());
+        assert_eq!(
+            removed.state.board.zombies[0].special_phase,
+            POLE_VAULT_UP_LADDER_PHASE
+        );
+        assert_eq!(removed.state.board.zombies[0].special_counter, 10);
+        assert_eq!(removed.state.board.zombies[0].position_x, paused_x);
+
+        removed.state.board.zombies[0].frozen_counter = 0;
+        removed.state.board.ladders.clear();
+        removed.advance(InputFrame::default());
+        assert_eq!(
+            removed.state.board.zombies[0].special_phase,
+            POLE_VAULT_FALLING_PHASE
+        );
+        assert_eq!(removed.state.board.zombies[0].special_counter, 3);
+
+        let mut butter_events = Vec::new();
+        removed.apply_projectile_chill(pole, ProjectileType::Butter, &mut butter_events);
+        assert!(butter_events.iter().any(|event| matches!(
+            event,
+            GameEvent::ZombieButtered { entity } if *entity == pole
+        )));
+        let paused_x = removed.state.board.zombies[0].position_x;
+        removed.advance(InputFrame::default());
+        assert_eq!(
+            removed.state.board.zombies[0].special_phase,
+            POLE_VAULT_FALLING_PHASE
+        );
+        assert_eq!(removed.state.board.zombies[0].special_counter, 3);
+        assert_eq!(removed.state.board.zombies[0].position_x, paused_x);
+
+        removed.state.board.zombies[0].frozen_counter = 0;
+        for _ in 0..2 {
+            removed.advance(InputFrame::default());
+        }
+        assert_eq!(
+            removed.state.board.zombies[0].special_phase,
+            POLE_VAULT_FALLING_PHASE
+        );
+        assert_eq!(removed.state.board.zombies[0].special_counter, 1);
+        removed.advance(InputFrame::default());
+        assert_eq!(removed.state.board.zombies[0].special_phase, 0);
+        assert_eq!(removed.state.board.zombies[0].special_counter, 0);
+    }
+
+    #[test]
     fn pole_vault_chill_butter_and_tallnut_window_match_source() {
         let mut game = Game::new(7, SceneKind::Day);
         game.debug_prepare_pole_vault();
@@ -13405,6 +13707,30 @@ mod tests {
         let state = &blocked.state.board.zombies[0];
         assert_eq!(state.special_phase, 0);
         assert_eq!(state.position_x, grid_x(2) - state.speed);
+
+        let mut last_window = Game::new(7, SceneKind::Day);
+        last_window.place_izombie_plant(PlantType::Sunflower, 2, 2);
+        let tallnut = last_window.state.board.plants[0].id;
+        let mut setup = Vec::new();
+        let zombie = last_window.spawn_pole_vaulter_zombie(
+            2,
+            0,
+            Some(grid_x(2) + POLE_VAULT_TARGET_MAX_OFFSET),
+            &mut setup,
+        );
+        last_window.advance(InputFrame::default());
+        for _ in 1..125 {
+            last_window.advance(InputFrame::default());
+        }
+        last_window.state.board.plants[0].plant_type = PlantType::Other(23);
+        let events = last_window.advance(InputFrame::default());
+        assert!(events.iter().any(|event| matches!(
+            event,
+            GameEvent::JumpBlocked {
+                zombie: blocked_zombie,
+                plant,
+            } if *blocked_zombie == zombie && *plant == tallnut
+        )));
 
         let mut after_window = Game::new(7, SceneKind::Day);
         after_window.place_izombie_plant(PlantType::Sunflower, 2, 2);
