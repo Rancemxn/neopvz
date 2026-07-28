@@ -2424,12 +2424,8 @@ fn audio_for_event(event: &GameEvent) -> Option<(AudioKind, &'static str)> {
         GameEvent::ZombieNewspaperRipped { .. } => {
             Some((AudioKind::Effect, "sounds/newspaper_rip.ogg"))
         }
-        GameEvent::PoleVaultGrassStep { .. } => {
-            Some((AudioKind::Effect, "sounds/grassstep.ogg"))
-        }
-        GameEvent::PoleVaultSound { .. } => {
-            Some((AudioKind::Effect, "sounds/polevault.ogg"))
-        }
+        GameEvent::PoleVaultGrassStep { .. } => Some((AudioKind::Effect, "sounds/grassstep.ogg")),
+        GameEvent::PoleVaultSound { .. } => Some((AudioKind::Effect, "sounds/polevault.ogg")),
         GameEvent::PogoBounceSound { .. } => Some((AudioKind::Effect, "sounds/pogo_zombie.ogg")),
         GameEvent::DolphinJumpStarted { .. } => {
             Some((AudioKind::Effect, "sounds/dolphin_before_jumping.ogg"))

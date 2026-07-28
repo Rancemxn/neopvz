@@ -4218,12 +4218,12 @@ impl Game {
         self.state.board.zombies.clear();
         self.place_izombie_plant(PlantType::Sunflower, 2, 5);
         let mut setup_events = Vec::new();
-            self.spawn_pole_vaulter_zombie(
-                2,
-                0,
-                Some(grid_x(5) + POLE_VAULT_TARGET_MAX_OFFSET),
-                &mut setup_events,
-            );
+        self.spawn_pole_vaulter_zombie(
+            2,
+            0,
+            Some(grid_x(5) + POLE_VAULT_TARGET_MAX_OFFSET),
+            &mut setup_events,
+        );
     }
 
     #[doc(hidden)]
@@ -7656,11 +7656,7 @@ impl Game {
         self.state.board.zombies[zombie_index].special_phase != 0
     }
 
-    fn update_pole_vault(
-        &mut self,
-        zombie_index: usize,
-        events: &mut Vec<GameEvent>,
-    ) -> bool {
+    fn update_pole_vault(&mut self, zombie_index: usize, events: &mut Vec<GameEvent>) -> bool {
         let (entity, row, position_x, phase, elapsed, has_vaulted, frozen, chilled) = {
             let zombie = &self.state.board.zombies[zombie_index];
             if zombie.zombie_type != ZombieType::PoleVaulter {
@@ -7682,18 +7678,15 @@ impl Game {
             if has_vaulted || frozen {
                 return false;
             }
-            let Some(plant_index) = self.find_plant_for_zombie(
-                row,
-                position_x,
-                ZombieType::PoleVaulter,
-                true,
-            ) else {
+            let Some(plant_index) =
+                self.find_plant_for_zombie(row, position_x, ZombieType::PoleVaulter, true)
+            else {
                 return false;
             };
             let target_x = grid_x(self.state.board.plants[plant_index].column);
             let anim_rate = if chilled { 12 } else { 24 };
-            let vault_speed = (position_x - target_x - POLE_VAULT_JUMP_OFFSET) * anim_rate
-                / (43 * 100);
+            let vault_speed =
+                (position_x - target_x - POLE_VAULT_JUMP_OFFSET) * anim_rate / (43 * 100);
             let zombie = &mut self.state.board.zombies[zombie_index];
             zombie.has_vaulted = true;
             zombie.eating = false;
@@ -7721,9 +7714,7 @@ impl Game {
         if (POLE_VAULT_BLOCK_START_STEPS..=POLE_VAULT_BLOCK_END_STEPS).contains(&next)
             && let Some(plant_index) = self
                 .find_plant_for_zombie(row, position_x, ZombieType::PoleVaulter, true)
-                .filter(|plant_index| {
-                    self.state.board.plants[*plant_index].plant_type.slot() == 23
-                })
+                .filter(|plant_index| self.state.board.plants[*plant_index].plant_type.slot() == 23)
         {
             let plant = self.state.board.plants[plant_index].id;
             let plant_x = grid_x(self.state.board.plants[plant_index].column);
@@ -13342,13 +13333,15 @@ mod tests {
         blocked.advance(InputFrame::default());
         for update in 1..=108 {
             let events = blocked.advance(InputFrame::default());
-            let did_block = events.iter().any(|event| matches!(
-                event,
-                GameEvent::JumpBlocked {
-                    zombie: blocked_zombie,
-                    plant,
-                } if *blocked_zombie == zombie && *plant == tallnut
-            ));
+            let did_block = events.iter().any(|event| {
+                matches!(
+                    event,
+                    GameEvent::JumpBlocked {
+                        zombie: blocked_zombie,
+                        plant,
+                    } if *blocked_zombie == zombie && *plant == tallnut
+                )
+            });
             assert_eq!(did_block, update == 108);
         }
         let state = &blocked.state.board.zombies[0];
@@ -13370,9 +13363,11 @@ mod tests {
         }
         after_window.state.board.plants[0].plant_type = PlantType::Other(23);
         let events = after_window.advance(InputFrame::default());
-        assert!(!events
-            .iter()
-            .any(|event| matches!(event, GameEvent::JumpBlocked { .. })));
+        assert!(
+            !events
+                .iter()
+                .any(|event| matches!(event, GameEvent::JumpBlocked { .. }))
+        );
         assert_eq!(after_window.state.board.zombies[0].special_counter, 252);
     }
 
