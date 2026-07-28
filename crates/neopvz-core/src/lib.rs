@@ -12017,6 +12017,9 @@ mod tests {
         let mut setup_events = Vec::new();
         game.spawn_normal_zombie(2, 0, Some(500 * POSITION_SCALE), &mut setup_events);
         game.spawn_normal_zombie(1, 0, Some(500 * POSITION_SCALE), &mut setup_events);
+        for zombie in &mut game.state.board.zombies {
+            zombie.speed = 0;
+        }
 
         let mut saw_fireball = false;
         let mut saw_fireball_hit = false;
@@ -12491,6 +12494,9 @@ mod tests {
         let mut setup_events = Vec::new();
         game.spawn_normal_zombie(2, 0, Some(500 * POSITION_SCALE), &mut setup_events);
         game.spawn_normal_zombie(3, 0, Some(500 * POSITION_SCALE), &mut setup_events);
+        for zombie in &mut game.state.board.zombies {
+            zombie.speed = 0;
+        }
 
         let splash = (0..200)
             .flat_map(|_| game.advance(InputFrame::default()))
@@ -12598,6 +12604,9 @@ mod tests {
         let primary = game.spawn_normal_zombie(2, 0, Some(500 * POSITION_SCALE), &mut setup_events);
         let adjacent =
             game.spawn_normal_zombie(3, 0, Some(500 * POSITION_SCALE), &mut setup_events);
+        for zombie in &mut game.state.board.zombies {
+            zombie.speed = 0;
+        }
 
         let mut primary_hit = false;
         let mut adjacent_hit = false;
