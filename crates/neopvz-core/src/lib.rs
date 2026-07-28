@@ -11236,6 +11236,8 @@ impl Game {
         } else if zombie_type == ZombieType::Digger {
             // Diggers spawn tunneling; Zombie_ResetSpeed gives 0.66-0.68.
             self.rng.fixed_range(660_000, 680_000)
+        } else if zombie_type == ZombieType::PoleVaulter {
+            self.rng.fixed_range(660_000, 680_000)
         } else if zombie_type == ZombieType::Bungee {
             0
         } else if zombie_type == ZombieType::Bobsled {
@@ -13249,6 +13251,7 @@ mod tests {
         let mut setup = Vec::new();
         let initial_x = grid_x(2) + POLE_VAULT_TARGET_MAX_OFFSET;
         let zombie = game.spawn_pole_vaulter_zombie(2, 0, Some(initial_x), &mut setup);
+        assert!((660_000..=680_000).contains(&game.state.board.zombies[0].speed));
 
         let contact = game.advance(InputFrame::default());
         assert!(!contact.iter().any(|event| matches!(
