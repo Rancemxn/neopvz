@@ -115,11 +115,8 @@ const POLE_VAULT_SOUND_STEPS: u32 = 144;
 const POLE_VAULT_BLOCK_START_STEPS: u32 = 216;
 const POLE_VAULT_BLOCK_END_STEPS: u32 = 250;
 const POLE_VAULT_COMPLETE_STEPS: u32 = 360;
-// The -29..41 Pole attack rect needs 20 px of overlap with a normal
-// 10..70 plant rect, or the Tall-nut's 10..90 rect.
-const POLE_VAULT_TARGET_MIN_OFFSET: i64 = -11 * POSITION_SCALE;
+// The -29..41 pre-vault attack rect first reaches 20 px of overlap here.
 const POLE_VAULT_TARGET_MAX_OFFSET: i64 = 79 * POSITION_SCALE;
-const POLE_VAULT_TALLNUT_TARGET_MAX_OFFSET: i64 = 99 * POSITION_SCALE;
 const POLE_VAULT_JUMP_OFFSET: i64 = 80 * POSITION_SCALE;
 const POLE_VAULT_LANDING_SHIFT: i64 = 150 * POSITION_SCALE;
 const IMP_THROW_SPAWN_OFFSET: i64 = 133 * POSITION_SCALE;
@@ -7669,8 +7666,8 @@ impl Game {
                 zombie.special_phase,
                 zombie.special_counter,
                 zombie.has_vaulted,
-                zombie.frozen_counter != 0,
-                zombie.chilled_counter != 0,
+                zombie.frozen_counter > 1,
+                zombie.chilled_counter > 1,
             )
         };
 
@@ -7678,9 +7675,7 @@ impl Game {
             if has_vaulted || frozen {
                 return false;
             }
-            let Some(plant_index) =
-                self.find_plant_for_zombie(row, position_x, ZombieType::PoleVaulter, true)
-            else {
+            let Some(plant_index) = self.find_plant_for_pole_vault(row, position_x, false) else {
                 return false;
             };
             let target_x = grid_x(self.state.board.plants[plant_index].column);
@@ -7713,7 +7708,7 @@ impl Game {
 
         if (POLE_VAULT_BLOCK_START_STEPS..=POLE_VAULT_BLOCK_END_STEPS).contains(&next)
             && let Some(plant_index) = self
-                .find_plant_for_zombie(row, position_x, ZombieType::PoleVaulter, true)
+                .find_plant_for_pole_vault(row, position_x, true)
                 .filter(|plant_index| self.state.board.plants[*plant_index].plant_type.slot() == 23)
         {
             let plant = self.state.board.plants[plant_index].id;
@@ -8202,7 +8197,7 @@ impl Game {
                     self.attack_zombie_target(entity, row, events);
                 } else {
                     let ztype = self.state.board.zombies[zombie_index].zombie_type;
-                    let target = self.find_plant_for_zombie(row, position_x, ztype, false);
+                    let target = self.find_plant_for_zombie(row, position_x, ztype);
                     let pogo_has_stick = ztype == ZombieType::Pogo
                         && self.state.board.zombies[zombie_index].special_phase == 0;
                     self.state.board.zombies[zombie_index].eating =
@@ -8952,6 +8947,7 @@ impl Game {
                 .find(|zombie| zombie.id == zombie_id)
                 && !matches!(zombie.zombie_type, ZombieType::Zamboni | ZombieType::Boss)
                 && !(zombie.zombie_type == ZombieType::Bobsled && zombie.bobsled_sliding)
+                && !(zombie.zombie_type == ZombieType::PoleVaulter && zombie.special_phase != 0)
                 && !balloon_is_airborne(zombie)
             {
                 zombie.frozen_counter = zombie.frozen_counter.max(BUTTER_TICKS);
@@ -9537,7 +9533,6 @@ impl Game {
         row: u8,
         zombie_x: i64,
         zombie_type: ZombieType,
-        vaulting: bool,
     ) -> Option<usize> {
         if zombie_type == ZombieType::Boss {
             return None;
@@ -9561,18 +9556,44 @@ impl Game {
             })
             .filter(|(_, plant)| {
                 let plant_x = grid_x(plant.column);
-                if vaulting && zombie_type == ZombieType::PoleVaulter {
-                    let right = if plant.plant_type.slot() == 23 {
-                        POLE_VAULT_TALLNUT_TARGET_MAX_OFFSET
-                    } else {
-                        POLE_VAULT_TARGET_MAX_OFFSET
-                    };
-                    zombie_x >= plant_x + POLE_VAULT_TARGET_MIN_OFFSET
-                        && zombie_x <= plant_x + right
-                } else {
-                    zombie_x + 70 * POSITION_SCALE > plant_x
-                        && zombie_x + 50 * POSITION_SCALE < plant_x + 80 * POSITION_SCALE
-                }
+                zombie_x + 70 * POSITION_SCALE > plant_x
+                    && zombie_x + 50 * POSITION_SCALE < plant_x + 80 * POSITION_SCALE
+            })
+            .max_by_key(|(_, plant)| plant.column)
+            .map(|(index, _)| index)
+    }
+
+    fn find_plant_for_pole_vault(&self, row: u8, zombie_x: i64, in_vault: bool) -> Option<usize> {
+        let (attack_offset, attack_width) = if in_vault { (-40, 100) } else { (-29, 70) };
+        let attack_left = zombie_x + attack_offset * POSITION_SCALE;
+        let attack_right = attack_left + attack_width * POSITION_SCALE;
+
+        self.state
+            .board
+            .plants
+            .iter()
+            .enumerate()
+            .filter(|(_, plant)| plant.row == row && plant.health > 0)
+            .filter(|(_, plant)| !plant.plant_type.is_spikeweed())
+            .filter(|(_, plant)| {
+                !self
+                    .state
+                    .board
+                    .ladders
+                    .iter()
+                    .any(|ladder| ladder.row == plant.row && ladder.column == plant.column)
+            })
+            .filter(|(_, plant)| {
+                let plant_x = grid_x(plant.column);
+                let (plant_offset, plant_width) = match plant.plant_type.slot() {
+                    23 => (10, 80),
+                    30 => (0, 60),
+                    47 => (0, 140),
+                    _ => (10, 60),
+                };
+                let plant_left = plant_x + plant_offset * POSITION_SCALE;
+                let plant_right = plant_left + plant_width * POSITION_SCALE;
+                attack_right.min(plant_right) - attack_left.max(plant_left) >= 20 * POSITION_SCALE
             })
             .max_by_key(|(_, plant)| plant.column)
             .map(|(index, _)| index)
@@ -13296,29 +13317,43 @@ mod tests {
     }
 
     #[test]
-    fn pole_vault_freeze_chill_and_tallnut_window_match_source() {
+    fn pole_vault_chill_butter_and_tallnut_window_match_source() {
         let mut game = Game::new(7, SceneKind::Day);
         game.debug_prepare_pole_vault();
         game.advance(InputFrame::default());
         let vault_speed = game.state.board.zombies[0].speed;
-        let paused_x = game.state.board.zombies[0].position_x;
+        let start_x = game.state.board.zombies[0].position_x;
 
-        game.state.board.zombies[0].frozen_counter = 2;
-        game.advance(InputFrame::default());
-        game.advance(InputFrame::default());
-        assert_eq!(game.state.board.zombies[0].special_counter, 0);
-        assert_eq!(game.state.board.zombies[0].position_x, paused_x);
+        let zombie = game.state.board.zombies[0].id;
+        let mut butter_events = Vec::new();
+        game.apply_projectile_chill(zombie, ProjectileType::Butter, &mut butter_events);
+        assert!(butter_events.is_empty());
+        assert_eq!(game.state.board.zombies[0].frozen_counter, 0);
 
         game.state.board.zombies[0].chilled_counter = 2;
         game.advance(InputFrame::default());
+        assert_eq!(game.state.board.zombies[0].special_counter, 1);
         game.advance(InputFrame::default());
-        assert_eq!(game.state.board.zombies[0].special_counter, 2);
+        assert_eq!(game.state.board.zombies[0].special_counter, 3);
         assert_eq!(
             game.state.board.zombies[0].position_x,
-            paused_x - 2 * vault_speed
+            start_x - 2 * vault_speed
         );
         game.advance(InputFrame::default());
-        assert_eq!(game.state.board.zombies[0].special_counter, 4);
+        assert_eq!(game.state.board.zombies[0].special_counter, 5);
+
+        let mut thawing = Game::new(7, SceneKind::Day);
+        thawing.place_izombie_plant(PlantType::Sunflower, 2, 2);
+        let mut setup = Vec::new();
+        thawing.spawn_pole_vaulter_zombie(
+            2,
+            0,
+            Some(grid_x(2) + POLE_VAULT_TARGET_MAX_OFFSET),
+            &mut setup,
+        );
+        thawing.state.board.zombies[0].frozen_counter = 1;
+        thawing.advance(InputFrame::default());
+        assert_eq!(thawing.state.board.zombies[0].special_phase, 1);
 
         let mut blocked = Game::new(7, SceneKind::Day);
         blocked.place_izombie_plant(PlantType::Other(23), 2, 2);
@@ -13327,7 +13362,7 @@ mod tests {
         let zombie = blocked.spawn_pole_vaulter_zombie(
             2,
             0,
-            Some(grid_x(2) + POLE_VAULT_TALLNUT_TARGET_MAX_OFFSET),
+            Some(grid_x(2) + 99 * POSITION_SCALE),
             &mut setup,
         );
         blocked.advance(InputFrame::default());
