@@ -13,7 +13,7 @@ evidence; a reviewer assertion alone is never sufficient.
 Status is `verified`, `partial`, or `missing`. The progress quantity is the sum
 of `total - accepted` across all rows.
 
-Current baseline: **1257 accepted / 1809 total; 552 unresolved**.
+Current baseline: **1326 accepted / 1809 total; 483 unresolved**.
 
 ## Foundation and Boundaries
 
@@ -95,9 +95,9 @@ Kernel, Butter, Melon, WinterMelon, Fireball, Star, Spike, Cob, ZombiePea, and G
 | Obligation | Behavior domain | Accepted | Total | Status | Evidence / owner |
 |---|---|---:|---:|---|---|
 | UI-SCREEN | Loading, title, menu, selector, seed chooser, HUD, pause, options, help, almanac, shop, and result flows | 3 | 12 | partial | PR `#64`, runs `30030645194`/`30030645257` and `30048802223`/`30048802288`, ignored `artifacts/windows-7de9f1d/verification.md`/`artifacts/windows-beb00d3/verification.md`; selector/adventure tutorial route accepted; seed chooser remains partial; Issues `#2`, `#17` |
-| INPUT-ACTION | Mouse, keyboard, hover, click, drag, placement, pause, restart, and command-line resource selection | 7 | 8 | partial | PR `#64`, commits `547f99b`/`514906c`, title mouse start, seed-chooser start/card selection and keyboard selection, left-click placement, and Space pause/resume in ignored `artifacts/windows-a6c3f53/verification.md`/`artifacts/windows-aa443d7/verification.md`/`artifacts/windows-23f3f67/verification.md`/`artifacts/windows-514906c/verification.md`/`artifacts/windows-514906c/verification-keyboard.md`; runs `30054043147`/`30054043130`; Issue `#17` |
+| INPUT-ACTION | Mouse, keyboard, hover, click, drag, placement, pause, restart, and command-line resource selection | 8 | 8 | verified | PR `#64`, commits `547f99b`/`514906c`, title mouse start, seed-chooser start/card selection and keyboard selection, left-click placement, Space pause/resume, and local terminal restart in ignored `artifacts/windows-a6c3f53/verification.md`/`artifacts/windows-aa443d7/verification.md`/`artifacts/windows-23f3f67/verification.md`/`artifacts/windows-514906c/verification.md`/`artifacts/windows-514906c/verification-keyboard.md`/`artifacts/local-restart/verification.md`; runs `30054043147`/`30054043130`; remaining pause-menu and visual semantics are tracked by Issues `#2`/`#17` |
 | SAVE-PROGRESSION | Profile, settings, unlocks, awards, inventory, garden, mode completion, and load compatibility | 8 | 8 | verified | PR `#61`, runs `30024232209`/`30024232459`, ignored local record |
-| PLATFORM-CONTRACT | Logical viewport, window/fullscreen behavior, DPI, audio device, and external-path behavior | 4 | 6 | partial | PR `#64`, 800x600 logical viewport, window startup, DPI-aware 1000x750 client capture, and external `--data-dir` launch in ignored `artifacts/windows-7de9f1d/verification.md`; Issue `#17` |
+| PLATFORM-CONTRACT | Logical viewport, window/fullscreen behavior, DPI, audio device, and external-path behavior | 6 | 6 | verified | PR `#64`, 800x600 logical viewport, window startup, DPI-aware 1000x750 client capture, external `--data-dir` launch, and local debug `--fullscreen`/F11 round trip in ignored `artifacts/local-platform/verification.md`; the same artifact records the local app's graceful startup fallback when the audio backend reports an unavailable-device error. Remaining pause-menu, visual, and full audio obligations remain under Issues `#2`, `#14`, `#17`, and `#19` |
 
 ## Visual and Audio Evidence
 
@@ -109,9 +109,105 @@ Kernel, Butter, Melon, WinterMelon, Fireball, Star, Spike, Cob, ZombiePea, and G
 | VIS-ZOMBIE | Zombie animation, layering, clipping, and feedback review units | 0 | 33 | missing | Issue `#14` |
 | VIS-PROJECTILE | Projectile animation and impact review units | 0 | 14 | missing | Issue `#14` |
 | VIS-EFFECT | Effect and particle review units | 0 | 105 | missing | Issue `#14` |
-| AUD-SFX | Simulation-tick and decoded-output sound-event units | 0 | 167 | missing | Issue `#19` |
+| AUD-SFX | Simulation-tick and decoded-output sound-event units | 65 | 167 | partial | `SeedSelected` → `sounds/tap.ogg`, `InputRejected` → `sounds/buzzer.ogg`, `Paused` → `sounds/pause.ogg`, `PlantPlaced` → `sounds/plant.ogg`, `PlantShoveled` → `sounds/plant2.ogg`, plant `SunProduced` -> `sounds/throw.ogg`, special-prize `CoinProduced` -> `sounds/chime.ogg`, `SunCollected` → `sounds/points.ogg`, `CoinCollected` → `sounds/coin.ogg`, `GardenWatered` → `sounds/watering.ogg`, `GardenFertilized` → `sounds/fertilizer.ogg`, IceShroom `PlantSpecialTriggered` → `sounds/frozen.ogg`, `ZombieChilled` → `sounds/frozen.ogg`, `CobCannonFired` → `sounds/coblaunch.ogg`, Catapult `ProjectileFired { Other(1) }` → `sounds/basketball.ogg`, `PortalOpened` → `sounds/portal.ogg`, GraveBuster `PlantSpecialTriggered` → `sounds/gravebusterchomp.ogg`, Coffee `PlantSpecialTriggered` → `sounds/coffee.ogg`, TangleKelp `TangleKelpGrabStarted` → `sounds/floop.ogg`, TangleKelp `TangleKelpWaterEntry` → `sounds/zombiesplash.ogg`, PotatoMine `PotatoMineArmed` → `sounds/dirt_rise.ogg`, Digger `DiggerSurfaced` → `sounds/dirt_rise.ogg` + companion `sounds/wakeup.ogg`, Magnet-shroom `MetalStolen` → `sounds/magnetshroom.ogg`, Zamboni `VehicleDisabled` → `sounds/balloon_pop.ogg`, PotatoMine `PlantSpecialTriggered` → `sounds/potato_mine.ogg`, Spikeweed `PlantSpecialTriggered` → `sounds/throw.ogg`, CherryBomb `PlantSpecialTriggered` → `sounds/cherrybomb.ogg`, ExplodeONut `PlantSpecialTriggered` → `sounds/cherrybomb.ogg` + companion `sounds/bowlingimpact2.ogg`, Jalapeno `PlantSpecialTriggered` → `sounds/jalapeno.ogg`, CherryBomb/Jalapeno companion → `sounds/juicy.ogg`, `ProjectileImpact` Butter → `sounds/butter.ogg`, `VaseBroken` → `sounds/vase_breaking.ogg`, `RakeTriggered` → `sounds/swing.ogg`, DoomShroom `PlantSpecialTriggered` → `sounds/doomshroom.ogg`, `BloverTriggered` → `sounds/blover.ogg`, Chomper `PlantSpecialTriggered` → `sounds/bigchomp.ogg`, Squash `PlantSpecialTriggered` -> `sounds/gargantuar_thump.ogg`, `SquashHumStarted` -> `sounds/squash_hmm.ogg`/`sounds/squash_hmm2.ogg`, `ZombieShieldHit` -> `sounds/shieldhit.ogg`/`sounds/shieldhit2.ogg`, `ZombieHypnotized` → `sounds/mindcontrolled.ogg`, `JackboxExploded` → `sounds/explosion.ogg`, `MowerTriggered` → `sounds/lawnmower.ogg`, `GameLost` → `sounds/losemusic.ogg`, `GameWon` → `sounds/winmusic.ogg`, `ZombieNewspaperRipped` → `sounds/newspaper_rip.ogg`, `ImpThrown` → `sounds/swing.ogg` + variant companion `sounds/imp.ogg`/`sounds/imp2.ogg`, `DolphinRider` appearance → `sounds/dolphin_appears.ogg`, `DolphinJumpStarted` → `sounds/dolphin_before_jumping.ogg` + companion `sounds/plant_water.ogg`, `ZombieEnteredPool` → `sounds/plant_water.ogg`/`sounds/zombie_entering_water.ogg`, `Zamboni` appearance → `sounds/zamboni.ogg`, `PogoBounceSound` → `sounds/pogo_zombie.ogg`, `Balloon` appearance → `sounds/ballooninflate.ogg`; source cross-checks, decoded PCM hashes, and local app tick/`playback started` traces in ignored `artifacts/local-audio/verification.md`; `Resumed` deliberately has no sound mapping; `ZombieDied` splat variation and remaining SFX/device timing remain under Issue `#19` |
 | AUD-MUSIC | Music playback, loop, and stem units | 1 | 2 | partial | Main/hihats MO3 loop duration and source track mapping verified in ignored `artifacts/music-loop/verification.md`; runtime playback/stem synchronization remains |
 | AUD-SYNC | Event-to-device timing and music synchronization contract | 0 | 1 | missing | Issue `#19` |
+
+The accepted `JumpBlocked` SFX unit maps to `sounds/bonk.ogg`; its source and
+local tick/playback evidence are recorded in ignored
+`artifacts/local-audio/verification.md`.
+
+The accepted `UmbrellaDeflected` SFX units map to `sounds/boing.ogg` and
+`sounds/throw2.ogg`; both source calls and same-tick local playback evidence
+are recorded in ignored `artifacts/local-audio/verification.md`.
+
+The accepted BrainFinished SFX unit maps to sounds/gulp.ogg; source and
+same-tick local playback evidence are recorded in ignored
+artifacts/local-audio/verification.md.
+
+The accepted Butter projectile-impact SFX unit maps `ProjectileImpact` with
+`kind: Butter` to `sounds/butter.ogg`; the local trace uses the real projectile
+collision path and does not treat `ZombieButtered` as a second audio boundary.
+
+The accepted projectile-impact SFX units map `ProjectileImpact` variants to the
+source `splat`, `kernelpult`, `ignite`, `melonimpact`, `shieldhit`, and
+`plastichit` resource families. The local `projectile-impacts` trace covers all
+six families on one simulation tick with external 1.0.0.1051 resources; the
+independent `ZombieDied` splat variation remains unresolved.
+
+The accepted ImpThrown SFX unit maps to sounds/swing.ogg and carries the
+source FOLEY_IMP imp/imp2 variation as a same-tick companion; the local trace
+and decoded PCM records are in artifacts/local-audio/verification.md.
+
+Pole Vaulter audio remains unresolved: the source plays FOLEY_POLEVAULT at the
+vault animation's 0.4 timed event, while the current simulation collapses the
+vault to a contact event and cannot yet reproduce that tick. The earlier local
+contact-event trace is diagnostic only; details remain in ignored
+artifacts/pole-vaulter/verification.md.
+
+The accepted DolphinJumpStarted SFX unit maps to
+sounds/dolphin_before_jumping.ogg with the same-tick companion
+sounds/plant_water.ogg; source, decoded PCM, and local playback evidence are
+recorded in ignored artifacts/local-audio/verification.md.
+
+The accepted DolphinRider appearance SFX unit maps to
+sounds/dolphin_appears.ogg on the source-aligned spawn/appearance event; source,
+decoded PCM, and local playback evidence are recorded in ignored
+artifacts/local-audio/verification.md.
+
+The accepted Zamboni appearance SFX unit maps to sounds/zamboni.ogg on the
+source-aligned spawn/appearance event; source, decoded PCM, and local playback
+evidence are recorded in ignored artifacts/local-audio/verification.md.
+
+The accepted PogoBounceSound SFX unit maps to sounds/pogo_zombie.ogg at the
+source-aligned bounce sound boundary; source, decoded PCM, and local playback
+evidence are recorded in ignored artifacts/local-audio/verification.md.
+
+The accepted Balloon appearance SFX unit maps to sounds/ballooninflate.ogg on
+the source-aligned spawn/appearance event; source, decoded PCM, and local
+playback evidence are recorded in ignored artifacts/local-audio/verification.md.
+
+The accepted Squash landing SFX unit maps to sounds/gargantuar_thump.ogg on the
+source-aligned PlantSpecialTriggered event; source, decoded PCM, and local
+playback evidence are recorded in ignored artifacts/local-audio/verification.md.
+
+The accepted ScreenDoor/Ladder shield-hit SFX unit maps to the source Foley
+variation pair sounds/shieldhit.ogg or sounds/shieldhit2.ogg on
+ZombieShieldHit; source, decoded PCM, and local playback evidence are recorded
+in ignored artifacts/local-audio/verification.md.
+
+The accepted SquashHumStarted SFX unit maps the source 2:1 variation table to
+sounds/squash_hmm.ogg or sounds/squash_hmm2.ogg; source, decoded PCM, and
+same-tick local playback evidence are recorded in ignored
+artifacts/local-audio/verification.md.
+
+The accepted ZombieEnteredPool SFX unit maps the source splash variation pair
+to sounds/plant_water.ogg or sounds/zombie_entering_water.ogg; source, decoded
+PCM, and same-tick local playback evidence are recorded in ignored
+artifacts/local-audio/verification.md.
+
+The accepted Catapult basketball SFX unit maps `ProjectileFired { Other(1) }`
+to `sounds/basketball.ogg`; source, decoded PCM, and same-tick local playback
+evidence are recorded in ignored `artifacts/local-audio/verification.md`.
+
+The accepted plant-sun production SFX unit maps `SunProduced` with
+`source: SunSource::Plant(_)` to `sounds/throw.ogg`; sky-produced suns remain
+silent. Same-version source evidence is `PvZ-Decomp-main/Lawn/Plant.cpp:1021-1044`
+and `Sexy.TodLib/TodFoley.cpp:14`. The local `sun-production` checkpoint uses
+the real Sunflower planting/update path with external 1.0.0.1051 resources;
+`artifacts/local-audio/sun-production-trace.stdout.log` records both
+`SunProduced` and `sounds/throw.ogg` queued/playback-started at tick 1, with
+empty stderr and no playback-failed line.
+
+The accepted special-prize launch SFX unit maps `CoinProduced` for Diamond,
+Chocolate, AwardChocolate, PresentPlant, AwardPresent, and the three
+advice-bearing mode presents to `sounds/chime.ogg`; all other pickup types stay
+silent at launch. Same-version source evidence is
+`PvZ-Decomp-main/Lawn/Coin.cpp:1298-1309,420-422` and
+`Sexy.TodLib/TodFoley.cpp:104`. The local `prize-chime` checkpoint creates a
+real Diamond through the normal pickup path; the preserved trace records its
+`CoinProduced` event and `sounds/chime.ogg` queued/playback-started at tick 0
+with external 1.0.0.1051 resources, empty stderr, and no playback failure.
 
 ## Acceptance Rules
 

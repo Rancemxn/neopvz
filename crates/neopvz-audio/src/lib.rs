@@ -1,5 +1,9 @@
 use std::{io::Cursor, path::Path};
 
+use kira::backend::cpal::{
+    CpalBackendSettings,
+    cpal::{BufferSize, StreamConfig},
+};
 use kira::sound::static_sound::{StaticSoundData, StaticSoundHandle};
 use kira::track::{TrackBuilder, TrackHandle};
 use kira::{AudioManager, AudioManagerSettings, DefaultBackend, Tween};
@@ -40,7 +44,22 @@ pub struct KiraAudioBackend {
 
 impl KiraAudioBackend {
     pub fn new() -> Result<Self, AudioError> {
-        let mut manager = AudioManager::<DefaultBackend>::new(AudioManagerSettings::default())
+        let settings = if std::env::var_os("NEOPVZ_FORCE_AUDIO_DEVICE_ERROR").is_some() {
+            AudioManagerSettings {
+                backend_settings: CpalBackendSettings {
+                    device: None,
+                    config: Some(StreamConfig {
+                        channels: 0,
+                        sample_rate: 1,
+                        buffer_size: BufferSize::Default,
+                    }),
+                },
+                ..AudioManagerSettings::default()
+            }
+        } else {
+            AudioManagerSettings::default()
+        };
+        let mut manager = AudioManager::<DefaultBackend>::new(settings)
             .map_err(|error| AudioError::Backend(error.to_string()))?;
         let effects = manager
             .add_sub_track(TrackBuilder::new())
