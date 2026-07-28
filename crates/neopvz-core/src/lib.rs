@@ -12825,17 +12825,17 @@ mod tests {
 
         for _ in 1..SQUASH_LANDING_HIT_TICKS {
             let events = game.advance(InputFrame::default());
-            assert!(
-                !events.iter().any(
-                    |event| matches!(event, GameEvent::PlantDied { entity } if *entity == squash)
-                )
-            );
+            assert!(!events.iter().any(
+                |event| matches!(event, GameEvent::PlantDied { entity } if *entity == squash)
+            ));
             assert_eq!(game.state.board.plants[0].id, squash);
         }
         let finished = game.advance(InputFrame::default());
-        assert!(finished
-            .iter()
-            .any(|event| matches!(event, GameEvent::PlantDied { entity } if *entity == squash)));
+        assert!(
+            finished
+                .iter()
+                .any(|event| matches!(event, GameEvent::PlantDied { entity } if *entity == squash))
+        );
         assert!(game.state.board.plants.is_empty());
     }
 
