@@ -7820,9 +7820,7 @@ impl Game {
                     if zombie.frozen_counter == 0 {
                         zombie.yeti_counter = zombie.yeti_counter.saturating_sub(1);
                     }
-                    if zombie.yeti_counter == 0
-                        && !zombie.hypnotized
-                        && zombie.frozen_counter <= 1
+                    if zombie.yeti_counter == 0 && !zombie.hypnotized && zombie.frozen_counter <= 1
                     {
                         zombie.yeti_running = true;
                     }
@@ -16055,11 +16053,7 @@ mod tests {
         yeti.frozen_counter = 2;
         let state = |game: &Game| {
             let yeti = &game.state.board.zombies[0];
-            (
-                yeti.frozen_counter,
-                yeti.yeti_counter,
-                yeti.yeti_running,
-            )
+            (yeti.frozen_counter, yeti.yeti_counter, yeti.yeti_running)
         };
 
         game.advance(InputFrame::default());
