@@ -104,6 +104,10 @@ const GARGANTUAR_SPIKEROCK_DAMAGE: i32 = 20;
 // velZ -= 0.05 / altitude += velZ / posX -= 3 per tick.
 const GARGANTUAR_THROW_BASE_X: i64 = 360 * POSITION_SCALE;
 const GARGANTUAR_THROW_MIN_DISTANCE: i64 = 40 * POSITION_SCALE;
+// anim_throw spans 34 frames at 24 fps. Count half-speed animation steps so
+// normal/chilled updates advance by 2/1 and freeze can pause the track.
+const GARGANTUAR_THROW_EVENT_STEPS: u32 = 210;
+const GARGANTUAR_THROW_RECOVERY_STEPS: u32 = 74;
 const IMP_THROW_SPAWN_OFFSET: i64 = 133 * POSITION_SCALE;
 const IMP_THROW_SPEED_X: i64 = 3 * POSITION_SCALE;
 const IMP_THROW_START_ALTITUDE: i64 = 88 * POSITION_SCALE;
@@ -7534,6 +7538,51 @@ impl Game {
         }
     }
 
+    fn update_gargantuar_throw(
+        &mut self,
+        zombie_index: usize,
+        events: &mut Vec<GameEvent>,
+    ) -> bool {
+        let mut throw = None;
+        {
+            let zombie = &mut self.state.board.zombies[zombie_index];
+            if !is_gargantuar(zombie.zombie_type) {
+                return false;
+            }
+
+            if zombie.special_phase != 0 {
+                if zombie.frozen_counter == 0 {
+                    let step = if zombie.chilled_counter == 0 { 2 } else { 1 };
+                    zombie.special_counter = zombie.special_counter.saturating_sub(step);
+                    if zombie.special_counter == 0 {
+                        if zombie.special_phase == 1 {
+                            zombie.special_phase = 2;
+                            zombie.special_counter = GARGANTUAR_THROW_RECOVERY_STEPS;
+                            zombie.imp_thrown = true;
+                            throw =
+                                Some((zombie.id, zombie.row, zombie.position_x, zombie.from_wave));
+                        } else {
+                            zombie.special_phase = 0;
+                        }
+                    }
+                }
+            } else if !zombie.imp_thrown
+                && zombie.frozen_counter == 0
+                && zombie.health < zombie.max_health / 2
+                && zombie.position_x - GARGANTUAR_THROW_BASE_X > GARGANTUAR_THROW_MIN_DISTANCE
+            {
+                zombie.special_phase = 1;
+                zombie.special_counter = GARGANTUAR_THROW_EVENT_STEPS;
+                zombie.eating = false;
+            }
+        }
+
+        if let Some((gargantuar, row, position_x, wave)) = throw {
+            self.throw_imp(gargantuar, row, position_x, wave, events);
+        }
+        self.state.board.zombies[zombie_index].special_phase != 0
+    }
+
     fn update_zombies(&mut self, events: &mut Vec<GameEvent>) {
         let zombie_count = self.state.board.zombies.len() as u32;
         for zombie_index in 0..self.state.board.zombies.len() {
@@ -7698,27 +7747,7 @@ impl Game {
                     continue;
                 }
             }
-            {
-                let (should_throw, garg_row, garg_x, garg_wave) = {
-                    let zombie = &self.state.board.zombies[zombie_index];
-                    (
-                        is_gargantuar(zombie.zombie_type)
-                            && !zombie.imp_thrown
-                            && zombie.frozen_counter == 0
-                            && zombie.health < zombie.max_health / 2
-                            && zombie.position_x - GARGANTUAR_THROW_BASE_X
-                                > GARGANTUAR_THROW_MIN_DISTANCE,
-                        zombie.row,
-                        zombie.position_x,
-                        zombie.from_wave,
-                    )
-                };
-                if should_throw {
-                    let gargantuar = self.state.board.zombies[zombie_index].id;
-                    self.state.board.zombies[zombie_index].imp_thrown = true;
-                    self.throw_imp(gargantuar, garg_row, garg_x, garg_wave, events);
-                }
-            }
+            let gargantuar_throwing = self.update_gargantuar_throw(zombie_index, events);
             let mut entered_pool = None;
             {
                 let scene = self.state.scene;
@@ -7933,6 +7962,7 @@ impl Game {
                 let frozen = zombie.frozen_counter != 0;
                 if !(frozen
                     || zombie.eating
+                    || gargantuar_throwing
                     || garlic_active
                     || (zombie.zombie_type == ZombieType::Catapult && zombie.catapult_armed)
                     || (zombie.zombie_type == ZombieType::Pogo && zombie.pogo_counter > 0)
@@ -7992,6 +8022,7 @@ impl Game {
             } else if garlic_active {
                 self.state.board.zombies[zombie_index].eating = true;
             } else if age % 4 == 0
+                && !gargantuar_throwing
                 && !dancer_dancing
                 && !digger_hidden
                 && !dolphin_jumping
@@ -13979,8 +14010,16 @@ mod tests {
     }
 
     #[test]
-    fn gargantuar_below_half_health_throws_a_270_hp_imp_once() {
+    fn gargantuar_throws_one_imp_at_the_source_animation_boundary() {
         let mut game = Game::new(7, SceneKind::Day);
+        game.state.sun = 100;
+        game.advance(InputFrame {
+            actions: vec![
+                InputAction::SelectSeed { slot: 1 },
+                InputAction::Plant { row: 2, column: 6 },
+            ],
+        });
+        let plant = game.state.board.plants[0].id;
         let mut setup = Vec::new();
         let garg = game.spawn_gargantuar_zombie(2, 0, Some(490 * POSITION_SCALE), &mut setup);
         {
@@ -13991,9 +14030,49 @@ mod tests {
                 .iter_mut()
                 .find(|z| z.id == garg)
                 .unwrap();
-            zombie.speed = 0;
+            zombie.speed = POSITION_SCALE;
             zombie.health = 1_499;
         }
+
+        let events = game.advance(InputFrame::default());
+        assert!(
+            !events
+                .iter()
+                .any(|event| matches!(event, GameEvent::ImpThrown { .. })),
+            "the health threshold only starts anim_throw"
+        );
+        let gargantuar = game
+            .state
+            .board
+            .zombies
+            .iter()
+            .find(|zombie| zombie.id == garg)
+            .unwrap();
+        assert_eq!(gargantuar.special_phase, 1);
+        assert_eq!(gargantuar.special_counter, GARGANTUAR_THROW_EVENT_STEPS);
+        assert_eq!(gargantuar.position_x, 490 * POSITION_SCALE);
+
+        for _ in 0..104 {
+            let events = game.advance(InputFrame::default());
+            assert!(
+                !events
+                    .iter()
+                    .any(|event| matches!(event, GameEvent::ImpThrown { .. })),
+                "the 0.74 event must not fire before update 105"
+            );
+        }
+        assert_eq!(game.state.board.plants[0].id, plant);
+        assert_eq!(
+            game.state
+                .board
+                .zombies
+                .iter()
+                .find(|zombie| zombie.id == garg)
+                .unwrap()
+                .position_x,
+            490 * POSITION_SCALE,
+            "the Gargantuar stands still during anim_throw"
+        );
 
         let events = game.advance(InputFrame::default());
         let (imp, imp_variant) = events
@@ -14025,12 +14104,47 @@ mod tests {
             "130px throw integrates to roughly 85 flight ticks, got {flight_ticks}"
         );
 
+        for _ in 0..36 {
+            let events = game.advance(InputFrame::default());
+            assert!(
+                !events
+                    .iter()
+                    .any(|event| matches!(event, GameEvent::ImpThrown { .. })),
+                "the imp throw happens exactly once"
+            );
+        }
+        assert_eq!(game.state.board.plants[0].id, plant);
+        assert_eq!(
+            game.state
+                .board
+                .zombies
+                .iter()
+                .find(|zombie| zombie.id == garg)
+                .unwrap()
+                .position_x,
+            490 * POSITION_SCALE,
+            "the Gargantuar remains still through update 141"
+        );
+
         let events = game.advance(InputFrame::default());
         assert!(
             !events
                 .iter()
                 .any(|event| matches!(event, GameEvent::ImpThrown { .. })),
             "the imp throw happens exactly once"
+        );
+        let gargantuar = game
+            .state
+            .board
+            .zombies
+            .iter()
+            .find(|zombie| zombie.id == garg)
+            .unwrap();
+        assert_eq!(gargantuar.special_phase, 0);
+        assert_eq!(
+            gargantuar.position_x,
+            489 * POSITION_SCALE,
+            "normal movement resumes when anim_throw completes"
         );
         let imp_after = game
             .state
@@ -14041,8 +14155,53 @@ mod tests {
             .unwrap();
         assert_eq!(
             imp_after.position_x,
-            (490 - 133) * POSITION_SCALE - IMP_THROW_SPEED_X,
-            "the airborne imp travels 3 px per tick"
+            (490 - 133) * POSITION_SCALE - 37 * IMP_THROW_SPEED_X,
+            "the airborne imp travels 3 px per recovery tick"
+        );
+
+        let events = game.advance(InputFrame::default());
+        assert!(events.iter().any(|event| matches!(
+            event,
+            GameEvent::PlantDied { entity } if *entity == plant
+        )));
+    }
+
+    #[test]
+    fn gargantuar_throw_animation_pauses_frozen_and_runs_half_speed_chilled() {
+        let mut game = Game::new(7, SceneKind::Day);
+        let mut setup = Vec::new();
+        let garg = game.spawn_gargantuar_zombie(2, 0, Some(490 * POSITION_SCALE), &mut setup);
+        let gargantuar = game
+            .state
+            .board
+            .zombies
+            .iter_mut()
+            .find(|zombie| zombie.id == garg)
+            .unwrap();
+        gargantuar.speed = 0;
+        gargantuar.health = 1_499;
+
+        game.advance(InputFrame::default());
+        game.state.board.zombies[0].frozen_counter = 2;
+        game.advance(InputFrame::default());
+        game.advance(InputFrame::default());
+        assert_eq!(
+            game.state.board.zombies[0].special_counter, GARGANTUAR_THROW_EVENT_STEPS,
+            "freeze pauses the animation"
+        );
+
+        game.state.board.zombies[0].chilled_counter = 2;
+        game.advance(InputFrame::default());
+        game.advance(InputFrame::default());
+        assert_eq!(
+            game.state.board.zombies[0].special_counter,
+            GARGANTUAR_THROW_EVENT_STEPS - 2,
+            "two chilled updates equal one normal update"
+        );
+        game.advance(InputFrame::default());
+        assert_eq!(
+            game.state.board.zombies[0].special_counter,
+            GARGANTUAR_THROW_EVENT_STEPS - 4
         );
     }
 
@@ -16304,7 +16463,15 @@ mod tests {
     fn debug_imp_throw_checkpoint_emits_throw_event() {
         let mut game = Game::new(0, SceneKind::Day);
         game.debug_prepare_imp_throw();
-        let events = game.advance(InputFrame::default());
+        let first = game.advance(InputFrame::default());
+        assert!(
+            !first
+                .iter()
+                .any(|event| matches!(event, GameEvent::ImpThrown { .. }))
+        );
+        let events = (0..105)
+            .flat_map(|_| game.advance(InputFrame::default()))
+            .collect::<Vec<_>>();
         assert!(
             events
                 .iter()
