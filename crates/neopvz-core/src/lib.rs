@@ -10369,12 +10369,13 @@ impl Game {
             zombie.shield_max_health = BOBSLED_HELM_HEALTH;
         }
         for offset in 1..=3 {
-            self._spawn_zombie_inner(
+            self._initialize_zombie_inner(
                 ZombieType::Bobsled,
                 BOBSLED_HEALTH,
                 row,
                 wave,
                 Some(leader_position + i64::from(offset) * 50 * POSITION_SCALE),
+                false,
                 events,
             );
         }
@@ -11359,9 +11360,40 @@ impl Game {
         position_override: Option<i64>,
         events: &mut Vec<GameEvent>,
     ) -> EntityId {
+        self._initialize_zombie_inner(
+            zombie_type,
+            health,
+            row,
+            wave,
+            position_override,
+            true,
+            events,
+        )
+    }
+
+    #[allow(clippy::too_many_arguments)]
+    fn _initialize_zombie_inner(
+        &mut self,
+        zombie_type: ZombieType,
+        health: i32,
+        row: u8,
+        wave: u32,
+        position_override: Option<i64>,
+        pick_variant: bool,
+        events: &mut Vec<GameEvent>,
+    ) -> EntityId {
         let id = self.state.board.allocate_entity();
-        let position_x = position_override
-            .unwrap_or_else(|| i64::from(780 + self.rng.range(40)) * POSITION_SCALE);
+        // ponytail: preserve the source RNG stream now; store the visual variant when rendering uses it.
+        if pick_variant {
+            let _variant = self.rng.range(5) == 0;
+        }
+        let position_x = if zombie_type == ZombieType::Bobsled {
+            let _initial_position = self.rng.range(40);
+            position_override.unwrap_or(880 * POSITION_SCALE)
+        } else {
+            position_override
+                .unwrap_or_else(|| i64::from(780 + self.rng.range(40)) * POSITION_SCALE)
+        };
         let groan_counter = self.rng.range_inclusive(300, 400) as i32;
         // Zombie_ResetSpeed in 1.0.0.1051 gives Dancer, Backup Dancer, Pogo,
         // and Flag a fixed 0.45 walk.
@@ -11381,6 +11413,7 @@ impl Game {
         } else if zombie_type == ZombieType::Bungee {
             0
         } else if zombie_type == ZombieType::Bobsled {
+            let _initial_speed = self.rng.fixed_range(230_000, 320_000);
             BOBSLED_SPEED
         } else if zombie_type == ZombieType::Dancer {
             500_000
@@ -11455,7 +11488,7 @@ impl Game {
             vehicle_disabled: false,
             damage_tier: 0,
             pogo_counter: if zombie_type == ZombieType::Pogo {
-                POGO_BOUNCE_TICKS
+                self.rng.range(POGO_BOUNCE_TICKS) + 1
             } else {
                 0
             },
@@ -12311,11 +12344,14 @@ mod tests {
         let mut setup_events = Vec::new();
         game.spawn_normal_zombie(2, 0, Some(500 * POSITION_SCALE), &mut setup_events);
         game.spawn_normal_zombie(1, 0, Some(500 * POSITION_SCALE), &mut setup_events);
+        for zombie in &mut game.state.board.zombies {
+            zombie.speed = 0;
+        }
 
         let mut saw_fireball = false;
         let mut saw_fireball_hit = false;
         let mut saw_fireball_splash = false;
-        for _ in 0..140 {
+        for _ in 0..200 {
             let events = game.advance(InputFrame::default());
             saw_fireball |= game.state.board.projectiles.iter().any(|projectile| {
                 projectile.projectile_type == ProjectileType::Fireball && projectile.damage == 40
@@ -12785,6 +12821,9 @@ mod tests {
         let mut setup_events = Vec::new();
         game.spawn_normal_zombie(2, 0, Some(500 * POSITION_SCALE), &mut setup_events);
         game.spawn_normal_zombie(3, 0, Some(500 * POSITION_SCALE), &mut setup_events);
+        for zombie in &mut game.state.board.zombies {
+            zombie.speed = 0;
+        }
 
         let splash = (0..200)
             .flat_map(|_| game.advance(InputFrame::default()))
@@ -12892,6 +12931,9 @@ mod tests {
         let primary = game.spawn_normal_zombie(2, 0, Some(500 * POSITION_SCALE), &mut setup_events);
         let adjacent =
             game.spawn_normal_zombie(3, 0, Some(500 * POSITION_SCALE), &mut setup_events);
+        for zombie in &mut game.state.board.zombies {
+            zombie.speed = 0;
+        }
 
         let mut primary_hit = false;
         let mut adjacent_hit = false;
@@ -19830,6 +19872,90 @@ mod tests {
                 .health,
             300
         );
+    }
+
+    #[test]
+    fn zombie_spawn_consumes_the_source_variant_draw_first() {
+        let mut game = Game::new(7, SceneKind::Day);
+        let mut expected_rng = game.rng.clone();
+        let _variant = expected_rng.range(5) == 0;
+        let expected_position = i64::from(780 + expected_rng.range(40)) * POSITION_SCALE;
+        let expected_groan = expected_rng.range_inclusive(300, 400) as i32;
+        let expected_speed = expected_rng.fixed_range(230_000, 320_000);
+        let mut setup = Vec::new();
+
+        let normal = game.spawn_normal_zombie(2, 0, None, &mut setup);
+        let state = game
+            .state
+            .board
+            .zombies
+            .iter()
+            .find(|candidate| candidate.id == normal)
+            .unwrap();
+        assert_eq!(state.position_x, expected_position);
+        assert_eq!(state.groan_counter, expected_groan);
+        assert_eq!(state.speed, expected_speed);
+        assert_eq!(game.rng.snapshot(), expected_rng.snapshot());
+    }
+
+    #[test]
+    fn bobsled_team_uses_one_variant_draw_and_four_initializations() {
+        let mut game = Game::new(7, SceneKind::Day);
+        let mut expected_rng = game.rng.clone();
+        let _variant = expected_rng.range(5) == 0;
+        let mut expected_groans = Vec::new();
+        for _ in 0..4 {
+            let _initial_position = expected_rng.range(40);
+            expected_groans.push(expected_rng.range_inclusive(300, 400) as i32);
+            let _initial_speed = expected_rng.fixed_range(230_000, 320_000);
+        }
+        let mut setup = Vec::new();
+
+        game.spawn_bobsled_zombie(2, 0, None, &mut setup);
+
+        assert_eq!(
+            game.state
+                .board
+                .zombies
+                .iter()
+                .map(|zombie| zombie.position_x)
+                .collect::<Vec<_>>(),
+            [880, 930, 980, 1_030].map(|x| x * POSITION_SCALE)
+        );
+        assert_eq!(
+            game.state
+                .board
+                .zombies
+                .iter()
+                .map(|zombie| zombie.groan_counter)
+                .collect::<Vec<_>>(),
+            expected_groans
+        );
+        assert_eq!(game.rng.snapshot(), expected_rng.snapshot());
+    }
+
+    #[test]
+    fn pogo_initial_bounce_counter_uses_the_source_rng_order() {
+        let mut game = Game::new(7, SceneKind::Day);
+        let mut expected_rng = game.rng.clone();
+        let _variant = expected_rng.range(5) == 0;
+        let expected_position = i64::from(780 + expected_rng.range(40)) * POSITION_SCALE;
+        let expected_groan = expected_rng.range_inclusive(300, 400) as i32;
+        let expected_counter = expected_rng.range(POGO_BOUNCE_TICKS) + 1;
+        let mut setup = Vec::new();
+
+        let pogo = game.spawn_pogo_zombie(2, 0, None, &mut setup);
+        let state = game
+            .state
+            .board
+            .zombies
+            .iter()
+            .find(|candidate| candidate.id == pogo)
+            .unwrap();
+        assert_eq!(state.position_x, expected_position);
+        assert_eq!(state.groan_counter, expected_groan);
+        assert_eq!(state.pogo_counter, expected_counter);
+        assert_eq!(game.rng.snapshot(), expected_rng.snapshot());
     }
 
     #[test]
