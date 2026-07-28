@@ -2998,6 +2998,11 @@ pub enum GameEvent {
     VehicleDisabled {
         entity: EntityId,
     },
+    PlantFired {
+        entity: EntityId,
+        plant_type: PlantType,
+        variant: u8,
+    },
     ProjectileFired {
         entity: EntityId,
         source: EntityId,
@@ -3436,6 +3441,38 @@ impl Game {
             .find(|plant| plant.plant_type == PlantType::Sunflower)
             .expect("sun production checkpoint sunflower")
             .launch_counter = 1;
+    }
+
+    #[doc(hidden)]
+    pub fn debug_prepare_plant_firing_audio(&mut self) -> Vec<GameEvent> {
+        self.state.level_scene = SceneKind::Night;
+        self.state.scene = SceneKind::Night;
+        self.state.board.plants.clear();
+        self.state.board.zombies.clear();
+        self.state.board.projectiles.clear();
+
+        for (row, plant_type) in [
+            (0, PlantType::Peashooter),
+            (1, PlantType::Other(5)),
+            (2, PlantType::Other(8)),
+            (3, PlantType::Other(10)),
+            (4, PlantType::Other(29)),
+        ] {
+            self.place_izombie_plant(plant_type, row, 2);
+        }
+        for plant in &mut self.state.board.plants {
+            plant.launch_counter = plant.launch_rate;
+            plant.shooting_counter = 2;
+        }
+
+        let mut setup_events = Vec::new();
+        for row in 0..self.state.board.rows {
+            self.spawn_normal_zombie(row, 0, Some(grid_x(7)), &mut setup_events);
+        }
+        for zombie in &mut self.state.board.zombies {
+            zombie.speed = 0;
+        }
+        self.advance(InputFrame::default())
     }
 
     #[doc(hidden)]
@@ -9627,6 +9664,7 @@ impl Game {
                 .into_iter()
                 .flatten()
                 {
+                    self.emit_plant_fired(source, plant_type, events);
                     self.fire_projectile(
                         source,
                         projectile_type,
@@ -9643,6 +9681,7 @@ impl Game {
                 }
             }
             FiringPattern::Split => {
+                self.emit_plant_fired(source, plant_type, events);
                 self.fire_projectile(
                     source,
                     projectile_type,
@@ -9656,6 +9695,7 @@ impl Game {
                     },
                     events,
                 );
+                self.emit_plant_fired(source, plant_type, events);
                 self.fire_projectile(
                     source,
                     projectile_type,
@@ -9671,6 +9711,7 @@ impl Game {
                 );
             }
             FiringPattern::Star => {
+                self.emit_plant_fired(source, plant_type, events);
                 for (velocity_x, velocity_y) in [
                     (-3_330_000, 0),
                     (0, 3_330_000),
@@ -9693,37 +9734,61 @@ impl Game {
                     );
                 }
             }
-            FiringPattern::Backward => self.fire_projectile(
-                source,
-                projectile_type,
-                row,
-                ProjectileTrajectory {
-                    motion: ProjectileMotion::Backwards,
-                    position_x: grid_x(column) + 20 * POSITION_SCALE,
-                    position_y,
-                    velocity_x: -3_330_000,
-                    velocity_y: 0,
-                },
-                events,
-            ),
-            _ => self.fire_projectile(
-                source,
-                projectile_type,
-                row,
-                ProjectileTrajectory {
-                    motion: plant_type.projectile_motion(),
-                    position_x,
-                    position_y,
-                    velocity_x: if plant_type.is_fume_shroom() || plant_type.is_gloom_shroom() {
-                        0
-                    } else {
-                        3_330_000
+            FiringPattern::Backward => {
+                self.emit_plant_fired(source, plant_type, events);
+                self.fire_projectile(
+                    source,
+                    projectile_type,
+                    row,
+                    ProjectileTrajectory {
+                        motion: ProjectileMotion::Backwards,
+                        position_x: grid_x(column) + 20 * POSITION_SCALE,
+                        position_y,
+                        velocity_x: -3_330_000,
+                        velocity_y: 0,
                     },
-                    velocity_y: 0,
-                },
-                events,
-            ),
+                    events,
+                );
+            }
+            _ => {
+                self.emit_plant_fired(source, plant_type, events);
+                self.fire_projectile(
+                    source,
+                    projectile_type,
+                    row,
+                    ProjectileTrajectory {
+                        motion: plant_type.projectile_motion(),
+                        position_x,
+                        position_y,
+                        velocity_x: if plant_type.is_fume_shroom() || plant_type.is_gloom_shroom() {
+                            0
+                        } else {
+                            3_330_000
+                        },
+                        velocity_y: 0,
+                    },
+                    events,
+                );
+            }
         }
+    }
+
+    fn emit_plant_fired(
+        &mut self,
+        entity: EntityId,
+        plant_type: PlantType,
+        events: &mut Vec<GameEvent>,
+    ) {
+        let variant = if matches!(plant_type.slot(), 10 | 42) {
+            0
+        } else {
+            self.rng.range(4) as u8
+        };
+        events.push(GameEvent::PlantFired {
+            entity,
+            plant_type,
+            variant,
+        });
     }
 
     fn fire_projectile(
@@ -12091,15 +12156,22 @@ mod tests {
         let mut events = Vec::new();
         game.fire_projectiles(1, PlantType::Other(52), 2, 2, &mut events);
 
-        assert_eq!(
-            events,
-            vec![GameEvent::ProjectileFired {
-                entity: 1,
-                source: 1,
-                projectile_type: ProjectileType::Pea,
-                row: 2,
-            }]
-        );
+        assert!(matches!(
+            events.as_slice(),
+            [
+                GameEvent::PlantFired {
+                    entity: 1,
+                    plant_type: PlantType::Other(52),
+                    ..
+                },
+                GameEvent::ProjectileFired {
+                    entity: 1,
+                    source: 1,
+                    projectile_type: ProjectileType::Pea,
+                    row: 2,
+                }
+            ]
+        ));
         assert_eq!(game.state.board.projectiles.len(), 1);
         assert_eq!(
             game.state.board.projectiles[0].motion,
@@ -17278,6 +17350,53 @@ mod tests {
         assert_eq!(outcome.final_state.mode, ModeKind::IZombie);
         assert_eq!(outcome.final_state.level, 9);
         assert_eq!(outcome.final_state.scene, SceneKind::Night);
+    }
+
+    #[test]
+    fn plant_firing_events_match_source_fire_calls() {
+        let mut game = Game::new(0, SceneKind::Night);
+        let events = game.debug_prepare_plant_firing_audio();
+        let fired_types = events
+            .iter()
+            .filter_map(|event| match event {
+                GameEvent::PlantFired { plant_type, .. } => Some(*plant_type),
+                _ => None,
+            })
+            .collect::<Vec<_>>();
+        assert_eq!(
+            fired_types,
+            [
+                PlantType::Peashooter,
+                PlantType::Other(5),
+                PlantType::Other(8),
+                PlantType::Other(10),
+                PlantType::Other(29),
+            ]
+        );
+        assert_eq!(
+            events
+                .iter()
+                .filter(|event| matches!(event, GameEvent::ProjectileFired { .. }))
+                .count(),
+            9
+        );
+
+        let mut threepeater_events = Vec::new();
+        game.fire_projectiles(99, PlantType::Other(18), 2, 2, &mut threepeater_events);
+        assert_eq!(
+            threepeater_events
+                .iter()
+                .filter(|event| matches!(event, GameEvent::PlantFired { .. }))
+                .count(),
+            3
+        );
+        assert_eq!(
+            threepeater_events
+                .iter()
+                .filter(|event| matches!(event, GameEvent::ProjectileFired { .. }))
+                .count(),
+            3
+        );
     }
 
     #[test]
