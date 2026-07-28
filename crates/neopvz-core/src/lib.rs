@@ -11387,7 +11387,8 @@ impl Game {
         } else if zombie_type == ZombieType::DolphinRider {
             DOLPHIN_WALK_SPEED
         } else if zombie_type == ZombieType::Snorkel {
-            SNORKEL_SPEED
+            // Zombie_ResetSpeed gives Snorkel the 0.66-0.68 run band.
+            self.rng.fixed_range(660_000, 680_000)
         } else if zombie_type == ZombieType::Zamboni {
             zamboni_speed(position_x)
         } else if zombie_type == ZombieType::Boss {
@@ -14183,7 +14184,7 @@ mod tests {
     }
 
     #[test]
-    fn snorkel_enters_pool_and_is_hidden_until_it_eats() {
+    fn snorkel_uses_source_spawn_speed_and_hides_in_pool_until_it_eats() {
         let mut game = Game::new(7, SceneKind::Pool);
         game.advance(InputFrame {
             actions: vec![
@@ -14193,6 +14194,9 @@ mod tests {
         });
         game.state.board.plants[0].launch_counter = 10_000;
         let mut setup = Vec::new();
+        let mut expected_rng = game.rng.clone();
+        expected_rng.range_inclusive(300, 400);
+        let expected_speed = expected_rng.fixed_range(660_000, 680_000);
         let snorkel = game.spawn_snorkel_zombie(2, 0, Some(720 * POSITION_SCALE), &mut setup);
         assert_eq!(
             game.state
@@ -14202,8 +14206,9 @@ mod tests {
                 .find(|candidate| candidate.id == snorkel)
                 .unwrap()
                 .speed,
-            SNORKEL_SPEED
+            expected_speed
         );
+        assert_eq!(game.rng.snapshot(), expected_rng.snapshot());
 
         game.advance(InputFrame::default());
         assert_eq!(
