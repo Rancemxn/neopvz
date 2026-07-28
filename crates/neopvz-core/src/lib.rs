@@ -11089,6 +11089,7 @@ impl Game {
         )
     }
 
+    #[allow(clippy::too_many_arguments)]
     fn _initialize_zombie_inner(
         &mut self,
         zombie_type: ZombieType,
