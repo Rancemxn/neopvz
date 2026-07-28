@@ -7559,6 +7559,8 @@ impl Game {
     }
 
     fn damage_zombie(&mut self, zombie_index: usize, damage: i32, events: &mut Vec<GameEvent>) {
+        let pool_lane = self.state.scene == SceneKind::Pool
+            && matches!(self.state.board.zombies[zombie_index].row, 2 | 3);
         let (entity, shield_damage, shield_type, newspaper_ripped) = {
             let mut remaining = damage.max(0);
             let zombie = &mut self.state.board.zombies[zombie_index];
@@ -7569,8 +7571,13 @@ impl Game {
                 zombie.balloon_flying_health -= absorbed;
                 remaining -= absorbed;
                 if zombie.balloon_flying_health == 0 {
-                    zombie.balloon_phase = BALLOON_POPPING_PHASE;
-                    zombie.balloon_counter = BALLOON_POP_TICKS;
+                    if pool_lane {
+                        zombie.health = 0;
+                        zombie.balloon_phase = 0;
+                    } else {
+                        zombie.balloon_phase = BALLOON_POPPING_PHASE;
+                        zombie.balloon_counter = BALLOON_POP_TICKS;
+                    }
                 }
             }
             let shield_damage = remaining.min(zombie.shield_health);
@@ -14749,6 +14756,64 @@ mod tests {
                 .unwrap()
                 .balloon_phase,
             BALLOON_WALKING_PHASE
+        );
+    }
+
+    #[test]
+    fn pool_lane_balloon_dies_when_a_spike_pops_it() {
+        let mut game = Game::new(7, SceneKind::Pool);
+        let mut setup = Vec::new();
+        let balloon =
+            game.spawn_balloon_zombie(2, 0, Some(grid_x(2) + 20 * POSITION_SCALE), &mut setup);
+        let balloon_position = {
+            let balloon_state = game
+                .state
+                .board
+                .zombies
+                .iter_mut()
+                .find(|candidate| candidate.id == balloon)
+                .unwrap();
+            balloon_state.speed = 0;
+            balloon_state.position_x
+        };
+        let mut setup_events = Vec::new();
+        game.fire_projectile(
+            0,
+            ProjectileType::Spike,
+            2,
+            ProjectileTrajectory {
+                motion: ProjectileMotion::Straight,
+                position_x: balloon_position,
+                position_y: grid_y(2),
+                velocity_x: 0,
+                velocity_y: 0,
+            },
+            &mut setup_events,
+        );
+
+        let events = game.advance(InputFrame::default());
+
+        assert!(events.iter().any(|event| matches!(
+            event,
+            GameEvent::ProjectileHit {
+                zombie,
+                damage: 20,
+                health_remaining: 0,
+                ..
+            } if *zombie == balloon
+        )));
+        assert!(
+            events.iter().any(
+                |event| matches!(event, GameEvent::ZombieDied { entity } if *entity == balloon)
+            )
+        );
+        assert!(
+            !game
+                .state
+                .board
+                .zombies
+                .iter()
+                .any(|zombie| zombie.id == balloon)
         );
     }
 
