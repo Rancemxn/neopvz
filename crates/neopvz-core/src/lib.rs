@@ -9595,7 +9595,12 @@ impl Game {
                 let plant_right = plant_left + plant_width * POSITION_SCALE;
                 attack_right.min(plant_right) - attack_left.max(plant_left) >= 20 * POSITION_SCALE
             })
-            .max_by_key(|(_, plant)| plant.column)
+            .max_by_key(|(_, plant)| {
+                (
+                    plant.column,
+                    !matches!(plant.plant_type.slot(), 16 | 30 | 33 | 35),
+                )
+            })
             .map(|(index, _)| index)
     }
 
@@ -13359,8 +13364,23 @@ mod tests {
         assert_eq!(thawing.state.board.zombies[0].special_phase, 1);
 
         let mut blocked = Game::new(7, SceneKind::Day);
-        blocked.place_izombie_plant(PlantType::Other(23), 2, 2);
-        let tallnut = blocked.state.board.plants[0].id;
+        blocked.state.sun = 1_000;
+        blocked.advance(InputFrame {
+            actions: vec![
+                InputAction::SelectSeed { slot: 23 },
+                InputAction::Plant { row: 2, column: 2 },
+                InputAction::SelectSeed { slot: 30 },
+                InputAction::Plant { row: 2, column: 2 },
+            ],
+        });
+        let tallnut = blocked
+            .state
+            .board
+            .plants
+            .iter()
+            .find(|plant| plant.plant_type.slot() == 23)
+            .unwrap()
+            .id;
         let mut setup = Vec::new();
         let zombie = blocked.spawn_pole_vaulter_zombie(
             2,
