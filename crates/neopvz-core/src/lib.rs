@@ -42,6 +42,8 @@ const SQUASH_LOOK_TICKS: u32 = 80;
 const SQUASH_JUMP_UP_TICKS: u32 = 45;
 const SQUASH_AIR_TICKS: u32 = 50;
 const SQUASH_LANDING_HIT_TICKS: u32 = 5;
+const SQUASH_OFF_GROUND_TICKS: u32 = SQUASH_AIR_TICKS + SQUASH_LANDING_HIT_TICKS;
+const SQUASH_DONE_FALLING_TICKS: u32 = 100;
 const SQUASH_HIT_DELAY_TICKS: u32 =
     SQUASH_JUMP_UP_TICKS + SQUASH_AIR_TICKS + SQUASH_LANDING_HIT_TICKS;
 const SQUASH_TARGET_GAP: i64 = 70;
@@ -6175,6 +6177,8 @@ impl Game {
             let mut spikeweed_started = false;
             let mut chomper_bite_target = None;
             let mut squash_hit_target = None;
+            let mut squash_landed = false;
+            let mut squash_finished = false;
             let mut tangle_grab_target = None;
             let mut tangle_started = false;
             let mut tangle_water_entry = false;
@@ -6247,14 +6251,32 @@ impl Game {
                     if plant.special_armed {
                         plant.special_counter = plant.special_counter.saturating_sub(1);
                         if plant.special_counter == 0 {
-                            squash_hit_target = plant.special_target.take().or(squash_target);
-                            plant.health = 0;
+                            if let Some(target) = plant.special_target.take() {
+                                squash_hit_target = Some(target);
+                                plant.special_counter = SQUASH_LANDING_HIT_TICKS;
+                            } else if matches!(self.state.scene, SceneKind::Pool | SceneKind::Fog)
+                                && matches!(row, 2 | 3)
+                            {
+                                plant.health = 0;
+                                squash_finished = true;
+                            } else {
+                                plant.special_armed = false;
+                                plant.special_counter = SQUASH_DONE_FALLING_TICKS;
+                                squash_landed = true;
+                            }
                         }
                     } else if plant.special_target.is_some() {
                         plant.special_counter = plant.special_counter.saturating_sub(1);
                         if plant.special_counter == 0 {
                             plant.special_armed = true;
                             plant.special_counter = SQUASH_HIT_DELAY_TICKS;
+                        }
+                    } else if plant.special_counter > 0 {
+                        // A target-less, unarmed Squash is STATE_SQUASH_DONE_FALLING.
+                        plant.special_counter -= 1;
+                        if plant.special_counter == 0 {
+                            plant.health = 0;
+                            squash_finished = true;
                         }
                     } else if let Some(target) = squash_target {
                         plant.special_target = Some(target);
@@ -6377,10 +6399,6 @@ impl Game {
                 });
             }
             if let Some(zombie_id) = squash_hit_target {
-                events.push(GameEvent::PlantSpecialTriggered {
-                    entity: id,
-                    plant_type,
-                });
                 if let Some(zombie_index) = self
                     .state
                     .board
@@ -6401,6 +6419,15 @@ impl Game {
                         self.state.board.zombies.remove(zombie_index);
                     }
                 }
+                continue;
+            }
+            if squash_landed {
+                events.push(GameEvent::PlantSpecialTriggered {
+                    entity: id,
+                    plant_type,
+                });
+            }
+            if squash_finished {
                 events.push(GameEvent::PlantDied { entity: id });
                 continue;
             }
@@ -9437,6 +9464,14 @@ impl Game {
             .iter()
             .enumerate()
             .filter(|(_, plant)| plant.row == row && plant.health > 0)
+            .filter(|(_, plant)| {
+                !plant.plant_type.is_squash()
+                    || (!plant.special_armed
+                        && (plant.special_target.is_some() || plant.special_counter == 0))
+                    || (plant.special_armed
+                        && plant.special_target.is_some()
+                        && plant.special_counter > SQUASH_OFF_GROUND_TICKS)
+            })
             // Spikeweed is walked over; zombies do not bite it.
             .filter(|(_, plant)| is_gargantuar(zombie_type) || !plant.plant_type.is_spikeweed())
             .filter(|(_, plant)| {
@@ -12806,6 +12841,20 @@ mod tests {
             ],
         });
         let squash = game.state.board.plants[0].id;
+        let squash_thumps = |events: &[GameEvent]| {
+            events
+                .iter()
+                .filter(|event| {
+                    matches!(
+                        event,
+                        GameEvent::PlantSpecialTriggered {
+                            entity,
+                            plant_type: PlantType::Other(17),
+                        } if *entity == squash
+                    )
+                })
+                .count()
+        };
         let center = grid_x(2);
         let mut setup_events = Vec::new();
         let target =
@@ -12832,6 +12881,11 @@ mod tests {
             SQUASH_LOOK_TICKS
         );
         assert!(!game.state.board.plants[0].special_armed);
+        assert_eq!(
+            game.find_plant_for_zombie(2, center, ZombieType::Normal),
+            Some(0),
+            "STATE_SQUASH_LOOKING remains on the ground"
+        );
 
         game.state.board.plants[0].special_counter = 1;
         let jump = game.advance(InputFrame::default());
@@ -12845,17 +12899,42 @@ mod tests {
             game.state.board.plants[0].special_counter,
             SQUASH_HIT_DELAY_TICKS
         );
+        assert_eq!(squash_thumps(&jump), 0);
+        assert_eq!(
+            game.find_plant_for_zombie(2, center, ZombieType::Normal),
+            Some(0),
+            "the 45-tick pre-launch remains on the ground"
+        );
+
+        game.state.board.plants[0].special_counter = SQUASH_OFF_GROUND_TICKS + 2;
+        let pre_launch = game.advance(InputFrame::default());
+        assert_eq!(squash_thumps(&pre_launch), 0);
+        assert_eq!(
+            game.state.board.plants[0].special_counter,
+            SQUASH_OFF_GROUND_TICKS + 1
+        );
+        assert_eq!(
+            game.find_plant_for_zombie(2, center, ZombieType::Normal),
+            Some(0),
+            "counter 56 is the final pre-launch tick"
+        );
+
+        let rising = game.advance(InputFrame::default());
+        assert_eq!(squash_thumps(&rising), 0);
+        assert_eq!(
+            game.state.board.plants[0].special_counter,
+            SQUASH_OFF_GROUND_TICKS
+        );
+        assert_eq!(
+            game.find_plant_for_zombie(2, center, ZombieType::Normal),
+            None,
+            "counter 55 starts STATE_SQUASH_RISING"
+        );
 
         game.state.board.plants[0].special_counter = 1;
         let events = game.advance(InputFrame::default());
 
-        assert!(events.iter().any(|event| matches!(
-            event,
-            GameEvent::PlantSpecialTriggered {
-                entity,
-                plant_type: PlantType::Other(17),
-            } if *entity == squash
-        )));
+        assert_eq!(squash_thumps(&events), 0, "damage precedes the thump");
         assert!(events.iter().any(|event| matches!(
             event,
             GameEvent::PlantSpecialHit {
@@ -12871,11 +12950,22 @@ mod tests {
             )
         );
         assert!(
-            events
+            !events
                 .iter()
                 .any(|event| matches!(event, GameEvent::PlantDied { entity } if *entity == squash))
         );
-        assert!(game.state.board.plants.is_empty());
+        assert_eq!(game.state.board.plants[0].id, squash);
+        assert_eq!(
+            game.state.board.plants[0].special_counter,
+            SQUASH_LANDING_HIT_TICKS
+        );
+        assert!(game.state.board.plants[0].special_armed);
+        assert_eq!(game.state.board.plants[0].special_target, None);
+        assert_eq!(
+            game.find_plant_for_zombie(2, center, ZombieType::Normal),
+            None,
+            "STATE_SQUASH_FALLING cannot be bitten"
+        );
         assert_eq!(
             game.state
                 .board
@@ -12885,6 +12975,102 @@ mod tests {
                 .collect::<Vec<_>>(),
             vec![far, other_row]
         );
+
+        for _ in 1..SQUASH_LANDING_HIT_TICKS {
+            let events = game.advance(InputFrame::default());
+            assert_eq!(squash_thumps(&events), 0);
+            assert!(!events.iter().any(
+                |event| matches!(event, GameEvent::PlantDied { entity } if *entity == squash)
+            ));
+            assert_eq!(game.state.board.plants[0].id, squash);
+        }
+        let landed = game.advance(InputFrame::default());
+        assert_eq!(squash_thumps(&landed), 1);
+        assert!(
+            !landed
+                .iter()
+                .any(|event| matches!(event, GameEvent::PlantDied { entity } if *entity == squash))
+        );
+        assert_eq!(
+            game.state.board.plants[0].special_counter,
+            SQUASH_DONE_FALLING_TICKS
+        );
+        assert!(!game.state.board.plants[0].special_armed);
+        assert_eq!(game.state.board.plants[0].special_target, None);
+        assert_eq!(
+            game.find_plant_for_zombie(2, center, ZombieType::Normal),
+            None,
+            "STATE_SQUASH_DONE_FALLING cannot be bitten"
+        );
+
+        for _ in 1..SQUASH_DONE_FALLING_TICKS {
+            let events = game.advance(InputFrame::default());
+            assert_eq!(squash_thumps(&events), 0);
+            assert!(!events.iter().any(
+                |event| matches!(event, GameEvent::PlantDied { entity } if *entity == squash)
+            ));
+            assert_eq!(game.state.board.plants[0].id, squash);
+        }
+        let finished = game.advance(InputFrame::default());
+        assert_eq!(squash_thumps(&finished), 0);
+        assert!(
+            finished
+                .iter()
+                .any(|event| matches!(event, GameEvent::PlantDied { entity } if *entity == squash))
+        );
+        assert!(game.state.board.plants.is_empty());
+    }
+
+    #[test]
+    fn squash_dies_when_it_lands_in_pool_or_fog_water() {
+        for scene in [SceneKind::Pool, SceneKind::Fog] {
+            let mut game = Game::new(7, scene);
+            game.place_izombie_plant(PlantType::Other(17), 2, 2);
+            let squash = game.state.board.plants[0].id;
+            let mut setup_events = Vec::new();
+            let target = game.spawn_normal_zombie(
+                2,
+                0,
+                Some(grid_x(2) + 50 * POSITION_SCALE),
+                &mut setup_events,
+            );
+            let plant = &mut game.state.board.plants[0];
+            plant.special_armed = true;
+            plant.special_target = Some(target);
+            plant.special_counter = 1;
+
+            let damage = game.advance(InputFrame::default());
+            assert!(damage.iter().any(|event| matches!(
+                event,
+                GameEvent::PlantSpecialHit { plant, zombie, .. }
+                    if *plant == squash && *zombie == target
+            )));
+            assert!(!damage.iter().any(|event| matches!(
+                event,
+                GameEvent::PlantSpecialTriggered { entity, .. } if *entity == squash
+            )));
+            assert_eq!(
+                game.state.board.plants[0].special_counter,
+                SQUASH_LANDING_HIT_TICKS
+            );
+
+            for _ in 1..SQUASH_LANDING_HIT_TICKS {
+                let events = game.advance(InputFrame::default());
+                assert!(!events.iter().any(|event| matches!(
+                    event,
+                    GameEvent::PlantDied { entity } if *entity == squash
+                )));
+            }
+            let landed = game.advance(InputFrame::default());
+            assert!(landed.iter().any(
+                |event| matches!(event, GameEvent::PlantDied { entity } if *entity == squash)
+            ));
+            assert!(!landed.iter().any(|event| matches!(
+                event,
+                GameEvent::PlantSpecialTriggered { entity, .. } if *entity == squash
+            )));
+            assert!(game.state.board.plants.is_empty());
+        }
     }
 
     #[test]
