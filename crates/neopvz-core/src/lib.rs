@@ -11078,6 +11078,8 @@ impl Game {
         events: &mut Vec<GameEvent>,
     ) -> EntityId {
         let id = self.state.board.allocate_entity();
+        // ponytail: preserve the source RNG stream now; store the visual variant when rendering uses it.
+        let _variant = self.rng.range(5) == 0;
         let position_x = position_override
             .unwrap_or_else(|| i64::from(780 + self.rng.range(40)) * POSITION_SCALE);
         let groan_counter = self.rng.range_inclusive(300, 400) as i32;
@@ -18964,9 +18966,34 @@ mod tests {
     }
 
     #[test]
+    fn zombie_spawn_consumes_the_source_variant_draw_first() {
+        let mut game = Game::new(7, SceneKind::Day);
+        let mut expected_rng = game.rng.clone();
+        let _variant = expected_rng.range(5) == 0;
+        let expected_position = i64::from(780 + expected_rng.range(40)) * POSITION_SCALE;
+        let expected_groan = expected_rng.range_inclusive(300, 400) as i32;
+        let expected_speed = expected_rng.fixed_range(230_000, 320_000);
+        let mut setup = Vec::new();
+
+        let normal = game.spawn_normal_zombie(2, 0, None, &mut setup);
+        let state = game
+            .state
+            .board
+            .zombies
+            .iter()
+            .find(|candidate| candidate.id == normal)
+            .unwrap();
+        assert_eq!(state.position_x, expected_position);
+        assert_eq!(state.groan_counter, expected_groan);
+        assert_eq!(state.speed, expected_speed);
+        assert_eq!(game.rng.snapshot(), expected_rng.snapshot());
+    }
+
+    #[test]
     fn pogo_initial_bounce_counter_uses_the_source_rng_order() {
         let mut game = Game::new(7, SceneKind::Day);
         let mut expected_rng = game.rng.clone();
+        let _variant = expected_rng.range(5) == 0;
         let expected_position = i64::from(780 + expected_rng.range(40)) * POSITION_SCALE;
         let expected_groan = expected_rng.range_inclusive(300, 400) as i32;
         let expected_counter = expected_rng.range(POGO_BOUNCE_TICKS) + 1;
