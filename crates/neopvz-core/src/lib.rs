@@ -14906,6 +14906,7 @@ mod tests {
             assert!(game.state.board.projectiles.iter().all(|projectile| {
                 projectile.position_x == origin_x
                     && projectile.position_y == origin_y
+                    && projectile.shadow_y - projectile.position_y == 57 * POSITION_SCALE
                     && projectile.shadow_y
                         == projectile_shadow_y(
                             scene,
