@@ -1993,11 +1993,9 @@ impl App {
     }
 
     fn play_audio(&mut self, tick: u64, events: &[GameEvent]) {
+        let state = self.game.state();
         for event in events {
-            for (kind, path) in [audio_for_event(event), audio_companion_for_event(event)]
-                .into_iter()
-                .flatten()
-            {
+            for (kind, path) in audio_sequence_for_event(event, state).into_iter().flatten() {
                 let Some(bytes) = self.resources.read(path).ok() else {
                     tracing::debug!(path, "audio resource is unavailable");
                     continue;
@@ -2884,9 +2882,89 @@ fn audio_for_event(event: &GameEvent) -> Option<(AudioKind, &'static str)> {
     }
 }
 
+fn planting_audio_path(
+    scene: SceneKind,
+    challenge: neopvz_core::ChallengeKind,
+    plant_type: PlantType,
+    row: u8,
+    variant: u8,
+) -> &'static str {
+    if scene == SceneKind::Garden {
+        "sounds/ceramic.ogg"
+    } else if matches!(plant_type, PlantType::Other(35)) {
+        "sounds/plant.ogg"
+    } else if challenge == neopvz_core::ChallengeKind::Zombiquarium
+        || (matches!(scene, SceneKind::Pool | SceneKind::Fog) && matches!(row, 2 | 3))
+    {
+        "sounds/plant_water.ogg"
+    } else if variant == 0 {
+        "sounds/plant.ogg"
+    } else {
+        "sounds/plant2.ogg"
+    }
+}
+
+fn planting_audio_for_event(
+    event: &GameEvent,
+    state: &neopvz_core::GameState,
+) -> Option<(AudioKind, &'static str)> {
+    let (plant_type, row, variant) = match event {
+        GameEvent::PlantPlaced {
+            plant_type,
+            row,
+            variant,
+            ..
+        } => (*plant_type, *row, *variant),
+        GameEvent::ImitaterMorphed {
+            entity, plant_type, ..
+        } => (
+            *plant_type,
+            state
+                .board
+                .plants
+                .iter()
+                .find(|plant| plant.id == *entity)
+                .map(|plant| plant.row)?,
+            0,
+        ),
+        _ => return None,
+    };
+    Some((
+        AudioKind::Effect,
+        planting_audio_path(state.scene, state.challenge.kind, plant_type, row, variant),
+    ))
+}
+
+fn audio_sequence_for_event(
+    event: &GameEvent,
+    state: &neopvz_core::GameState,
+) -> [Option<(AudioKind, &'static str)>; 2] {
+    let primary = planting_audio_for_event(event, state).or_else(|| audio_for_event(event));
+    let companion = audio_companion_for_event(event);
+    let reverse_explosion = matches!(
+        event,
+        GameEvent::PlantPlaced {
+            plant_type: PlantType::Other(2 | 20),
+            ..
+        } | GameEvent::ImitaterMorphed {
+            plant_type: PlantType::Other(2 | 20),
+            ..
+        }
+    );
+    if reverse_explosion {
+        [companion, primary]
+    } else {
+        [primary, companion]
+    }
+}
+
 fn audio_companion_for_event(event: &GameEvent) -> Option<(AudioKind, &'static str)> {
     match event {
         GameEvent::PlantPlaced {
+            plant_type: neopvz_core::PlantType::Other(2 | 20),
+            ..
+        }
+        | GameEvent::ImitaterMorphed {
             plant_type: neopvz_core::PlantType::Other(2 | 20),
             ..
         } => Some((AudioKind::Effect, "sounds/reverse_explosion.ogg")),
@@ -2987,6 +3065,162 @@ impl ApplicationHandler for App {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn contextual_planting_audio_covers_terrain_morph_and_explosion_order() {
+        for (game, row, plant_type, variant, path) in [
+            (
+                Game::new(7, SceneKind::Day),
+                0,
+                PlantType::Peashooter,
+                1,
+                "sounds/plant2.ogg",
+            ),
+            (
+                Game::new(7, SceneKind::Pool),
+                2,
+                PlantType::Peashooter,
+                1,
+                "sounds/plant_water.ogg",
+            ),
+            (
+                Game::new(7, SceneKind::Pool),
+                0,
+                PlantType::Peashooter,
+                1,
+                "sounds/plant2.ogg",
+            ),
+            (
+                Game::new(7, SceneKind::Pool),
+                0,
+                PlantType::Other(35),
+                1,
+                "sounds/plant.ogg",
+            ),
+            (
+                Game::new(7, SceneKind::Fog),
+                3,
+                PlantType::Peashooter,
+                0,
+                "sounds/plant_water.ogg",
+            ),
+            (
+                Game::new(7, SceneKind::Fog),
+                5,
+                PlantType::Peashooter,
+                0,
+                "sounds/plant.ogg",
+            ),
+            (
+                Game::new_mode(7, ModeKind::ZenGarden, 0),
+                0,
+                PlantType::Peashooter,
+                1,
+                "sounds/ceramic.ogg",
+            ),
+            (
+                Game::new_mode(7, ModeKind::MiniGame, 7),
+                0,
+                PlantType::Peashooter,
+                1,
+                "sounds/plant_water.ogg",
+            ),
+        ] {
+            let event = GameEvent::PlantPlaced {
+                entity: 1,
+                plant_type,
+                row,
+                column: 0,
+                sun_remaining: 0,
+                variant,
+            };
+            assert_eq!(
+                planting_audio_for_event(&event, game.state()),
+                Some((AudioKind::Effect, path))
+            );
+        }
+
+        let mut game = Game::new(7, SceneKind::Day);
+        let placement = game.advance(InputFrame {
+            actions: vec![
+                InputAction::SelectSeed { slot: 48 },
+                InputAction::PlantImitater {
+                    plant_slot: 1,
+                    row: 0,
+                    column: 0,
+                },
+            ],
+        });
+        let entity = placement
+            .iter()
+            .find_map(|event| match event {
+                GameEvent::PlantPlaced {
+                    entity,
+                    plant_type: PlantType::Other(48),
+                    ..
+                } => Some(*entity),
+                _ => None,
+            })
+            .expect("imitater placement event");
+        let morph = (0..220).find_map(|_| {
+            game.advance(InputFrame::default())
+                .into_iter()
+                .find(|event| {
+                    matches!(
+                        event,
+                        GameEvent::ImitaterMorphed {
+                            entity: actual,
+                            plant_type: PlantType::Sunflower,
+                        } if *actual == entity
+                    )
+                })
+        });
+        let morph = morph.expect("imitater morph event");
+        assert_eq!(
+            planting_audio_for_event(&morph, game.state()),
+            Some((AudioKind::Effect, "sounds/plant.ogg"))
+        );
+
+        for (event, planting_path) in [
+            (
+                GameEvent::PlantPlaced {
+                    entity,
+                    plant_type: PlantType::Other(2),
+                    row: 0,
+                    column: 0,
+                    sun_remaining: 0,
+                    variant: 1,
+                },
+                "sounds/plant2.ogg",
+            ),
+            (
+                GameEvent::ImitaterMorphed {
+                    entity,
+                    plant_type: PlantType::Other(20),
+                },
+                "sounds/plant.ogg",
+            ),
+        ] {
+            let paths = audio_sequence_for_event(&event, game.state())
+                .into_iter()
+                .flatten()
+                .map(|(_, path)| path)
+                .collect::<Vec<_>>();
+            assert_eq!(paths, vec!["sounds/reverse_explosion.ogg", planting_path]);
+        }
+        let non_explosive_morph = GameEvent::ImitaterMorphed {
+            entity,
+            plant_type: PlantType::Sunflower,
+        };
+        assert_eq!(
+            audio_sequence_for_event(&non_explosive_morph, game.state())
+                .into_iter()
+                .flatten()
+                .map(|(_, path)| path)
+                .collect::<Vec<_>>(),
+            vec!["sounds/plant.ogg"]
+        );
+    }
 
     #[test]
     fn maps_terminal_and_player_events_to_audio_resources() {
