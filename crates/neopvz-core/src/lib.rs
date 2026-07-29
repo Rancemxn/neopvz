@@ -105,6 +105,8 @@ const YETI_DIAMOND_COUNT: usize = 4;
 const I_ZOMBIE_BRAIN_TICKS: u32 = 70;
 const ZOMBIE_PEA_HEAD_RELOAD_TICKS: u32 = 150;
 const POGO_BOUNCE_TICKS: u32 = 80;
+const POGO_HIGH_BOUNCE_PHASE: u8 = 1;
+const POGO_FORWARD_BOUNCE_PHASE: u8 = 2;
 const GARGANTUAR_SPIKEROCK_DAMAGE: i32 = 20;
 // Source throw geometry: distance = posX - 360 (roof -180, floor -140; floor 40
 // elsewhere; > 140 loses a random 0-100), imp leaves at posX - 133 with
@@ -2212,6 +2214,8 @@ pub struct ZombieState {
     pub damage_tier: u8,
     #[serde(default)]
     pub pogo_counter: u32,
+    #[serde(default)]
+    pub pogo_phase: u8,
     #[serde(default)]
     pub pogo_target_x: Option<i64>,
     #[serde(default)]
@@ -8159,6 +8163,101 @@ impl Game {
         true
     }
 
+    fn update_pogo_state(&mut self, zombie_index: usize, events: &mut Vec<GameEvent>) {
+        let (entity, row, position_x, phase, counter, frozen, chilled, hypnotized, has_stick) = {
+            let zombie = &self.state.board.zombies[zombie_index];
+            if zombie.zombie_type != ZombieType::Pogo {
+                return;
+            }
+            (
+                zombie.id,
+                zombie.row,
+                zombie.position_x,
+                zombie.pogo_phase,
+                zombie.pogo_counter,
+                zombie.frozen_counter != 0,
+                zombie.chilled_counter != 0,
+                zombie.hypnotized,
+                zombie.special_phase == 0,
+            )
+        };
+        if !has_stick || counter == 0 || frozen {
+            return;
+        }
+
+        let next_counter = counter - 1;
+        if next_counter == 5 {
+            events.push(GameEvent::PogoBounceSound { entity });
+        }
+        if phase == POGO_FORWARD_BOUNCE_PHASE
+            && next_counter == 70
+            && let Some(plant_index) = self
+                .find_plant_for_pole_vault(row, position_x, true)
+                .filter(|&plant_index| self.state.board.plants[plant_index].plant_type.slot() == 23)
+        {
+            let plant = self.state.board.plants[plant_index].id;
+            let zombie = &mut self.state.board.zombies[zombie_index];
+            zombie.special_phase = 1;
+            zombie.pogo_counter = 0;
+            zombie.pogo_phase = 0;
+            zombie.pogo_target_x = None;
+            zombie.pogo_velocity_x = 0;
+            zombie.eating = false;
+            events.push(GameEvent::JumpBlocked {
+                zombie: entity,
+                plant,
+            });
+            events.push(GameEvent::PogoStickLost { entity });
+            return;
+        }
+
+        if next_counter == 0 {
+            let (next_phase, target_x, velocity_x) =
+                if let Some(plant_index) = self.find_plant_for_pole_vault(row, position_x, false) {
+                    if phase == POGO_HIGH_BOUNCE_PHASE {
+                        let plant_x = grid_x(self.state.board.plants[plant_index].column);
+                        let target_x = plant_x - 60 * POSITION_SCALE;
+                        (
+                            POGO_FORWARD_BOUNCE_PHASE,
+                            Some(target_x),
+                            (target_x - position_x) / i64::from(POGO_BOUNCE_TICKS),
+                        )
+                    } else {
+                        (POGO_HIGH_BOUNCE_PHASE, None, 0)
+                    }
+                } else {
+                    (0, None, 0)
+                };
+            let zombie = &mut self.state.board.zombies[zombie_index];
+            zombie.pogo_counter = POGO_BOUNCE_TICKS;
+            zombie.pogo_phase = next_phase;
+            zombie.pogo_target_x = target_x;
+            zombie.pogo_velocity_x = velocity_x;
+        } else {
+            self.state.board.zombies[zombie_index].pogo_counter = next_counter;
+        }
+
+        let zombie = &mut self.state.board.zombies[zombie_index];
+        let speed = if chilled {
+            zombie.speed * 2 / 5
+        } else {
+            zombie.speed
+        };
+        let movement = match zombie.pogo_phase {
+            POGO_HIGH_BOUNCE_PHASE => 0,
+            POGO_FORWARD_BOUNCE_PHASE => {
+                if chilled {
+                    zombie.pogo_velocity_x * 2 / 5
+                } else {
+                    zombie.pogo_velocity_x
+                }
+            }
+            _ if hypnotized => speed,
+            _ => -speed,
+        };
+        zombie.position_x += movement;
+    }
+
     fn update_zombies(&mut self, events: &mut Vec<GameEvent>) {
         let zombie_count = self.state.board.zombies.len() as u32;
         for zombie_index in 0..self.state.board.zombies.len() {
@@ -8486,26 +8585,7 @@ impl Game {
                 self.emit_zombie_died(zombie_id, events);
                 continue;
             }
-            {
-                let zombie = &mut self.state.board.zombies[zombie_index];
-                if zombie.zombie_type == ZombieType::Pogo
-                    && zombie.pogo_counter > 0
-                    && zombie.frozen_counter == 0
-                {
-                    zombie.pogo_counter -= 1;
-                    if zombie.pogo_counter == 5 {
-                        events.push(GameEvent::PogoBounceSound { entity: zombie.id });
-                    }
-                    if let Some(target_x) = zombie.pogo_target_x {
-                        zombie.position_x += zombie.pogo_velocity_x;
-                        if zombie.pogo_counter == 0 {
-                            zombie.position_x = target_x;
-                            zombie.pogo_target_x = None;
-                            zombie.pogo_velocity_x = 0;
-                        }
-                    }
-                }
-            }
+            self.update_pogo_state(zombie_index, events);
             // Jack-in-the-Box: decrement timer and explode when zero.
             {
                 let zombie = &mut self.state.board.zombies[zombie_index];
@@ -8527,7 +8607,6 @@ impl Game {
                 age,
                 was_eating,
                 frozen,
-                pogo_bouncing,
                 dancer_dancing,
                 digger_hidden,
                 balloon_airborne,
@@ -8592,7 +8671,6 @@ impl Game {
                     zombie.age,
                     zombie.eating,
                     frozen,
-                    zombie.zombie_type == ZombieType::Pogo && zombie.pogo_counter > 0,
                     zombie.zombie_type == ZombieType::Dancer && zombie.dancer_counter > 0,
                     zombie.zombie_type == ZombieType::Digger
                         && (zombie.digger_underground || zombie.digger_counter > 0),
@@ -8668,30 +8746,8 @@ impl Game {
                         } else if ztype == ZombieType::Pogo
                             && self.state.board.zombies[zombie_index].special_phase == 0
                         {
-                            // PARTICLE_TALL_NUT_BLOCK + PogoBreak: a Tall-nut
-                            // stops the bounce and costs the pogo its stick.
-                            if self.state.board.plants[plant_index].plant_type.slot() == 23 {
-                                let zombie = &mut self.state.board.zombies[zombie_index];
-                                zombie.special_phase = 1;
-                                zombie.pogo_counter = 0;
-                                zombie.pogo_target_x = None;
-                                zombie.pogo_velocity_x = 0;
-                                zombie.eating = false;
-                                events.push(GameEvent::JumpBlocked {
-                                    zombie: entity,
-                                    plant: plant_id,
-                                });
-                                events.push(GameEvent::PogoStickLost { entity });
-                            } else if !pogo_bouncing {
-                                let target_x = grid_x(self.state.board.plants[plant_index].column)
-                                    - 80 * POSITION_SCALE;
-                                let zombie = &mut self.state.board.zombies[zombie_index];
-                                zombie.pogo_counter = POGO_BOUNCE_TICKS;
-                                zombie.pogo_target_x = Some(target_x);
-                                zombie.pogo_velocity_x =
-                                    (target_x - position_x) / i64::from(POGO_BOUNCE_TICKS);
-                                zombie.eating = false;
-                            }
+                            // UpdateZombiePogo starts the next jump only at a bounce boundary.
+                            self.state.board.zombies[zombie_index].eating = false;
                         } else if ztype == ZombieType::Zamboni {
                             self.state.board.plants.remove(plant_index);
                             self.state.board.zombies[zombie_index].eating = false;
@@ -11244,6 +11300,7 @@ impl Game {
                 ZombieType::Pogo => {
                     zombie.special_phase = 1;
                     zombie.pogo_counter = 0;
+                    zombie.pogo_phase = 0;
                     zombie.pogo_target_x = None;
                     zombie.pogo_velocity_x = 0;
                 }
@@ -11792,6 +11849,7 @@ impl Game {
             } else {
                 0
             },
+            pogo_phase: 0,
             pogo_target_x: None,
             pogo_velocity_x: 0,
             dancer_counter: if zombie_type == ZombieType::Dancer {
@@ -21271,9 +21329,7 @@ mod tests {
         pogo.speed = 0;
         pogo.pogo_counter = 1;
 
-        for _ in 0..4 {
-            game.advance(InputFrame::default());
-        }
+        game.advance(InputFrame::default());
         assert_eq!(
             game.state
                 .board
@@ -21291,12 +21347,22 @@ mod tests {
                 .iter()
                 .find(|candidate| candidate.id == zombie)
                 .unwrap()
+                .pogo_phase,
+            POGO_HIGH_BOUNCE_PHASE
+        );
+        assert_eq!(
+            game.state
+                .board
+                .zombies
+                .iter()
+                .find(|candidate| candidate.id == zombie)
+                .unwrap()
                 .pogo_target_x,
-            Some(grid_x(2) - 80 * POSITION_SCALE)
+            None
         );
         assert_eq!(game.state.board.plants[0].health, 300);
 
-        let events = (0..POGO_BOUNCE_TICKS)
+        let events = (0..POGO_BOUNCE_TICKS * 2)
             .flat_map(|_| game.advance(InputFrame::default()))
             .collect::<Vec<_>>();
         assert_eq!(
@@ -21304,7 +21370,7 @@ mod tests {
                 .iter()
                 .filter(|event| matches!(event, GameEvent::PogoBounceSound { entity } if *entity == zombie))
                 .count(),
-            1
+            2
         );
         assert!(!events.iter().any(|event| matches!(
             event,
@@ -21319,8 +21385,114 @@ mod tests {
                 .find(|candidate| candidate.id == zombie)
                 .unwrap()
                 .position_x,
-            grid_x(2) - 80 * POSITION_SCALE
+            grid_x(2) - 60 * POSITION_SCALE
         );
+    }
+
+    #[test]
+    fn pogo_unopposed_bounces_repeat_and_move_at_walk_speed() {
+        let mut game = Game::new(7, SceneKind::Day);
+        let mut setup_events = Vec::new();
+        let start = grid_x(5);
+        let zombie = game.spawn_pogo_zombie(2, 0, Some(start), &mut setup_events);
+        let pogo = game
+            .state
+            .board
+            .zombies
+            .iter_mut()
+            .find(|candidate| candidate.id == zombie)
+            .unwrap();
+        pogo.pogo_counter = 1;
+        pogo.speed = 450_000;
+
+        game.advance(InputFrame::default());
+        let events = (0..POGO_BOUNCE_TICKS * 2)
+            .flat_map(|_| game.advance(InputFrame::default()))
+            .collect::<Vec<_>>();
+        let pogo = game
+            .state
+            .board
+            .zombies
+            .iter()
+            .find(|candidate| candidate.id == zombie)
+            .unwrap();
+        assert_eq!(pogo.pogo_counter, POGO_BOUNCE_TICKS);
+        assert_eq!(pogo.pogo_phase, 0);
+        assert_eq!(pogo.position_x, start - 161 * 450_000);
+        assert_eq!(
+            events
+                .iter()
+                .filter(|event| matches!(event, GameEvent::PogoBounceSound { entity } if *entity == zombie))
+                .count(),
+            2
+        );
+    }
+
+    #[test]
+    fn pogo_bounce_pauses_on_freeze_including_the_thaw_tick() {
+        let mut game = Game::new(7, SceneKind::Day);
+        let mut setup_events = Vec::new();
+        let zombie = game.spawn_pogo_zombie(2, 0, Some(grid_x(5)), &mut setup_events);
+        let pogo = game
+            .state
+            .board
+            .zombies
+            .iter_mut()
+            .find(|candidate| candidate.id == zombie)
+            .unwrap();
+        pogo.pogo_counter = 10;
+        pogo.speed = 450_000;
+        pogo.frozen_counter = 2;
+        let start = pogo.position_x;
+
+        game.advance(InputFrame::default());
+        assert_eq!(
+            game.state
+                .board
+                .zombies
+                .iter()
+                .find(|candidate| candidate.id == zombie)
+                .unwrap()
+                .pogo_counter,
+            10
+        );
+        assert_eq!(
+            game.state
+                .board
+                .zombies
+                .iter()
+                .find(|candidate| candidate.id == zombie)
+                .unwrap()
+                .position_x,
+            start
+        );
+
+        let thaw_events = game.advance(InputFrame::default());
+        let pogo = game
+            .state
+            .board
+            .zombies
+            .iter()
+            .find(|candidate| candidate.id == zombie)
+            .unwrap();
+        assert_eq!(pogo.pogo_counter, 10);
+        assert_eq!(pogo.position_x, start);
+        assert!(
+            thaw_events.iter().any(
+                |event| matches!(event, GameEvent::ZombieThawed { entity } if *entity == zombie)
+            )
+        );
+
+        game.advance(InputFrame::default());
+        let pogo = game
+            .state
+            .board
+            .zombies
+            .iter()
+            .find(|candidate| candidate.id == zombie)
+            .unwrap();
+        assert_eq!(pogo.pogo_counter, 9);
+        assert_eq!(pogo.position_x, start - 450_000);
     }
 
     #[test]
