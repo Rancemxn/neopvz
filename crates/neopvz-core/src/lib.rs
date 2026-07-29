@@ -3065,6 +3065,9 @@ pub enum GameEvent {
     SurvivalStageStarted {
         stage: u8,
     },
+    HugeWaveSound {
+        wave: u32,
+    },
     WaveStarted {
         wave: u32,
     },
@@ -3654,6 +3657,18 @@ impl Game {
         let mut events = Vec::new();
         self.garden_fulfill_need(0, &mut events);
         events
+    }
+
+    #[doc(hidden)]
+    pub fn debug_prepare_huge_wave_sound(&mut self) {
+        self.state.level_scene = SceneKind::Day;
+        self.state.scene = SceneKind::Day;
+        self.state.mode = ModeKind::Adventure;
+        self.state.level = 6;
+        self.state.board.wave.current = 9;
+        self.state.board.wave.countdown = 1;
+        self.state.board.huge_wave_countdown = 726;
+        self.state.board.wave_plan = vec![vec![ZombieType::Normal]; 10];
     }
 
     #[doc(hidden)]
@@ -10103,6 +10118,11 @@ impl Game {
         // the wave releases immediately.
         if adventure && self.state.board.huge_wave_countdown > 0 {
             self.state.board.huge_wave_countdown -= 1;
+            if self.state.board.huge_wave_countdown == 725 {
+                events.push(GameEvent::HugeWaveSound {
+                    wave: self.state.board.wave.current,
+                });
+            }
             if self.state.board.huge_wave_countdown > 0 {
                 return;
             }
@@ -18485,6 +18505,38 @@ mod tests {
             game.state.board.wave.current, 10,
             "the wave releases the tick the pause expires"
         );
+    }
+
+    #[test]
+    fn huge_wave_sound_matches_the_source_countdown_boundary() {
+        let mut game = Game::new_mode(7, ModeKind::Adventure, 6);
+        game.state.board.wave.current = 9;
+        game.state.board.wave.countdown = 6;
+        game.state.board.wave_plan = vec![vec![ZombieType::Normal]; 10];
+
+        let start = game.advance(InputFrame::default());
+        assert_eq!(game.state.board.huge_wave_countdown, 750);
+        assert!(
+            !start
+                .iter()
+                .any(|event| matches!(event, GameEvent::HugeWaveSound { .. }))
+        );
+
+        for _ in 0..24 {
+            let events = game.advance(InputFrame::default());
+            assert!(
+                !events
+                    .iter()
+                    .any(|event| matches!(event, GameEvent::HugeWaveSound { .. }))
+            );
+        }
+        let sound = game.advance(InputFrame::default());
+        assert!(
+            sound
+                .iter()
+                .any(|event| matches!(event, GameEvent::HugeWaveSound { wave: 9 }))
+        );
+        assert_eq!(game.state.board.huge_wave_countdown, 725);
     }
 
     #[test]

@@ -98,6 +98,7 @@ enum Checkpoint {
     GardenWater,
     GardenFertilize,
     GardenFulfill,
+    HugeWaveSound,
     IceShroom,
     PotatoMine,
     ExplosionPlants,
@@ -159,6 +160,7 @@ impl From<Checkpoint> for SceneKind {
             Checkpoint::GardenWater | Checkpoint::GardenFertilize | Checkpoint::GardenFulfill => {
                 Self::Garden
             }
+            Checkpoint::HugeWaveSound => Self::Day,
             Checkpoint::IceShroom => Self::Night,
             Checkpoint::PotatoMine => Self::Day,
             Checkpoint::ExplosionPlants => Self::Night,
@@ -1324,6 +1326,7 @@ impl App {
             Some(
                 Checkpoint::GardenWater | Checkpoint::GardenFertilize | Checkpoint::GardenFulfill,
             ) => Game::new_mode(0, ModeKind::ZenGarden, 0),
+            Some(Checkpoint::HugeWaveSound) => Game::new_mode(7, ModeKind::Adventure, 6),
             Some(Checkpoint::Butter) => Game::new(0, SceneKind::Day),
             Some(Checkpoint::ProjectileImpacts) => Game::new(0, SceneKind::Day),
             Some(Checkpoint::PrizeChime) => Game::new(0, SceneKind::Day),
@@ -1408,6 +1411,7 @@ impl App {
             Some(Checkpoint::GardenFulfill) => {
                 startup_events = game.debug_prepare_garden_fulfill();
             }
+            Some(Checkpoint::HugeWaveSound) => game.debug_prepare_huge_wave_sound(),
             Some(Checkpoint::IceShroom) => game.debug_prepare_ice_shroom(),
             Some(Checkpoint::PotatoMine) => game.debug_prepare_potato_mine(),
             Some(Checkpoint::ExplosionPlants) => {
@@ -2645,6 +2649,7 @@ fn audio_for_event(event: &GameEvent) -> Option<(AudioKind, &'static str)> {
         GameEvent::GardenWatered { .. } => Some((AudioKind::Effect, "sounds/watering.ogg")),
         GameEvent::GardenFertilized { .. } => Some((AudioKind::Effect, "sounds/fertilizer.ogg")),
         GameEvent::GardenBecameHappy { .. } => Some((AudioKind::Effect, "sounds/prize.ogg")),
+        GameEvent::HugeWaveSound { .. } => Some((AudioKind::Effect, "sounds/hugewave.ogg")),
         GameEvent::PlantSpecialTriggered {
             plant_type: neopvz_core::PlantType::Other(14),
             ..
@@ -3167,6 +3172,10 @@ mod tests {
                 aquatic: false,
             }),
             Some((AudioKind::Effect, "sounds/prize.ogg"))
+        );
+        assert_eq!(
+            audio_for_event(&GameEvent::HugeWaveSound { wave: 9 }),
+            Some((AudioKind::Effect, "sounds/hugewave.ogg"))
         );
         assert_eq!(
             audio_for_event(&GameEvent::PlantSpecialTriggered {
