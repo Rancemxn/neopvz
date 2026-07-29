@@ -85,6 +85,12 @@ for Issue `#192`: the earlier scene-wide acceptance is superseded by the
 per-row Pool/Fog check in ignored `artifacts/aquatic-placement/verification.md`,
 with PR `#195` exact-head gates `30453887198`/`30453886891`.
 
+The KernelPult unit now preserves the source weapon choice made when an attack
+is armed: `range(4)` selects Kernel versus Butter before the shooting delay,
+and the selected projectile is emitted at the later boundary. Source, state,
+RNG, and target-change evidence is recorded in ignored
+`artifacts/kernelpult/verification.md`; Issue `#238`.
+
 ## Player-Accessible Modes
 
 | Obligation | Mode domain | Accepted | Total | Status | Evidence / owner |
