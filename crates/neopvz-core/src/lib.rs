@@ -13408,7 +13408,7 @@ fn starfruit_can_target(
     plant_column: u8,
     zombie: &ZombieState,
 ) -> bool {
-    if !plant_damage_can_hit_zombie(zombie) || zombie_rejects_ground_damage(zombie) {
+    if !projectile_can_hit_zombie(zombie, ProjectileType::Star) {
         return false;
     }
     let center_x = grid_x(plant_column) + 40 * POSITION_SCALE;
@@ -15010,6 +15010,9 @@ mod tests {
         let mut immune = zombie_at(3, 387 * POSITION_SCALE, 0);
         immune.hypnotized = true;
         assert!(!targets(&immune));
+        let mut airborne = zombie_at(3, 387 * POSITION_SCALE, 0);
+        airborne.imp_flight_ticks = 1;
+        assert!(!targets(&airborne));
         let mut boss = zombie_at(0, 0, 0);
         boss.zombie_type = ZombieType::Boss;
         assert!(starfruit_can_target(SceneKind::Boss, 2, 5, &boss));
