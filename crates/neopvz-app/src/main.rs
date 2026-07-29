@@ -2893,6 +2893,9 @@ fn audio_companion_for_event(event: &GameEvent) -> Option<(AudioKind, &'static s
         } => Some((AudioKind::Effect, "sounds/bowlingimpact2.ogg")),
         GameEvent::UmbrellaDeflected { .. } => Some((AudioKind::Effect, "sounds/throw2.ogg")),
         GameEvent::DiggerSurfaced { .. } => Some((AudioKind::Effect, "sounds/wakeup.ogg")),
+        GameEvent::GardenWatered { .. }
+        | GameEvent::GardenFertilized { .. }
+        | GameEvent::GardenBecameHappy { .. } => Some((AudioKind::Effect, "sounds/throw.ogg")),
         GameEvent::ImpThrown { imp_variant, .. } => Some((
             AudioKind::Effect,
             if *imp_variant == 0 {
@@ -3213,6 +3216,25 @@ mod tests {
             audio_for_event(&GameEvent::GardenTreeGrew { height: 2 }),
             Some((AudioKind::Effect, "sounds/plantgrow.ogg"))
         );
+        for event in [
+            GameEvent::GardenWatered {
+                plant: 0,
+                age_ticks: 1,
+            },
+            GameEvent::GardenFertilized {
+                plant: 0,
+                age_ticks: 100,
+            },
+            GameEvent::GardenBecameHappy {
+                plant: 0,
+                aquatic: false,
+            },
+        ] {
+            assert_eq!(
+                audio_companion_for_event(&event),
+                Some((AudioKind::Effect, "sounds/throw.ogg"))
+            );
+        }
         assert_eq!(
             audio_for_event(&GameEvent::WaveStarted { wave: 0 }),
             Some((AudioKind::Effect, "sounds/awooga.ogg"))
