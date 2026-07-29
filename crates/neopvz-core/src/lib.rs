@@ -12683,6 +12683,11 @@ fn projectile_can_hit_zombie(zombie: &ZombieState, projectile_type: ProjectileTy
     {
         return false;
     }
+    if zombie.zombie_type == ZombieType::PoleVaulter
+        && zombie.special_phase == POLE_VAULT_IN_VAULT_PHASE
+    {
+        return false;
+    }
     if zombie.zombie_type == ZombieType::Snorkel
         && matches!(
             zombie.snorkel_phase,
@@ -15021,7 +15026,12 @@ mod tests {
         let mut setup = Vec::new();
         let initial_x = grid_x(2) + POLE_VAULT_TARGET_MAX_OFFSET;
         let zombie = game.spawn_pole_vaulter_zombie(2, 0, Some(initial_x), &mut setup);
+        let starting_health = game.state.board.zombies[0].health;
         assert!((660_000..=680_000).contains(&game.state.board.zombies[0].speed));
+        assert!(projectile_can_hit_zombie(
+            &game.state.board.zombies[0],
+            ProjectileType::Pea
+        ));
 
         let contact = game.advance(InputFrame::default());
         assert!(!contact.iter().any(|event| matches!(
@@ -15042,6 +15052,30 @@ mod tests {
         assert_eq!(vault.special_phase, 1);
         assert_eq!(vault.special_counter, 0);
         assert_eq!(vault.position_x, initial_x - vault_speed);
+        assert!(!projectile_can_hit_zombie(vault, ProjectileType::Pea));
+        assert!(!projectile_can_hit_zombie(vault, ProjectileType::Fireball));
+        let vault_x = vault.position_x;
+        let mut projectile_events = Vec::new();
+        game.fire_projectile(
+            0,
+            ProjectileType::Pea,
+            2,
+            ProjectileTrajectory {
+                motion: ProjectileMotion::Straight,
+                position_x: vault_x,
+                position_y: grid_y(2),
+                velocity_x: 0,
+                velocity_y: 0,
+            },
+            &mut projectile_events,
+        );
+        game.update_projectiles(&mut projectile_events);
+        assert!(!projectile_events.iter().any(|event| matches!(
+            event,
+            GameEvent::ProjectileHit { zombie: target, .. } if *target == zombie
+        )));
+        assert_eq!(game.state.board.zombies[0].health, starting_health);
+        game.state.board.projectiles.clear();
 
         let mut grass_tick = None;
         let mut sound_tick = None;
@@ -15076,6 +15110,8 @@ mod tests {
             .unwrap();
         assert_eq!(landed.special_phase, 0);
         assert_eq!(landed.special_counter, 0);
+        assert!(projectile_can_hit_zombie(landed, ProjectileType::Pea));
+        let landed_x = landed.position_x;
         assert_eq!(
             landed.position_x,
             initial_x
@@ -15087,6 +15123,30 @@ mod tests {
             game.state.board.plants.iter().any(|p| p.id == sunflower_id),
             "plant survived vault"
         );
+        let mut projectile_events = Vec::new();
+        game.fire_projectile(
+            0,
+            ProjectileType::Pea,
+            2,
+            ProjectileTrajectory {
+                motion: ProjectileMotion::Straight,
+                position_x: landed_x,
+                position_y: grid_y(2),
+                velocity_x: 0,
+                velocity_y: 0,
+            },
+            &mut projectile_events,
+        );
+        game.update_projectiles(&mut projectile_events);
+        assert!(projectile_events.iter().any(|event| matches!(
+            event,
+            GameEvent::ProjectileHit {
+                zombie: target,
+                damage: 20,
+                ..
+            } if *target == zombie
+        )));
+        assert_eq!(game.state.board.zombies[0].health, starting_health - 20);
     }
 
     #[test]
