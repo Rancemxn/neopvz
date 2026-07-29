@@ -99,6 +99,14 @@ Snorkel collision gates are applied. Source, focused checks, and local gate
 evidence are recorded in ignored `artifacts/pult-trajectories/verification.md`;
 Issue `#216`, PR `#260`, Actions `30480181965`/`30480182225`.
 
+The Catapult basketball now uses the selected plant's source X/Y, integrates
+the 120-update arc with source gravity, applies Day/Pool/Fog/Roof/Boss ground
+and collision-height rules, and resolves impact from the current rectangle and
+top-plant priority. Focused checks cover first eligible collision, scene
+heights and roof slope, stack priority, and target replacement; evidence is in
+ignored `artifacts/pult-trajectories/verification.md`. Issue `#217`, PR and
+Actions pending.
+
 ## Player-Accessible Modes
 
 | Obligation | Mode domain | Accepted | Total | Status | Evidence / owner |

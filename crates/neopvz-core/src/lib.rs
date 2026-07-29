@@ -94,6 +94,9 @@ const PULT_LOB_SCALE: i64 = 1_000;
 const PULT_LOB_GRAVITY: i32 = 115;
 const PULT_LOB_COLLISION_AGE: u32 = 20;
 const PULT_LOB_SNORKEL_CLEARANCE: i32 = 45 * PULT_LOB_SCALE as i32;
+const CATAPULT_LOB_FLIGHT_UPDATES: i64 = 120;
+const CATAPULT_MIN_COLLISION_HEIGHT: i32 = 60;
+const CATAPULT_GROUND_HEIGHT: i32 = 80;
 // Plant::GetPlantAttackRect SEED_PUFFSHROOM/SEASHROOM width 230 from mX+60.
 const PUFF_ATTACK_RANGE: i64 = 230;
 // Plant::GetPlantAttackRect SEED_FUMESHROOM width 340 from mX+60.
@@ -1966,13 +1969,22 @@ impl ProjectileType {
         )
     }
 
-    fn pult_min_collision_height(self) -> Option<i32> {
+    fn lob_min_collision_height(self) -> Option<i32> {
         match self {
             Self::Butter => Some(-32),
             Self::Cabbage | Self::Kernel => Some(-30),
             Self::Melon | Self::WinterMelon => Some(-35),
+            Self::Other(1) => Some(CATAPULT_MIN_COLLISION_HEIGHT),
             _ => None,
         }
+    }
+
+    fn is_catapult(self) -> bool {
+        matches!(self, Self::Other(1))
+    }
+
+    fn uses_lob_trajectory(self) -> bool {
+        self.is_pult() || self.is_catapult()
     }
 
     fn chill_duration(self) -> u32 {
@@ -9568,9 +9580,11 @@ impl Game {
                         self.state.board.zombies[zombie_index].catapult_counter = counter;
                         if counter == 0 {
                             if let Some(plant_index) = target {
-                                let target_x = grid_x(self.state.board.plants[plant_index].column);
+                                let target_column = self.state.board.plants[plant_index].column;
+                                let target_x = grid_x(target_column);
+                                let target_y = scene_plant_y(self.state.scene, row, target_column);
                                 self.fire_catapult_projectile(
-                                    entity, row, position_x, target_x, events,
+                                    entity, row, position_x, target_x, target_y, events,
                                 );
                                 let zombie = &mut self.state.board.zombies[zombie_index];
                                 zombie.catapult_shots -= 1;
@@ -9731,10 +9745,18 @@ impl Game {
             {
                 let projectile = &mut self.state.board.projectiles[projectile_index];
                 projectile.age = projectile.age.saturating_add(1);
+                let previous_x = projectile.position_x;
                 projectile.position_x += projectile.velocity_x;
                 projectile.position_y += projectile.velocity_y;
+                if projectile.projectile_type.is_catapult() {
+                    let slope_delta =
+                        scene_row_y(self.state.scene, projectile.row, projectile.position_x)
+                            - scene_row_y(self.state.scene, projectile.row, previous_x);
+                    projectile.position_y += slope_delta;
+                    projectile.lob_height -= (slope_delta * PULT_LOB_SCALE / POSITION_SCALE) as i32;
+                }
                 if projectile.motion == ProjectileMotion::Lobbed
-                    && projectile.projectile_type.is_pult()
+                    && projectile.projectile_type.uses_lob_trajectory()
                 {
                     projectile.lob_velocity += PULT_LOB_GRAVITY;
                     projectile.lob_height += projectile.lob_velocity;
@@ -9782,8 +9804,8 @@ impl Game {
                 let minimum_height = i64::from(
                     projectile
                         .projectile_type
-                        .pult_min_collision_height()
-                        .expect("pult minimum collision height"),
+                        .lob_min_collision_height()
+                        .expect("lob minimum collision height"),
                 ) * PULT_LOB_SCALE
                     + if scene_row_is_water(self.state.scene, projectile.row) {
                         40 * PULT_LOB_SCALE
@@ -9797,6 +9819,58 @@ impl Game {
                     projectile_index += 1;
                     continue;
                 }
+            }
+            if self.state.board.projectiles[projectile_index]
+                .projectile_type
+                .is_catapult()
+            {
+                let projectile = self.state.board.projectiles[projectile_index].clone();
+                if projectile.position_x > i64::from(LOGICAL_WIDTH) * POSITION_SCALE
+                    || projectile.position_x < -100 * POSITION_SCALE
+                {
+                    self.state.board.projectiles.remove(projectile_index);
+                    continue;
+                }
+                let minimum_height = i64::from(
+                    projectile
+                        .projectile_type
+                        .lob_min_collision_height()
+                        .expect("catapult minimum collision height"),
+                ) * PULT_LOB_SCALE
+                    + if scene_row_is_water(self.state.scene, projectile.row) {
+                        40 * PULT_LOB_SCALE
+                    } else {
+                        0
+                    };
+                if projectile.lob_velocity < 0
+                    || (projectile.age > PULT_LOB_COLLISION_AGE
+                        && i64::from(projectile.lob_height) <= minimum_height)
+                {
+                    projectile_index += 1;
+                    continue;
+                }
+                if let Some(plant_index) = self.find_catapult_collision_target(&projectile) {
+                    let plant_id = self.state.board.plants[plant_index].id;
+                    self.state.board.plants[plant_index].health -= projectile.damage;
+                    let health_remaining = self.state.board.plants[plant_index].health;
+                    events.push(GameEvent::PlantDamaged {
+                        entity: plant_id,
+                        damage: projectile.damage,
+                        health_remaining,
+                    });
+                    if health_remaining <= 0 {
+                        self.state.board.plants.remove(plant_index);
+                        events.push(GameEvent::PlantDied { entity: plant_id });
+                    }
+                    self.state.board.projectiles.remove(projectile_index);
+                } else if i64::from(projectile.lob_height)
+                    > i64::from(CATAPULT_GROUND_HEIGHT) * PULT_LOB_SCALE
+                {
+                    self.state.board.projectiles.remove(projectile_index);
+                } else {
+                    projectile_index += 1;
+                }
+                continue;
             }
             if self.state.board.projectiles[projectile_index].motion == ProjectileMotion::Puff
                 && self.state.board.projectiles[projectile_index].age >= PUFF_PROJECTILE_MAX_AGE
@@ -10844,19 +10918,52 @@ impl Game {
     }
 
     fn find_catapult_target(&self, row: u8, zombie_x: i64) -> Option<usize> {
+        let column = self
+            .state
+            .board
+            .plants
+            .iter()
+            .filter(|plant| {
+                plant.health > 0
+                    && plant.row == row
+                    && !catapult_plant_type(plant).is_spikeweed()
+                    && zombie_x >= grid_x(plant.column) + 100 * POSITION_SCALE
+            })
+            .map(|plant| plant.column)
+            .min()?;
+        self.find_catapult_top_plant(row, column)
+    }
+
+    fn find_catapult_top_plant(&self, row: u8, column: u8) -> Option<usize> {
+        let mut flying = None;
+        let mut normal = None;
+        let mut pumpkin = None;
+        let mut under_plant = None;
+        for (index, plant) in self.state.board.plants.iter().enumerate() {
+            if plant.health <= 0 || plant.row != row || plant.column != column {
+                continue;
+            }
+            match catapult_plant_type(plant).slot() {
+                35 => flying = Some(index),
+                30 => pumpkin = Some(index),
+                16 | 33 => under_plant = Some(index),
+                _ => normal = Some(index),
+            }
+        }
+        flying.or(normal).or(pumpkin).or(under_plant)
+    }
+
+    fn find_catapult_collision_target(&self, projectile: &ProjectileState) -> Option<usize> {
         self.state
             .board
             .plants
             .iter()
-            .enumerate()
-            .filter(|(_, plant)| {
+            .filter(|plant| {
                 plant.health > 0
-                    && plant.row == row
-                    && !plant.plant_type.is_spikeweed()
-                    && zombie_x >= grid_x(plant.column) + 100 * POSITION_SCALE
+                    && plant.row == projectile.row
+                    && catapult_projectile_hits_plant(self.state.scene, projectile, plant)
             })
-            .min_by_key(|(_, plant)| plant.column)
-            .map(|(index, _)| index)
+            .find_map(|plant| self.find_catapult_top_plant(plant.row, plant.column))
     }
 
     fn find_chomper_target(&self, row: u8, column: u8) -> Option<EntityId> {
@@ -11118,10 +11225,14 @@ impl Game {
         row: u8,
         source_x: i64,
         target_x: i64,
+        target_y: i64,
         events: &mut Vec<GameEvent>,
     ) {
         let projectile_type = ProjectileType::Other(1);
         let origin_x = source_x + 113 * POSITION_SCALE;
+        let origin_y = scene_row_y(self.state.scene, row, source_x + 40 * POSITION_SCALE)
+            - 30 * POSITION_SCALE
+            - 44 * POSITION_SCALE;
         let range_x = (origin_x - target_x - 20 * POSITION_SCALE).max(40 * POSITION_SCALE);
         let id = self.state.board.allocate_entity();
         self.state.board.projectiles.push(ProjectileState {
@@ -11130,15 +11241,17 @@ impl Game {
             motion: ProjectileMotion::Lobbed,
             row,
             position_x: origin_x,
-            position_y: grid_y(row) - 44 * POSITION_SCALE,
-            velocity_x: -range_x / 120,
+            position_y: origin_y,
+            velocity_x: -range_x / CATAPULT_LOB_FLIGHT_UPDATES,
             velocity_y: 0,
             damage: projectile_type.damage(),
             age: 0,
             target_x: Some(target_x),
             target_row: Some(row),
             lob_height: 0,
-            lob_velocity: 0,
+            lob_velocity: (((target_y - origin_y) * PULT_LOB_SCALE)
+                / (CATAPULT_LOB_FLIGHT_UPDATES * POSITION_SCALE)
+                - 7 * PULT_LOB_SCALE) as i32,
         });
         events.push(GameEvent::ProjectileFired {
             entity: id,
@@ -12882,6 +12995,65 @@ fn grid_x(column: u8) -> i64 {
     i64::from(column) * 80 * POSITION_SCALE + 40 * POSITION_SCALE
 }
 
+fn scene_row_y(scene: SceneKind, row: u8, position_x: i64) -> i64 {
+    match scene {
+        SceneKind::Pool | SceneKind::Fog => {
+            i64::from(row) * 85 * POSITION_SCALE + 80 * POSITION_SCALE
+        }
+        SceneKind::Roof | SceneKind::Boss => {
+            let slope = if position_x < 440 * POSITION_SCALE {
+                (440 * POSITION_SCALE - position_x) / 4
+            } else {
+                0
+            };
+            i64::from(row) * 85 * POSITION_SCALE + 70 * POSITION_SCALE + slope
+        }
+        _ => i64::from(row) * 100 * POSITION_SCALE + 80 * POSITION_SCALE,
+    }
+}
+
+fn scene_plant_y(scene: SceneKind, row: u8, column: u8) -> i64 {
+    scene_row_y(scene, row, grid_x(column))
+}
+
+fn catapult_plant_type(plant: &PlantState) -> PlantType {
+    if plant.plant_type.is_imitater() {
+        plant.imitater_type.unwrap_or(plant.plant_type)
+    } else {
+        plant.plant_type
+    }
+}
+
+fn catapult_projectile_hits_plant(
+    scene: SceneKind,
+    projectile: &ProjectileState,
+    plant: &PlantState,
+) -> bool {
+    let projectile_rect = (
+        projectile.position_x,
+        projectile.position_y + i64::from(projectile.lob_height),
+        40 * POSITION_SCALE,
+        40 * POSITION_SCALE,
+    );
+    let (plant_offset, plant_width) = match catapult_plant_type(plant).slot() {
+        23 => (10, 80),
+        30 => (0, 100),
+        47 => (0, 140),
+        _ => (10, 60),
+    };
+    let plant_rect = (
+        grid_x(plant.column) + plant_offset * POSITION_SCALE,
+        scene_plant_y(scene, plant.row, plant.column),
+        plant_width * POSITION_SCALE,
+        80 * POSITION_SCALE,
+    );
+    let overlap = (projectile_rect.0 + projectile_rect.2).min(plant_rect.0 + plant_rect.2)
+        - projectile_rect.0.max(plant_rect.0);
+    // Board::GetRectOverlap only tests horizontal overlap; the row is the
+    // vertical collision gate used by Projectile::FindCollisionTargetPlant.
+    overlap > 8 * POSITION_SCALE
+}
+
 fn damage_tier(health: i32, max_health: i32) -> u8 {
     if health <= max_health / 3 {
         2
@@ -13178,6 +13350,34 @@ fn zamboni_speed(position_x: i64) -> i64 {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    fn test_plant(id: EntityId, plant_type: PlantType, row: u8, column: u8) -> PlantState {
+        let max_health = plant_type.max_health();
+        PlantState {
+            id,
+            plant_type,
+            imitater_type: None,
+            row,
+            column,
+            health: max_health,
+            max_health,
+            launch_counter: 0,
+            launch_rate: plant_type.launch_rate(),
+            shooting_counter: 0,
+            kernel_pult_projectile: None,
+            burst_remaining: 0,
+            burst_delay: 0,
+            production_age: 0,
+            production_stage: 0,
+            special_counter: 0,
+            special_armed: false,
+            special_target: None,
+            squash_target_x: None,
+            blink_counter: 0,
+            asleep: false,
+            wake_up_counter: 0,
+        }
+    }
 
     #[test]
     fn fixed_point_positions_convert_to_logical_units() {
@@ -23370,6 +23570,188 @@ mod tests {
                 .health,
             300
         );
+    }
+
+    #[test]
+    fn catapult_lob_waits_until_descending_past_source_height() {
+        let mut game = Game::new(7, SceneKind::Day);
+        game.state.board.plants = vec![test_plant(1, PlantType::Peashooter, 2, 1)];
+        let mut fire_events = Vec::new();
+        game.fire_catapult_projectile(
+            99,
+            2,
+            grid_x(4),
+            grid_x(1),
+            scene_plant_y(SceneKind::Day, 2, 1),
+            &mut fire_events,
+        );
+        let projectile = &mut game.state.board.projectiles[0];
+        assert_eq!(projectile.position_y, grid_y(2) - 74 * POSITION_SCALE);
+        assert_eq!(projectile.lob_velocity, -6_384);
+        projectile.position_x = grid_x(1) + 10 * POSITION_SCALE;
+        projectile.velocity_x = 0;
+
+        for tick in 1..=118 {
+            let mut events = Vec::new();
+            game.update_projectiles(&mut events);
+            assert!(
+                !events
+                    .iter()
+                    .any(|event| matches!(event, GameEvent::PlantDamaged { entity: 1, .. }))
+            );
+            assert_eq!(game.state.board.projectiles[0].age, tick);
+        }
+        assert_eq!(game.state.board.projectiles[0].lob_height, 54_103);
+
+        let mut events = Vec::new();
+        game.update_projectiles(&mut events);
+        assert!(events.iter().any(|event| matches!(
+            event,
+            GameEvent::PlantDamaged {
+                entity: 1,
+                damage: 75,
+                health_remaining: 225,
+            }
+        )));
+        assert!(game.state.board.projectiles.is_empty());
+    }
+
+    #[test]
+    fn catapult_uses_pool_and_roof_scene_heights() {
+        assert_eq!(scene_plant_y(SceneKind::Pool, 2, 1), 250 * POSITION_SCALE);
+        assert_eq!(scene_plant_y(SceneKind::Roof, 2, 1), 320 * POSITION_SCALE);
+
+        let mut pool = Game::new(7, SceneKind::Pool);
+        let mut events = Vec::new();
+        pool.fire_catapult_projectile(
+            1,
+            2,
+            grid_x(4),
+            grid_x(1),
+            scene_plant_y(SceneKind::Pool, 2, 1),
+            &mut events,
+        );
+        assert_eq!(
+            pool.state.board.projectiles[0].position_y,
+            176 * POSITION_SCALE
+        );
+        assert_eq!(pool.state.board.projectiles[0].lob_velocity, -6_384);
+
+        let mut roof = Game::new(7, SceneKind::Roof);
+        roof.fire_catapult_projectile(
+            1,
+            2,
+            grid_x(4),
+            grid_x(1),
+            scene_plant_y(SceneKind::Roof, 2, 1),
+            &mut events,
+        );
+        assert_eq!(
+            roof.state.board.projectiles[0].position_y,
+            176 * POSITION_SCALE
+        );
+        assert_eq!(roof.state.board.projectiles[0].lob_velocity, -5_800);
+
+        let base_y = {
+            let projectile = &mut roof.state.board.projectiles[0];
+            projectile.position_x = 450 * POSITION_SCALE;
+            projectile.velocity_x = -20 * POSITION_SCALE;
+            projectile.lob_velocity = 0;
+            projectile.position_y
+        };
+        let mut events = Vec::new();
+        roof.update_projectiles(&mut events);
+        assert!(events.is_empty());
+        let projectile = &roof.state.board.projectiles[0];
+        assert_eq!(projectile.position_y, base_y + 2_500_000);
+        assert_eq!(projectile.lob_height, -2_385);
+    }
+
+    #[test]
+    fn catapult_collision_uses_source_top_plant_priority() {
+        let mut game = Game::new(7, SceneKind::Day);
+        game.state.board.plants = vec![
+            test_plant(1, PlantType::Other(16), 2, 1),
+            test_plant(2, PlantType::Other(30), 2, 1),
+            test_plant(3, PlantType::Peashooter, 2, 1),
+            test_plant(4, PlantType::Other(35), 2, 1),
+        ];
+        let projectile = ProjectileState {
+            id: 5,
+            projectile_type: ProjectileType::Other(1),
+            motion: ProjectileMotion::Lobbed,
+            row: 2,
+            position_x: grid_x(1) + 10 * POSITION_SCALE,
+            position_y: grid_y(2),
+            velocity_x: 0,
+            velocity_y: 0,
+            damage: 75,
+            age: 21,
+            target_x: Some(grid_x(1)),
+            target_row: Some(2),
+            lob_height: 61 * PULT_LOB_SCALE as i32,
+            lob_velocity: 1,
+        };
+        assert_eq!(
+            game.find_catapult_collision_target(&projectile)
+                .map(|index| game.state.board.plants[index].id),
+            Some(4)
+        );
+        game.state.board.plants.retain(|plant| plant.id != 4);
+        assert_eq!(
+            game.find_catapult_collision_target(&projectile)
+                .map(|index| game.state.board.plants[index].id),
+            Some(3)
+        );
+        game.state.board.plants.retain(|plant| plant.id != 3);
+        assert_eq!(
+            game.find_catapult_collision_target(&projectile)
+                .map(|index| game.state.board.plants[index].id),
+            Some(2)
+        );
+        game.state.board.plants.retain(|plant| plant.id != 2);
+        assert_eq!(
+            game.find_catapult_collision_target(&projectile)
+                .map(|index| game.state.board.plants[index].id),
+            Some(1)
+        );
+    }
+
+    #[test]
+    fn catapult_collision_rechecks_a_replacement_plant() {
+        let mut game = Game::new(7, SceneKind::Day);
+        game.state.board.plants = vec![
+            test_plant(1, PlantType::Peashooter, 2, 1),
+            test_plant(2, PlantType::Sunflower, 2, 2),
+        ];
+        let mut fire_events = Vec::new();
+        game.fire_catapult_projectile(
+            99,
+            2,
+            grid_x(4),
+            grid_x(1),
+            scene_plant_y(SceneKind::Day, 2, 1),
+            &mut fire_events,
+        );
+        game.state.board.plants.retain(|plant| plant.id != 1);
+        let projectile = &mut game.state.board.projectiles[0];
+        projectile.position_x = grid_x(2) + 10 * POSITION_SCALE;
+        projectile.velocity_x = 0;
+        projectile.age = 20;
+        projectile.lob_height = 60 * PULT_LOB_SCALE as i32;
+        projectile.lob_velocity = 0;
+
+        let mut events = Vec::new();
+        game.update_projectiles(&mut events);
+        assert!(events.iter().any(|event| matches!(
+            event,
+            GameEvent::PlantDamaged {
+                entity: 2,
+                damage: 75,
+                health_remaining: 225,
+            }
+        )));
+        assert!(game.state.board.projectiles.is_empty());
     }
 
     #[test]
