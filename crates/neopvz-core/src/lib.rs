@@ -1899,6 +1899,7 @@ pub enum ProjectileType {
 #[derive(Clone, Copy, Debug, Deserialize, Eq, PartialEq, Serialize)]
 pub enum ProjectileMotion {
     Straight,
+    Threepeater,
     Backwards,
     Lobbed,
     Homing,
@@ -2388,6 +2389,8 @@ pub struct ProjectileState {
     pub position_y: i64,
     pub velocity_x: i64,
     pub velocity_y: i64,
+    #[serde(default)]
+    pub shadow_y: i64,
     pub damage: i32,
     pub age: u32,
     #[serde(default)]
@@ -9842,12 +9845,19 @@ impl Game {
                 let previous_x = projectile.position_x;
                 projectile.position_x += projectile.velocity_x;
                 projectile.position_y += projectile.velocity_y;
+                let slope_delta =
+                    scene_row_y(self.state.scene, projectile.row, projectile.position_x)
+                        - scene_row_y(self.state.scene, projectile.row, previous_x);
                 if projectile.projectile_type.is_catapult() {
-                    let slope_delta =
-                        scene_row_y(self.state.scene, projectile.row, projectile.position_x)
-                            - scene_row_y(self.state.scene, projectile.row, previous_x);
                     projectile.position_y += slope_delta;
                     projectile.lob_height -= (slope_delta * PULT_LOB_SCALE / POSITION_SCALE) as i32;
+                }
+                if projectile.motion == ProjectileMotion::Threepeater {
+                    projectile.velocity_y = projectile.velocity_y * 97 / 100;
+                }
+                projectile.shadow_y += slope_delta;
+                if projectile.motion == ProjectileMotion::Threepeater {
+                    projectile.shadow_y += projectile.velocity_y;
                 }
                 if projectile.motion == ProjectileMotion::Lobbed
                     && projectile.projectile_type.uses_lob_trajectory()
@@ -10074,11 +10084,14 @@ impl Game {
             }
             self.apply_torchwood(projectile_index, events);
             let projectile = self.state.board.projectiles[projectile_index].clone();
-            let projectile_row = if projectile.projectile_type.is_pult() {
+            let projectile_row = if projectile.projectile_type.is_pult()
+                || projectile.motion == ProjectileMotion::Threepeater
+            {
                 Some(projectile.row)
             } else {
                 projectile_row(projectile.position_y, self.state.board.rows)
             };
+            let scene = self.state.scene;
             let target = self
                 .state
                 .board
@@ -10094,7 +10107,7 @@ impl Game {
                             && zombie.snorkel_phase == SNORKEL_WALKING_IN_POOL_PHASE
                             && projectile.lob_height >= PULT_LOB_SNORKEL_CLEARANCE)
                 })
-                .filter(|(_, zombie)| projectile_hits(projectile.position_x, zombie.position_x))
+                .filter(|(_, zombie)| projectile_hits_zombie(scene, &projectile, zombie))
                 .min_by_key(|(_, zombie)| zombie.position_x)
                 .map(|(index, _)| index);
 
@@ -11174,6 +11187,13 @@ impl Game {
             position_y: grid_y(source_row),
             velocity_x: 0,
             velocity_y: 0,
+            shadow_y: projectile_shadow_y(
+                self.state.scene,
+                target_row,
+                origin_x,
+                ProjectileMotion::Lobbed,
+                0,
+            ),
             damage: projectile_type.damage(),
             age: 0,
             target_x: Some(target_x),
@@ -11296,6 +11316,13 @@ impl Game {
             position_y: origin_y,
             velocity_x: range_x / 120,
             velocity_y: 0,
+            shadow_y: projectile_shadow_y(
+                self.state.scene,
+                row,
+                origin_x,
+                ProjectileMotion::Lobbed,
+                0,
+            ),
             damage: projectile_type.damage(),
             age: 0,
             target_x: aim.map(|aim| aim.target_x),
@@ -11337,6 +11364,13 @@ impl Game {
             position_y: origin_y,
             velocity_x: -range_x / CATAPULT_LOB_FLIGHT_UPDATES,
             velocity_y: 0,
+            shadow_y: projectile_shadow_y(
+                self.state.scene,
+                row,
+                origin_x,
+                ProjectileMotion::Lobbed,
+                0,
+            ),
             damage: projectile_type.damage(),
             age: 0,
             target_x: Some(target_x),
@@ -11371,6 +11405,9 @@ impl Game {
         let position_y = grid_y(row);
         match plant_type.firing_pattern() {
             FiringPattern::ThreeRow => {
+                let threepeater_position_x = grid_x(column) + 45 * POSITION_SCALE;
+                let threepeater_position_y =
+                    scene_plant_y(self.state.scene, row, column) + 10 * POSITION_SCALE;
                 for target_row in [
                     row.checked_sub(1),
                     Some(row),
@@ -11380,17 +11417,26 @@ impl Game {
                 .into_iter()
                 .flatten()
                 {
+                    let (motion, velocity_y) = match target_row.cmp(&row) {
+                        std::cmp::Ordering::Less => {
+                            (ProjectileMotion::Threepeater, -3 * POSITION_SCALE)
+                        }
+                        std::cmp::Ordering::Greater => {
+                            (ProjectileMotion::Threepeater, 3 * POSITION_SCALE)
+                        }
+                        std::cmp::Ordering::Equal => (ProjectileMotion::Straight, 0),
+                    };
                     self.emit_plant_fired(source, plant_type, events);
                     self.fire_projectile(
                         source,
                         projectile_type,
                         target_row,
                         ProjectileTrajectory {
-                            motion: ProjectileMotion::Straight,
-                            position_x,
-                            position_y: grid_y(target_row),
+                            motion,
+                            position_x: threepeater_position_x,
+                            position_y: threepeater_position_y,
                             velocity_x: 3_330_000,
-                            velocity_y: 0,
+                            velocity_y,
                         },
                         events,
                     );
@@ -11529,6 +11575,13 @@ impl Game {
         events: &mut Vec<GameEvent>,
     ) {
         let id = self.state.board.allocate_entity();
+        let shadow_y = projectile_shadow_y(
+            self.state.scene,
+            row,
+            trajectory.position_x,
+            trajectory.motion,
+            trajectory.velocity_y,
+        );
         self.state.board.projectiles.push(ProjectileState {
             id,
             projectile_type,
@@ -11538,6 +11591,7 @@ impl Game {
             position_y: trajectory.position_y,
             velocity_x: trajectory.velocity_x,
             velocity_y: trajectory.velocity_y,
+            shadow_y,
             damage: projectile_type.damage(),
             age: 0,
             target_x: None,
@@ -13217,6 +13271,27 @@ fn grid_y(row: u8) -> i64 {
     i64::from(row) * 100 * POSITION_SCALE + 80 * POSITION_SCALE
 }
 
+fn projectile_shadow_y(
+    scene: SceneKind,
+    row: u8,
+    position_x: i64,
+    motion: ProjectileMotion,
+    velocity_y: i64,
+) -> i64 {
+    let shadow_x = if motion == ProjectileMotion::Threepeater {
+        position_x - 45 * POSITION_SCALE
+    } else {
+        position_x
+    };
+    scene_row_y(scene, row, shadow_x)
+        + 67 * POSITION_SCALE
+        + match motion {
+            ProjectileMotion::Threepeater if velocity_y < 0 => 80 * POSITION_SCALE,
+            ProjectileMotion::Threepeater if velocity_y > 0 => -80 * POSITION_SCALE,
+            _ => 0,
+        }
+}
+
 fn projectile_row(position_y: i64, rows: u8) -> Option<u8> {
     let first_row_edge = 30 * POSITION_SCALE;
     let row_height = 100 * POSITION_SCALE;
@@ -13325,6 +13400,35 @@ fn squash_hits_zombie(zombie: &ZombieState, row: u8, target_x: i64) -> bool {
 fn projectile_hits(projectile_x: i64, zombie_x: i64) -> bool {
     projectile_x + 45 * POSITION_SCALE > zombie_x + 36 * POSITION_SCALE
         && projectile_x - 15 * POSITION_SCALE < zombie_x + 78 * POSITION_SCALE
+}
+
+fn projectile_hits_zombie(
+    scene: SceneKind,
+    projectile: &ProjectileState,
+    zombie: &ZombieState,
+) -> bool {
+    if !projectile_hits(projectile.position_x, zombie.position_x) {
+        return false;
+    }
+    if projectile.motion != ProjectileMotion::Threepeater {
+        return true;
+    }
+
+    let projectile_bottom = projectile.position_y + 40 * POSITION_SCALE;
+    let zombie_top = scene_row_y(scene, zombie.row, zombie.position_x);
+    let zombie_bottom = zombie_top + 115 * POSITION_SCALE;
+    let row_height = match scene {
+        SceneKind::Pool | SceneKind::Fog | SceneKind::Roof | SceneKind::Boss => 85 * POSITION_SCALE,
+        _ => 100 * POSITION_SCALE,
+    };
+    let reached_target_row = if projectile.velocity_y < 0 {
+        projectile.position_y < zombie_top + row_height
+    } else if projectile.velocity_y > 0 {
+        projectile_bottom > zombie_top
+    } else {
+        true
+    };
+    reached_target_row && projectile_bottom > zombie_top && projectile.position_y < zombie_bottom
 }
 
 fn projectile_hits_plant(projectile_x: i64, plant_x: i64) -> bool {
@@ -14345,6 +14449,196 @@ mod tests {
             .collect::<Vec<_>>();
 
         assert_eq!(fired_rows, vec![1, 2, 3]);
+    }
+
+    #[test]
+    fn threepeater_projectiles_follow_the_source_row_and_decay() {
+        let mut game = Game::new(7, SceneKind::Day);
+        let mut events = Vec::new();
+        game.fire_projectiles(
+            99,
+            PlantType::Other(18),
+            ProjectileType::Pea,
+            2,
+            2,
+            &mut events,
+        );
+
+        let source_x = grid_x(2) + 45 * POSITION_SCALE;
+        let source_y = grid_y(2) + 10 * POSITION_SCALE;
+        let top = game
+            .state
+            .board
+            .projectiles
+            .iter()
+            .find(|projectile| projectile.row == 1)
+            .unwrap();
+        assert_eq!(top.position_x, source_x);
+        assert_eq!(top.position_y, source_y);
+        assert_eq!(top.motion, ProjectileMotion::Threepeater);
+        assert_eq!(top.velocity_y, -3 * POSITION_SCALE);
+        assert_eq!(
+            top.shadow_y,
+            projectile_shadow_y(
+                SceneKind::Day,
+                1,
+                source_x,
+                ProjectileMotion::Threepeater,
+                -3 * POSITION_SCALE,
+            )
+        );
+
+        let bottom = game
+            .state
+            .board
+            .projectiles
+            .iter()
+            .find(|projectile| projectile.row == 3)
+            .unwrap();
+        assert_eq!(bottom.position_y, source_y);
+        assert_eq!(bottom.motion, ProjectileMotion::Threepeater);
+        assert_eq!(bottom.velocity_y, 3 * POSITION_SCALE);
+        assert_eq!(
+            bottom.shadow_y,
+            projectile_shadow_y(
+                SceneKind::Day,
+                3,
+                source_x,
+                ProjectileMotion::Threepeater,
+                3 * POSITION_SCALE,
+            )
+        );
+
+        let middle = game
+            .state
+            .board
+            .projectiles
+            .iter()
+            .find(|projectile| projectile.row == 2)
+            .unwrap();
+        assert_eq!(middle.motion, ProjectileMotion::Straight);
+        assert_eq!(middle.position_y, source_y);
+        assert_eq!(middle.velocity_y, 0);
+
+        game.update_projectiles(&mut Vec::new());
+        let top = game
+            .state
+            .board
+            .projectiles
+            .iter()
+            .find(|projectile| projectile.row == 1)
+            .unwrap();
+        assert_eq!(top.position_y, source_y - 3 * POSITION_SCALE);
+        assert_eq!(top.velocity_y, -2_910_000);
+        assert_eq!(
+            top.shadow_y,
+            projectile_shadow_y(
+                SceneKind::Day,
+                1,
+                source_x,
+                ProjectileMotion::Threepeater,
+                -3 * POSITION_SCALE,
+            ) - 2_910_000
+        );
+        let bottom = game
+            .state
+            .board
+            .projectiles
+            .iter()
+            .find(|projectile| projectile.row == 3)
+            .unwrap();
+        assert_eq!(bottom.position_y, source_y + 3 * POSITION_SCALE);
+        assert_eq!(bottom.velocity_y, 2_910_000);
+    }
+
+    #[test]
+    fn threepeater_uses_pool_and_roof_source_heights() {
+        for scene in [SceneKind::Pool, SceneKind::Roof] {
+            let mut game = Game::new(7, scene);
+            let mut events = Vec::new();
+            game.fire_projectiles(
+                99,
+                PlantType::Other(18),
+                ProjectileType::Pea,
+                2,
+                2,
+                &mut events,
+            );
+            let expected_y = scene_plant_y(scene, 2, 2) + 10 * POSITION_SCALE;
+            assert!(
+                game.state
+                    .board
+                    .projectiles
+                    .iter()
+                    .all(|projectile| projectile.position_y == expected_y)
+            );
+        }
+    }
+
+    #[test]
+    fn threepeater_keeps_the_fired_row_until_rectangle_overlap() {
+        let mut game = Game::new(7, SceneKind::Day);
+        let mut setup = Vec::new();
+        let source_row_zombie =
+            game.spawn_normal_zombie(2, 0, Some(100 * POSITION_SCALE), &mut setup);
+        let target_row_zombie =
+            game.spawn_normal_zombie(1, 0, Some(100 * POSITION_SCALE), &mut setup);
+        for zombie in &mut game.state.board.zombies {
+            zombie.speed = 0;
+        }
+
+        let source_x = grid_x(0) + 45 * POSITION_SCALE;
+        let source_y = grid_y(2) + 10 * POSITION_SCALE;
+        let mut fire_events = Vec::new();
+        game.fire_projectile(
+            99,
+            ProjectileType::Pea,
+            1,
+            ProjectileTrajectory {
+                motion: ProjectileMotion::Threepeater,
+                position_x: source_x,
+                position_y: source_y,
+                velocity_x: 3_330_000,
+                velocity_y: -3 * POSITION_SCALE,
+            },
+            &mut fire_events,
+        );
+
+        for _ in 0..3 {
+            let events = {
+                let mut events = Vec::new();
+                game.update_projectiles(&mut events);
+                events
+            };
+            assert!(!events.iter().any(|event| matches!(
+                event,
+                GameEvent::ProjectileHit { zombie, .. }
+                    if *zombie == source_row_zombie || *zombie == target_row_zombie
+            )));
+        }
+
+        let mut target_hit = false;
+        for _ in 0..180 {
+            let mut events = Vec::new();
+            game.update_projectiles(&mut events);
+            if events.iter().any(|event| {
+                matches!(
+                    event,
+                    GameEvent::ProjectileHit { zombie, .. } if *zombie == target_row_zombie
+                )
+            }) {
+                target_hit = true;
+                break;
+            }
+        }
+        assert!(target_hit);
+        assert!(
+            game.state
+                .board
+                .zombies
+                .iter()
+                .any(|zombie| zombie.id == source_row_zombie)
+        );
     }
 
     #[test]
@@ -18563,6 +18857,7 @@ mod tests {
             position_y: grid_y(2),
             velocity_x: 0,
             velocity_y: 0,
+            shadow_y: 0,
             damage: ZAMBONI_HEALTH / 3 + 1,
             age: 0,
             target_x: None,
@@ -18588,6 +18883,7 @@ mod tests {
             position_y: grid_y(1),
             velocity_x: 0,
             velocity_y: 0,
+            shadow_y: 0,
             damage: 850 * 2 / 3 + 1,
             age: 0,
             target_x: None,
@@ -22128,6 +22424,7 @@ mod tests {
             position_y: 0,
             velocity_x: 0,
             velocity_y: 0,
+            shadow_y: 0,
             damage: ProjectileType::Melon.damage(),
             age: 0,
             target_x: None,
@@ -24015,6 +24312,7 @@ mod tests {
             position_y: grid_y(2),
             velocity_x: 0,
             velocity_y: 0,
+            shadow_y: 0,
             damage: 75,
             age: 21,
             target_x: Some(grid_x(1)),
