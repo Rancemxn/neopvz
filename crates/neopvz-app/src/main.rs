@@ -101,6 +101,7 @@ enum Checkpoint {
     HugeWaveSound,
     DancerRumble,
     FirstWaveSound,
+    FlagWaveSound,
     IceShroom,
     PotatoMine,
     ExplosionPlants,
@@ -165,6 +166,7 @@ impl From<Checkpoint> for SceneKind {
             Checkpoint::HugeWaveSound => Self::Day,
             Checkpoint::DancerRumble => Self::Day,
             Checkpoint::FirstWaveSound => Self::Day,
+            Checkpoint::FlagWaveSound => Self::Day,
             Checkpoint::IceShroom => Self::Night,
             Checkpoint::PotatoMine => Self::Day,
             Checkpoint::ExplosionPlants => Self::Night,
@@ -1333,6 +1335,7 @@ impl App {
             Some(Checkpoint::HugeWaveSound) => Game::new_mode(7, ModeKind::Adventure, 6),
             Some(Checkpoint::DancerRumble) => Game::new(0, SceneKind::Day),
             Some(Checkpoint::FirstWaveSound) => Game::new_mode(7, ModeKind::Adventure, 1),
+            Some(Checkpoint::FlagWaveSound) => Game::new_mode(7, ModeKind::Adventure, 6),
             Some(Checkpoint::Butter) => Game::new(0, SceneKind::Day),
             Some(Checkpoint::ProjectileImpacts) => Game::new(0, SceneKind::Day),
             Some(Checkpoint::PrizeChime) => Game::new(0, SceneKind::Day),
@@ -1421,6 +1424,9 @@ impl App {
             Some(Checkpoint::DancerRumble) => startup_events = game.debug_prepare_dancer_rumble(),
             Some(Checkpoint::FirstWaveSound) => {
                 startup_events = game.debug_prepare_first_wave_sound()
+            }
+            Some(Checkpoint::FlagWaveSound) => {
+                startup_events = game.debug_prepare_flag_wave_sound()
             }
             Some(Checkpoint::IceShroom) => game.debug_prepare_ice_shroom(),
             Some(Checkpoint::PotatoMine) => game.debug_prepare_potato_mine(),
@@ -2660,6 +2666,7 @@ fn audio_for_event(event: &GameEvent) -> Option<(AudioKind, &'static str)> {
         GameEvent::GardenFertilized { .. } => Some((AudioKind::Effect, "sounds/fertilizer.ogg")),
         GameEvent::GardenBecameHappy { .. } => Some((AudioKind::Effect, "sounds/prize.ogg")),
         GameEvent::WaveStarted { wave: 0 } => Some((AudioKind::Effect, "sounds/awooga.ogg")),
+        GameEvent::FlagWaveSound { .. } => Some((AudioKind::Effect, "sounds/siren.ogg")),
         GameEvent::HugeWaveSound { .. } => Some((AudioKind::Effect, "sounds/hugewave.ogg")),
         GameEvent::PlantSpecialTriggered {
             plant_type: neopvz_core::PlantType::Other(14),
@@ -3191,6 +3198,10 @@ mod tests {
         assert_eq!(
             audio_for_event(&GameEvent::WaveStarted { wave: 0 }),
             Some((AudioKind::Effect, "sounds/awooga.ogg"))
+        );
+        assert_eq!(
+            audio_for_event(&GameEvent::FlagWaveSound { wave: 9 }),
+            Some((AudioKind::Effect, "sounds/siren.ogg"))
         );
         assert_eq!(
             audio_for_event(&GameEvent::HugeWaveSound { wave: 9 }),

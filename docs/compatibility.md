@@ -13,7 +13,7 @@ evidence; a reviewer assertion alone is never sufficient.
 Status is `verified`, `partial`, or `missing`. The progress quantity is the sum
 of `total - accepted` across all rows.
 
-Current baseline: **1344 accepted / 1809 total; 465 unresolved**.
+Current baseline: **1345 accepted / 1809 total; 464 unresolved**.
 
 ## Foundation and Boundaries
 
@@ -283,6 +283,11 @@ The accepted first-wave SFX unit maps the source `Board::StartWave`
 `sounds/awooga.ogg`; source, event timing, mapping, external decode metadata,
 and checkpoint playback evidence are recorded in ignored
 `artifacts/first-wave-sound/verification.md`.
+
+The accepted flag-wave SFX unit maps the source `Board::StartWave`
+`SOUND_SIREN` call to `FlagWaveSound` and `sounds/siren.ogg`; source, event
+timing, mapping, external decode metadata, and checkpoint playback evidence
+are recorded in ignored `artifacts/flag-wave-sound/verification.md`.
 
 The accepted award-bag fan-out unit preserves the source money-bag award path:
 collecting `AwardMoneyBag` creates five gold coins with the

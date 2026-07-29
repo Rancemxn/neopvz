@@ -3068,6 +3068,9 @@ pub enum GameEvent {
     HugeWaveSound {
         wave: u32,
     },
+    FlagWaveSound {
+        wave: u32,
+    },
     WaveStarted {
         wave: u32,
     },
@@ -3701,6 +3704,19 @@ impl Game {
         self.state.board.wave.countdown = 1;
         self.state.board.wave.countdown_start = 1;
         self.state.board.wave_plan = vec![vec![ZombieType::Normal]; 8];
+        self.advance(InputFrame::default())
+    }
+
+    #[doc(hidden)]
+    pub fn debug_prepare_flag_wave_sound(&mut self) -> Vec<GameEvent> {
+        self.state.level_scene = SceneKind::Day;
+        self.state.scene = SceneKind::Day;
+        self.state.mode = ModeKind::Adventure;
+        self.state.level = 6;
+        self.state.board.wave.current = 9;
+        self.state.board.wave.countdown = 1;
+        self.state.board.wave.countdown_start = 1;
+        self.state.board.wave_plan = vec![vec![ZombieType::Normal]; 10];
         self.advance(InputFrame::default())
     }
 
@@ -10183,6 +10199,9 @@ impl Game {
 
         let wave = self.state.board.wave.current;
         events.push(GameEvent::WaveStarted { wave });
+        if adventure && adventure_is_flag_wave(self.state.level, false, wave) {
+            events.push(GameEvent::FlagWaveSound { wave });
+        }
         let row = self.rng.range(u32::from(self.state.board.rows)) as u8;
         match self.state.challenge.kind {
             ChallengeKind::BobsledBonanza => {
