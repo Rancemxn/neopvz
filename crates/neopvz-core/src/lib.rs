@@ -3154,6 +3154,8 @@ pub enum GameEvent {
     },
     MowerTriggered {
         row: u8,
+        #[serde(default)]
+        pool: bool,
     },
     ZombieHypnotized {
         entity: EntityId,
@@ -4141,6 +4143,17 @@ impl Game {
         self.state.board.zombies.clear();
         let mut setup_events = Vec::new();
         self.spawn_normal_zombie(2, 0, Some(grid_x(2)), &mut setup_events);
+        self.advance(InputFrame::default())
+    }
+
+    #[doc(hidden)]
+    pub fn debug_prepare_pool_mower(&mut self) -> Vec<GameEvent> {
+        self.state.level_scene = SceneKind::Pool;
+        self.state.scene = SceneKind::Pool;
+        self.state.board.zombies.clear();
+        let mut setup_events = Vec::new();
+        self.spawn_normal_zombie(2, 0, Some(0), &mut setup_events);
+        self.state.board.zombies[0].speed = 0;
         self.advance(InputFrame::default())
     }
 
@@ -7325,7 +7338,10 @@ impl Game {
             return false;
         };
         mower.active = true;
-        events.push(GameEvent::MowerTriggered { row });
+        events.push(GameEvent::MowerTriggered {
+            row,
+            pool: self.state.scene == SceneKind::Pool,
+        });
         let mut dead_ids = Vec::new();
         for zombie in &mut self.state.board.zombies {
             if zombie.row == row && zombie.health > 0 {
@@ -19286,16 +19302,33 @@ mod tests {
 
         let events = game.advance(InputFrame::default());
 
-        assert!(
-            events
-                .iter()
-                .any(|event| matches!(event, GameEvent::MowerTriggered { row: 2 }))
-        );
+        assert!(events.iter().any(|event| matches!(
+            event,
+            GameEvent::MowerTriggered {
+                row: 2,
+                pool: false
+            }
+        )));
         assert!(events.iter().any(|event| matches!(
             event,
             GameEvent::ZombieDied { entity } if *entity == zombie
         )));
         assert!(matches!(game.state.scene, SceneKind::Day));
+        assert!(game.state.board.zombies.is_empty());
+        assert!(game.state.board.mowers[2].active);
+    }
+
+    #[test]
+    fn pool_mower_trigger_marks_pool_audio_variant() {
+        let mut game = Game::new(0, SceneKind::Pool);
+        let events = game.debug_prepare_pool_mower();
+
+        assert!(
+            events
+                .iter()
+                .any(|event| matches!(event, GameEvent::MowerTriggered { row: 2, pool: true }))
+        );
+        assert!(matches!(game.state.scene, SceneKind::Pool));
         assert!(game.state.board.zombies.is_empty());
         assert!(game.state.board.mowers[2].active);
     }

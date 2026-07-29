@@ -127,6 +127,7 @@ enum Checkpoint {
     TangleKelp,
     DolphinJump,
     PoolEntry,
+    PoolMower,
     Spikeweed,
     Digger,
     Magnet,
@@ -194,6 +195,7 @@ impl From<Checkpoint> for SceneKind {
             Checkpoint::TangleKelp => Self::Pool,
             Checkpoint::DolphinJump => Self::Pool,
             Checkpoint::PoolEntry => Self::Pool,
+            Checkpoint::PoolMower => Self::Pool,
             Checkpoint::Spikeweed => Self::Day,
             Checkpoint::Digger => Self::Day,
             Checkpoint::Magnet => Self::Night,
@@ -1372,6 +1374,7 @@ impl App {
             Some(Checkpoint::TangleKelp) => Game::new(0, SceneKind::Pool),
             Some(Checkpoint::DolphinJump) => Game::new(0, SceneKind::Pool),
             Some(Checkpoint::PoolEntry) => Game::new(0, SceneKind::Pool),
+            Some(Checkpoint::PoolMower) => Game::new(0, SceneKind::Pool),
             Some(Checkpoint::Spikeweed) => Game::new(0, SceneKind::Day),
             Some(Checkpoint::Digger) => Game::new(0, SceneKind::Day),
             Some(Checkpoint::Magnet) => Game::new(0, SceneKind::Night),
@@ -1471,6 +1474,7 @@ impl App {
             Some(Checkpoint::TangleKelp) => game.debug_prepare_tangle_kelp(),
             Some(Checkpoint::DolphinJump) => startup_events = game.debug_prepare_dolphin_jump(),
             Some(Checkpoint::PoolEntry) => startup_events = game.debug_prepare_pool_entry(),
+            Some(Checkpoint::PoolMower) => startup_events = game.debug_prepare_pool_mower(),
             Some(Checkpoint::Spikeweed) => game.debug_prepare_spikeweed(),
             Some(Checkpoint::Digger) => game.debug_prepare_digger(),
             Some(Checkpoint::Magnet) => game.debug_prepare_magnet(),
@@ -2865,7 +2869,14 @@ fn audio_for_event(event: &GameEvent) -> Option<(AudioKind, &'static str)> {
                 }
             },
         )),
-        GameEvent::MowerTriggered { .. } => Some((AudioKind::Effect, "sounds/lawnmower.ogg")),
+        GameEvent::MowerTriggered { pool, .. } => Some((
+            AudioKind::Effect,
+            if *pool {
+                "sounds/pool_cleaner.ogg"
+            } else {
+                "sounds/lawnmower.ogg"
+            },
+        )),
         GameEvent::Paused => Some((AudioKind::Effect, "sounds/pause.ogg")),
         GameEvent::GameLost { .. } => Some((AudioKind::Music, "sounds/losemusic.ogg")),
         GameEvent::GameWon => Some((AudioKind::Music, "sounds/winmusic.ogg")),
@@ -3051,8 +3062,15 @@ mod tests {
             Some((AudioKind::Effect, "sounds/pause.ogg"))
         );
         assert_eq!(
-            audio_for_event(&GameEvent::MowerTriggered { row: 2 }),
+            audio_for_event(&GameEvent::MowerTriggered {
+                row: 2,
+                pool: false,
+            }),
             Some((AudioKind::Effect, "sounds/lawnmower.ogg"))
+        );
+        assert_eq!(
+            audio_for_event(&GameEvent::MowerTriggered { row: 2, pool: true }),
+            Some((AudioKind::Effect, "sounds/pool_cleaner.ogg"))
         );
         assert_eq!(
             audio_for_event(&GameEvent::SunCollected {
