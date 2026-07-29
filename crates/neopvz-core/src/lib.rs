@@ -2913,6 +2913,7 @@ pub enum GameEvent {
         row: u8,
         column: u8,
         sun_remaining: u32,
+        variant: u8,
     },
     PlantCombined {
         entity: EntityId,
@@ -2944,6 +2945,7 @@ pub enum GameEvent {
         row: u8,
         column: u8,
         sun_remaining: u32,
+        variant: u8,
     },
     GardenWatered {
         plant: u8,
@@ -5401,6 +5403,7 @@ impl Game {
             row,
             column,
             sun_remaining: self.state.sun,
+            variant: self.rng.range(2) as u8,
         });
     }
 
@@ -5567,6 +5570,7 @@ impl Game {
             row,
             column,
             sun_remaining: self.state.sun,
+            variant: self.rng.range(2) as u8,
         });
     }
 
@@ -5903,6 +5907,7 @@ impl Game {
             row,
             column,
             sun_remaining: self.state.sun,
+            variant: self.rng.range(2) as u8,
         });
     }
 
@@ -12419,6 +12424,7 @@ mod tests {
             GameEvent::PlantPlaced {
                 plant_type: PlantType::Sunflower,
                 sun_remaining: 0,
+                variant: 0..=1,
                 ..
             }
         )));
@@ -20964,6 +20970,7 @@ mod tests {
             GameEvent::ZombieDeployed {
                 zombie_type: ZombieType::Normal,
                 sun_remaining: 100,
+                variant: 0..=1,
                 ..
             }
         )));

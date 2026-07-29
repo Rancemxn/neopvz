@@ -92,6 +92,7 @@ enum Checkpoint {
     ExplodeONut,
     Squash,
     SquashHum,
+    ZombieDeploy,
     BrainEaten,
     ImpThrow,
     NewspaperRip,
@@ -145,6 +146,7 @@ impl From<Checkpoint> for SceneKind {
             Checkpoint::ExplodeONut => Self::Day,
             Checkpoint::Squash => Self::Day,
             Checkpoint::SquashHum => Self::Day,
+            Checkpoint::ZombieDeploy => Self::Night,
             Checkpoint::BrainEaten => Self::Night,
             Checkpoint::ImpThrow => Self::Day,
             Checkpoint::NewspaperRip => Self::Day,
@@ -1233,7 +1235,9 @@ impl App {
             Some(Checkpoint::ExplodeONut) => Game::new_mode(0, ModeKind::MiniGame, 1),
             Some(Checkpoint::Squash) => Game::new(0, SceneKind::Day),
             Some(Checkpoint::SquashHum) => Game::new(0, SceneKind::Day),
-            Some(Checkpoint::BrainEaten) => Game::new_mode(0, ModeKind::IZombie, 0),
+            Some(Checkpoint::ZombieDeploy | Checkpoint::BrainEaten) => {
+                Game::new_mode(0, ModeKind::IZombie, 0)
+            }
             Some(Checkpoint::ImpThrow) => Game::new(0, SceneKind::Day),
             Some(Checkpoint::NewspaperRip) => Game::new(0, SceneKind::Day),
             Some(Checkpoint::BloverChomper) => Game::new(0, SceneKind::Day),
@@ -1286,6 +1290,13 @@ impl App {
             Some(Checkpoint::ExplodeONut) => game.debug_prepare_explode_o_nut(),
             Some(Checkpoint::Squash) => startup_events = game.debug_prepare_squash(),
             Some(Checkpoint::SquashHum) => startup_events = game.debug_prepare_squash_hum(),
+            Some(Checkpoint::ZombieDeploy) => {
+                pending_input.push(InputAction::DeployZombie {
+                    zombie_type: neopvz_core::ZombieType::Normal,
+                    row: 0,
+                    column: 0,
+                });
+            }
             Some(Checkpoint::BrainEaten) => game.debug_prepare_brain_finished(),
             Some(Checkpoint::ImpThrow) => game.debug_prepare_imp_throw(),
             Some(Checkpoint::NewspaperRip) => startup_events = game.debug_prepare_newspaper_rip(),
@@ -2298,7 +2309,16 @@ fn audio_for_event(event: &GameEvent) -> Option<(AudioKind, &'static str)> {
     match event {
         GameEvent::SeedSelected { .. } => Some((AudioKind::Effect, "sounds/tap.ogg")),
         GameEvent::InputRejected { .. } => Some((AudioKind::Effect, "sounds/buzzer.ogg")),
-        GameEvent::PlantPlaced { .. } => Some((AudioKind::Effect, "sounds/plant.ogg")),
+        GameEvent::PlantPlaced { variant, .. } | GameEvent::ZombieDeployed { variant, .. } => {
+            Some((
+                AudioKind::Effect,
+                if *variant == 0 {
+                    "sounds/plant.ogg"
+                } else {
+                    "sounds/plant2.ogg"
+                },
+            ))
+        }
         GameEvent::PlantShoveled { .. } => Some((AudioKind::Effect, "sounds/plant2.ogg")),
         GameEvent::SunProduced {
             source: SunSource::Plant(_),
@@ -2606,6 +2626,32 @@ mod tests {
             audio_for_event(&GameEvent::PlantShoveled { entity: 1 }),
             Some((AudioKind::Effect, "sounds/plant2.ogg"))
         );
+        for (event, path) in [
+            (
+                GameEvent::PlantPlaced {
+                    entity: 1,
+                    plant_type: neopvz_core::PlantType::Peashooter,
+                    row: 0,
+                    column: 0,
+                    sun_remaining: 50,
+                    variant: 0,
+                },
+                "sounds/plant.ogg",
+            ),
+            (
+                GameEvent::ZombieDeployed {
+                    entity: 1,
+                    zombie_type: neopvz_core::ZombieType::Normal,
+                    row: 0,
+                    column: 0,
+                    sun_remaining: 100,
+                    variant: 1,
+                },
+                "sounds/plant2.ogg",
+            ),
+        ] {
+            assert_eq!(audio_for_event(&event), Some((AudioKind::Effect, path)));
+        }
         assert_eq!(
             audio_for_event(&GameEvent::SeedSelected {
                 slot: 1,
@@ -3153,6 +3199,7 @@ mod tests {
                     row: 2,
                     column: 3,
                     sun_remaining: 50,
+                    variant: 0,
                 }),
                 Some((AudioKind::Effect, "sounds/reverse_explosion.ogg"))
             );
@@ -3164,6 +3211,7 @@ mod tests {
                 row: 2,
                 column: 3,
                 sun_remaining: 50,
+                variant: 0,
             }),
             None
         );
