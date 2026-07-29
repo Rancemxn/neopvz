@@ -6514,7 +6514,7 @@ impl Game {
                 continue;
             }
             let has_target = self.state.board.zombies.iter().any(|zombie| {
-                if !plant_damage_can_hit_zombie(zombie) {
+                if !plant_damage_can_hit_zombie(zombie) || backup_dancer_is_rising(zombie) {
                     return false;
                 }
                 // Only Cactus (slot 26) and homing Cattail spikes target fliers.
@@ -6604,6 +6604,7 @@ impl Game {
             let potato_trigger = plant_type.is_potato_mine()
                 && self.state.board.zombies.iter().any(|zombie| {
                     plant_damage_can_hit_zombie(zombie)
+                        && !backup_dancer_is_rising(zombie)
                         && zombie.row == row
                         && !balloon_is_airborne(zombie)
                         && (zombie.position_x - grid_x(column)).abs() <= 60 * POSITION_SCALE
@@ -6611,6 +6612,7 @@ impl Game {
             let spikeweed_target = plant_type.is_spikeweed()
                 && self.state.board.zombies.iter().any(|zombie| {
                     plant_damage_can_hit_zombie(zombie)
+                        && !backup_dancer_is_rising(zombie)
                         && zombie.row == row
                         && !balloon_is_airborne(zombie)
                         && spikeweed_hits(zombie.position_x, column)
@@ -7136,7 +7138,9 @@ impl Game {
                 .board
                 .zombies
                 .iter()
-                .filter(|zombie| plant_damage_can_hit_zombie(zombie))
+                .filter(|zombie| {
+                    plant_damage_can_hit_zombie(zombie) && !backup_dancer_is_rising(zombie)
+                })
                 .map(|zombie| zombie.id)
                 .collect::<Vec<_>>();
 
@@ -7230,6 +7234,7 @@ impl Game {
             .filter(|zombie| {
                 plant_damage_can_hit_zombie(zombie)
                     && !zombie.bungee_held
+                    && (!plant_type.is_potato_mine() || !backup_dancer_is_rising(zombie))
                     && zombie.row.abs_diff(row) <= row_radius
                     && (row_wide || (zombie.position_x - center_x).abs() <= radius)
             })
@@ -10450,6 +10455,7 @@ impl Game {
         while zombie_index < self.state.board.zombies.len() {
             let zombie = &self.state.board.zombies[zombie_index];
             if !plant_damage_can_hit_zombie(zombie)
+                || backup_dancer_is_rising(zombie)
                 || zombie.row != row
                 || balloon_is_airborne(zombie)
                 || !spikeweed_hits(zombie.position_x, column)
@@ -12632,6 +12638,7 @@ fn squash_target_x(zombie: &ZombieState, lead_ticks: i64) -> i64 {
 
 fn squash_hits_zombie(zombie: &ZombieState, row: u8, target_x: i64) -> bool {
     if !plant_damage_can_hit_zombie(zombie)
+        || backup_dancer_is_rising(zombie)
         || zombie.departed
         || zombie.bungee_held
         || balloon_is_airborne(zombie)
@@ -12676,7 +12683,8 @@ fn projectile_hits_plant(projectile_x: i64, plant_x: i64) -> bool {
 }
 
 fn projectile_can_hit_zombie(zombie: &ZombieState, projectile_type: ProjectileType) -> bool {
-    if !plant_damage_can_hit_zombie(zombie) || zombie.bungee_held {
+    if !plant_damage_can_hit_zombie(zombie) || zombie.bungee_held || backup_dancer_is_rising(zombie)
+    {
         return false;
     }
     if zombie.zombie_type == ZombieType::Bobsled && zombie.bobsled_sliding && !zombie.bobsled_leader
@@ -12715,6 +12723,10 @@ fn projectile_can_hit_zombie(zombie: &ZombieState, projectile_type: ProjectileTy
 
 fn plant_damage_can_hit_zombie(zombie: &ZombieState) -> bool {
     zombie.health > 0 && !zombie.hypnotized
+}
+
+fn backup_dancer_is_rising(zombie: &ZombieState) -> bool {
+    zombie.zombie_type == ZombieType::BackupDancer && zombie.dancer_phase == DANCER_RISE_PHASE
 }
 
 fn snorkel_blocks_movement(zombie: &ZombieState) -> bool {
@@ -22886,6 +22898,131 @@ mod tests {
                 .health,
             500
         );
+    }
+
+    #[test]
+    fn backup_dancer_rise_rejects_ground_damage_until_landing() {
+        let backup_x = grid_x(4);
+        let mut game = Game::new(7, SceneKind::Day);
+        let mut setup = Vec::new();
+        let backup = game.spawn_backup_dancer(1, 0, Some(backup_x), &mut setup);
+        game.state.board.zombies[0].speed = 0;
+        let starting_health = game.state.board.zombies[0].health;
+        let rising = &game.state.board.zombies[0];
+        assert_eq!(rising.dancer_phase, DANCER_RISE_PHASE);
+        assert!(!projectile_can_hit_zombie(rising, ProjectileType::Pea));
+        assert!(!projectile_can_hit_zombie(rising, ProjectileType::Fireball));
+        assert!(!squash_hits_zombie(rising, 1, backup_x));
+
+        let mut events = Vec::new();
+        game.fire_projectile(
+            0,
+            ProjectileType::Pea,
+            1,
+            ProjectileTrajectory {
+                motion: ProjectileMotion::Straight,
+                position_x: backup_x,
+                position_y: grid_y(1),
+                velocity_x: 0,
+                velocity_y: 0,
+            },
+            &mut events,
+        );
+        game.update_projectiles(&mut events);
+        assert!(!events.iter().any(|event| matches!(
+            event,
+            GameEvent::ProjectileHit { zombie, .. } if *zombie == backup
+        )));
+        assert_eq!(game.state.board.zombies[0].health, starting_health);
+        game.state.board.projectiles.clear();
+
+        let normal = game.spawn_normal_zombie(2, 0, Some(backup_x), &mut setup);
+        game.state.board.zombies[1].speed = 0;
+        events.clear();
+        game.fire_projectile(
+            0,
+            ProjectileType::Fireball,
+            2,
+            ProjectileTrajectory {
+                motion: ProjectileMotion::Straight,
+                position_x: backup_x,
+                position_y: grid_y(2),
+                velocity_x: 0,
+                velocity_y: 0,
+            },
+            &mut events,
+        );
+        game.update_projectiles(&mut events);
+        assert!(events.iter().any(|event| matches!(
+            event,
+            GameEvent::ProjectileHit { zombie, damage: 40, .. } if *zombie == normal
+        )));
+        assert!(!events.iter().any(|event| matches!(
+            event,
+            GameEvent::ProjectileSplashHit { zombie, .. } if *zombie == backup
+        )));
+        assert_eq!(game.state.board.zombies[0].health, starting_health);
+
+        for _ in 0..DANCER_RISE_TICKS {
+            game.advance(InputFrame::default());
+        }
+        let landed = game
+            .state
+            .board
+            .zombies
+            .iter()
+            .find(|zombie| zombie.id == backup)
+            .unwrap();
+        assert_eq!(landed.dancer_phase, DANCER_DANCE_PHASE);
+        assert!(projectile_can_hit_zombie(landed, ProjectileType::Pea));
+        assert!(squash_hits_zombie(landed, 1, landed.position_x));
+        let landed_x = landed.position_x;
+
+        events.clear();
+        game.fire_projectile(
+            0,
+            ProjectileType::Pea,
+            1,
+            ProjectileTrajectory {
+                motion: ProjectileMotion::Straight,
+                position_x: landed_x,
+                position_y: grid_y(1),
+                velocity_x: 0,
+                velocity_y: 0,
+            },
+            &mut events,
+        );
+        game.update_projectiles(&mut events);
+        assert!(events.iter().any(|event| matches!(
+            event,
+            GameEvent::ProjectileHit { zombie, damage: 20, .. } if *zombie == backup
+        )));
+        assert_eq!(
+            game.state
+                .board
+                .zombies
+                .iter()
+                .find(|zombie| zombie.id == backup)
+                .unwrap()
+                .health,
+            starting_health - 20
+        );
+
+        let mut cob_game = Game::new(7, SceneKind::Day);
+        let mut cob_events = Vec::new();
+        let cob_target = cob_game.spawn_backup_dancer(1, 0, Some(grid_x(4)), &mut cob_events);
+        cob_game.fire_cob_projectile(0, 1, 0, 1, 4, &mut cob_events);
+        let cob = cob_game.state.board.projectiles.pop().unwrap();
+        cob_game.apply_cob_explosion(&cob, 1, grid_x(4), &mut cob_events);
+        assert!(cob_events.iter().any(|event| matches!(
+            event,
+            GameEvent::ProjectileHit {
+                zombie,
+                damage: 1_800,
+                ..
+            } if *zombie == cob_target
+        )));
+        assert!(cob_game.state.board.zombies.is_empty());
     }
 
     #[test]
