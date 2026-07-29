@@ -97,6 +97,10 @@ const PULT_LOB_SNORKEL_CLEARANCE: i32 = 45 * PULT_LOB_SCALE as i32;
 const CATAPULT_LOB_FLIGHT_UPDATES: i64 = 120;
 const CATAPULT_MIN_COLLISION_HEIGHT: i32 = 60;
 const CATAPULT_GROUND_HEIGHT: i32 = 80;
+const STAR_ORIGIN_OFFSET: i64 = 25 * POSITION_SCALE;
+const STAR_SHADOW_OFFSET: i64 = 15 * POSITION_SCALE;
+const STAR_SHADOW_COLLISION_DELAY: i64 = 90 * POSITION_SCALE;
+const STAR_HIGH_GROUND_SHADOW_THRESHOLD: i64 = 23 * POSITION_SCALE;
 // Plant::GetPlantAttackRect SEED_PUFFSHROOM/SEASHROOM width 230 from mX+60.
 const PUFF_ATTACK_RANGE: i64 = 230;
 // Plant::GetPlantAttackRect SEED_FUMESHROOM width 340 from mX+60.
@@ -9856,8 +9860,19 @@ impl Game {
                     projectile.velocity_y = projectile.velocity_y * 97 / 100;
                 }
                 projectile.shadow_y += slope_delta;
-                if projectile.motion == ProjectileMotion::Threepeater {
+                if matches!(
+                    projectile.motion,
+                    ProjectileMotion::Threepeater | ProjectileMotion::Star
+                ) {
                     projectile.shadow_y += projectile.velocity_y;
+                }
+                if projectile.motion == ProjectileMotion::Star && projectile.velocity_y != 0 {
+                    projectile.row = projectile_row_for_scene(
+                        self.state.scene,
+                        projectile.position_x,
+                        projectile.position_y,
+                        self.state.board.rows,
+                    );
                 }
                 if projectile.motion == ProjectileMotion::Lobbed
                     && projectile.projectile_type.uses_lob_trajectory()
@@ -9976,6 +9991,24 @@ impl Game {
                 }
                 continue;
             }
+            if self.state.board.projectiles[projectile_index].motion == ProjectileMotion::Star {
+                let projectile = self.state.board.projectiles[projectile_index].clone();
+                if projectile.position_y > i64::from(LOGICAL_HEIGHT) * POSITION_SCALE
+                    || projectile.position_y < 0
+                {
+                    self.state.board.projectiles.remove(projectile_index);
+                    continue;
+                }
+                let shadow_delta = projectile.shadow_y - projectile.position_y;
+                if shadow_delta > STAR_SHADOW_COLLISION_DELAY {
+                    projectile_index += 1;
+                    continue;
+                }
+                if shadow_delta < STAR_HIGH_GROUND_SHADOW_THRESHOLD {
+                    self.state.board.projectiles.remove(projectile_index);
+                    continue;
+                }
+            }
             if self.state.board.projectiles[projectile_index].motion == ProjectileMotion::Puff
                 && self.state.board.projectiles[projectile_index].age >= PUFF_PROJECTILE_MAX_AGE
             {
@@ -10085,8 +10118,10 @@ impl Game {
             self.apply_torchwood(projectile_index, events);
             let projectile = self.state.board.projectiles[projectile_index].clone();
             let projectile_row = if projectile.projectile_type.is_pult()
-                || projectile.motion == ProjectileMotion::Threepeater
-            {
+                || matches!(
+                    projectile.motion,
+                    ProjectileMotion::Threepeater | ProjectileMotion::Star
+                ) {
                 Some(projectile.row)
             } else {
                 projectile_row(projectile.position_y, self.state.board.rows)
@@ -11473,6 +11508,9 @@ impl Game {
                 );
             }
             FiringPattern::Star => {
+                let star_position_x = grid_x(column) + STAR_ORIGIN_OFFSET;
+                let star_position_y =
+                    scene_plant_y(self.state.scene, row, column) + STAR_ORIGIN_OFFSET;
                 self.emit_plant_fired(source, plant_type, events);
                 for (velocity_x, velocity_y) in [
                     (-3_330_000, 0),
@@ -11487,8 +11525,8 @@ impl Game {
                         row,
                         ProjectileTrajectory {
                             motion: ProjectileMotion::Star,
-                            position_x,
-                            position_y,
+                            position_x: star_position_x,
+                            position_y: star_position_y,
                             velocity_x,
                             velocity_y,
                         },
@@ -13278,18 +13316,36 @@ fn projectile_shadow_y(
     motion: ProjectileMotion,
     velocity_y: i64,
 ) -> i64 {
-    let shadow_x = if motion == ProjectileMotion::Threepeater {
-        position_x - 45 * POSITION_SCALE
-    } else {
-        position_x
+    let shadow_x = match motion {
+        ProjectileMotion::Threepeater => position_x - 45 * POSITION_SCALE,
+        ProjectileMotion::Star => position_x - STAR_ORIGIN_OFFSET,
+        _ => position_x,
     };
     scene_row_y(scene, row, shadow_x)
         + 67 * POSITION_SCALE
         + match motion {
             ProjectileMotion::Threepeater if velocity_y < 0 => 80 * POSITION_SCALE,
             ProjectileMotion::Threepeater if velocity_y > 0 => -80 * POSITION_SCALE,
+            ProjectileMotion::Star => STAR_SHADOW_OFFSET,
             _ => 0,
         }
+}
+
+fn projectile_row_for_scene(scene: SceneKind, position_x: i64, position_y: i64, rows: u8) -> u8 {
+    let board_x = position_x.max(80 * POSITION_SCALE);
+    let column =
+        ((board_x - grid_x(0)) / (80 * POSITION_SCALE)).clamp(0, i64::from(GRID_COLUMNS - 1)) as u8;
+    let row_base_y = match scene {
+        SceneKind::Roof | SceneKind::Boss => {
+            i64::from(5_u8.saturating_sub(column)) * 20 * POSITION_SCALE + 70 * POSITION_SCALE
+        }
+        _ => 80 * POSITION_SCALE,
+    };
+    let row_height = match scene {
+        SceneKind::Pool | SceneKind::Fog | SceneKind::Roof | SceneKind::Boss => 85 * POSITION_SCALE,
+        _ => 100 * POSITION_SCALE,
+    };
+    ((position_y - row_base_y) / row_height).clamp(0, i64::from(rows.saturating_sub(1))) as u8
 }
 
 fn projectile_row(position_y: i64, rows: u8) -> Option<u8> {
@@ -14829,6 +14885,189 @@ mod tests {
                 .iter()
                 .any(|projectile| projectile.velocity_y != 0)
         );
+    }
+
+    #[test]
+    fn starfruit_projectiles_use_source_origin_and_shadow() {
+        for scene in [SceneKind::Day, SceneKind::Pool, SceneKind::Roof] {
+            let mut game = Game::new(7, scene);
+            let mut events = Vec::new();
+            game.fire_projectiles(
+                99,
+                PlantType::Other(29),
+                ProjectileType::Star,
+                2,
+                2,
+                &mut events,
+            );
+
+            let origin_x = grid_x(2) + STAR_ORIGIN_OFFSET;
+            let origin_y = scene_plant_y(scene, 2, 2) + STAR_ORIGIN_OFFSET;
+            assert!(game.state.board.projectiles.iter().all(|projectile| {
+                projectile.position_x == origin_x
+                    && projectile.position_y == origin_y
+                    && projectile.shadow_y - projectile.position_y == 57 * POSITION_SCALE
+                    && projectile.shadow_y
+                        == projectile_shadow_y(
+                            scene,
+                            2,
+                            origin_x,
+                            ProjectileMotion::Star,
+                            projectile.velocity_y,
+                        )
+            }));
+        }
+    }
+
+    #[test]
+    fn starfruit_vertical_rays_update_rows() {
+        let mut game = Game::new(7, SceneKind::Day);
+        let mut events = Vec::new();
+        game.fire_projectile(
+            99,
+            ProjectileType::Star,
+            2,
+            ProjectileTrajectory {
+                motion: ProjectileMotion::Star,
+                position_x: grid_x(0) + STAR_ORIGIN_OFFSET,
+                position_y: grid_y(2) + STAR_ORIGIN_OFFSET,
+                velocity_x: 0,
+                velocity_y: 3 * POSITION_SCALE,
+            },
+            &mut events,
+        );
+
+        for _ in 0..24 {
+            game.update_projectiles(&mut Vec::new());
+            assert_eq!(game.state.board.projectiles[0].row, 2);
+        }
+        game.update_projectiles(&mut Vec::new());
+        let projectile = &game.state.board.projectiles[0];
+        assert_eq!(projectile.row, 3);
+        assert_eq!(projectile.position_y, grid_y(3));
+    }
+
+    #[test]
+    fn starfruit_shadow_and_vertical_gates_precede_collision() {
+        let mut shadow_delayed = Game::new(7, SceneKind::Day);
+        let mut setup_events = Vec::new();
+        shadow_delayed.spawn_normal_zombie(2, 0, Some(grid_x(0)), &mut setup_events);
+        let mut fire_events = Vec::new();
+        shadow_delayed.fire_projectile(
+            99,
+            ProjectileType::Star,
+            2,
+            ProjectileTrajectory {
+                motion: ProjectileMotion::Star,
+                position_x: grid_x(0) + STAR_ORIGIN_OFFSET,
+                position_y: grid_y(2) + STAR_ORIGIN_OFFSET,
+                velocity_x: 0,
+                velocity_y: 0,
+            },
+            &mut fire_events,
+        );
+        let position_y = shadow_delayed.state.board.projectiles[0].position_y;
+        shadow_delayed.state.board.projectiles[0].shadow_y =
+            position_y + (STAR_SHADOW_COLLISION_DELAY + POSITION_SCALE);
+        let events = {
+            let mut events = Vec::new();
+            shadow_delayed.update_projectiles(&mut events);
+            events
+        };
+        assert!(
+            events
+                .iter()
+                .all(|event| !matches!(event, GameEvent::ProjectileHit { .. }))
+        );
+        assert_eq!(shadow_delayed.state.board.projectiles.len(), 1);
+
+        let mut high_ground = Game::new(7, SceneKind::Day);
+        let mut setup_events = Vec::new();
+        high_ground.spawn_normal_zombie(2, 0, Some(grid_x(0)), &mut setup_events);
+        high_ground.fire_projectile(
+            99,
+            ProjectileType::Star,
+            2,
+            ProjectileTrajectory {
+                motion: ProjectileMotion::Star,
+                position_x: grid_x(0) + STAR_ORIGIN_OFFSET,
+                position_y: grid_y(2) + STAR_ORIGIN_OFFSET,
+                velocity_x: 0,
+                velocity_y: 0,
+            },
+            &mut fire_events,
+        );
+        let position_y = high_ground.state.board.projectiles[0].position_y;
+        high_ground.state.board.projectiles[0].shadow_y =
+            position_y + (STAR_HIGH_GROUND_SHADOW_THRESHOLD - POSITION_SCALE);
+        let events = {
+            let mut events = Vec::new();
+            high_ground.update_projectiles(&mut events);
+            events
+        };
+        assert!(
+            events
+                .iter()
+                .all(|event| !matches!(event, GameEvent::ProjectileHit { .. }))
+        );
+        assert!(high_ground.state.board.projectiles.is_empty());
+    }
+
+    #[test]
+    fn starfruit_cleans_up_at_vertical_board_boundaries() {
+        for position_y in [
+            -POSITION_SCALE,
+            (i64::from(LOGICAL_HEIGHT) + 1) * POSITION_SCALE,
+        ] {
+            let mut game = Game::new(7, SceneKind::Day);
+            let mut fire_events = Vec::new();
+            game.fire_projectile(
+                99,
+                ProjectileType::Star,
+                2,
+                ProjectileTrajectory {
+                    motion: ProjectileMotion::Star,
+                    position_x: grid_x(0) + STAR_ORIGIN_OFFSET,
+                    position_y,
+                    velocity_x: 0,
+                    velocity_y: 0,
+                },
+                &mut fire_events,
+            );
+            game.state.board.projectiles[0].shadow_y = position_y + 57 * POSITION_SCALE;
+            game.update_projectiles(&mut Vec::new());
+            assert!(game.state.board.projectiles.is_empty());
+        }
+    }
+
+    #[test]
+    fn starfruit_origin_sets_the_first_eligible_impact_tick() {
+        let mut game = Game::new(7, SceneKind::Day);
+        let mut setup_events = Vec::new();
+        let zombie = game.spawn_normal_zombie(2, 0, Some(300 * POSITION_SCALE), &mut setup_events);
+        let mut fire_events = Vec::new();
+        game.fire_projectile(
+            99,
+            ProjectileType::Star,
+            2,
+            ProjectileTrajectory {
+                motion: ProjectileMotion::Star,
+                position_x: grid_x(0) + STAR_ORIGIN_OFFSET,
+                position_y: grid_y(2) + STAR_ORIGIN_OFFSET,
+                velocity_x: 3_330_000,
+                velocity_y: 0,
+            },
+            &mut fire_events,
+        );
+
+        let first_hit_tick = (1..=100).find(|_| {
+            let mut events = Vec::new();
+            game.update_projectiles(&mut events);
+            events.iter().any(|event| {
+                matches!(event, GameEvent::ProjectileHit { zombie: hit, .. } if *hit == zombie)
+            })
+        });
+        assert_eq!(first_hit_tick, Some(68));
     }
 
     #[test]
