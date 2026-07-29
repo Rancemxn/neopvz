@@ -13,7 +13,7 @@ evidence; a reviewer assertion alone is never sufficient.
 Status is `verified`, `partial`, or `missing`. The progress quantity is the sum
 of `total - accepted` across all rows.
 
-Current baseline: **1343 accepted / 1809 total; 466 unresolved**.
+Current baseline: **1344 accepted / 1809 total; 465 unresolved**.
 
 ## Foundation and Boundaries
 
@@ -277,6 +277,12 @@ The accepted Backup Dancer summon SFX unit maps the source
 `ZombieSpawned { BackupDancer }` and `sounds/gravestone_rumble.ogg`; source,
 event timing, mapping, external decode metadata, and checkpoint playback
 evidence are recorded in ignored `artifacts/dancer-rumble/verification.md`.
+
+The accepted first-wave SFX unit maps the source `Board::StartWave`
+`SOUND_AWOOGA` call for wave 0 to `WaveStarted { wave: 0 }` and
+`sounds/awooga.ogg`; source, event timing, mapping, external decode metadata,
+and checkpoint playback evidence are recorded in ignored
+`artifacts/first-wave-sound/verification.md`.
 
 The accepted award-bag fan-out unit preserves the source money-bag award path:
 collecting `AwardMoneyBag` creates five gold coins with the

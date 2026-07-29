@@ -100,6 +100,7 @@ enum Checkpoint {
     GardenFulfill,
     HugeWaveSound,
     DancerRumble,
+    FirstWaveSound,
     IceShroom,
     PotatoMine,
     ExplosionPlants,
@@ -163,6 +164,7 @@ impl From<Checkpoint> for SceneKind {
             }
             Checkpoint::HugeWaveSound => Self::Day,
             Checkpoint::DancerRumble => Self::Day,
+            Checkpoint::FirstWaveSound => Self::Day,
             Checkpoint::IceShroom => Self::Night,
             Checkpoint::PotatoMine => Self::Day,
             Checkpoint::ExplosionPlants => Self::Night,
@@ -1330,6 +1332,7 @@ impl App {
             ) => Game::new_mode(0, ModeKind::ZenGarden, 0),
             Some(Checkpoint::HugeWaveSound) => Game::new_mode(7, ModeKind::Adventure, 6),
             Some(Checkpoint::DancerRumble) => Game::new(0, SceneKind::Day),
+            Some(Checkpoint::FirstWaveSound) => Game::new_mode(7, ModeKind::Adventure, 1),
             Some(Checkpoint::Butter) => Game::new(0, SceneKind::Day),
             Some(Checkpoint::ProjectileImpacts) => Game::new(0, SceneKind::Day),
             Some(Checkpoint::PrizeChime) => Game::new(0, SceneKind::Day),
@@ -1416,6 +1419,9 @@ impl App {
             }
             Some(Checkpoint::HugeWaveSound) => game.debug_prepare_huge_wave_sound(),
             Some(Checkpoint::DancerRumble) => startup_events = game.debug_prepare_dancer_rumble(),
+            Some(Checkpoint::FirstWaveSound) => {
+                startup_events = game.debug_prepare_first_wave_sound()
+            }
             Some(Checkpoint::IceShroom) => game.debug_prepare_ice_shroom(),
             Some(Checkpoint::PotatoMine) => game.debug_prepare_potato_mine(),
             Some(Checkpoint::ExplosionPlants) => {
@@ -2653,6 +2659,7 @@ fn audio_for_event(event: &GameEvent) -> Option<(AudioKind, &'static str)> {
         GameEvent::GardenWatered { .. } => Some((AudioKind::Effect, "sounds/watering.ogg")),
         GameEvent::GardenFertilized { .. } => Some((AudioKind::Effect, "sounds/fertilizer.ogg")),
         GameEvent::GardenBecameHappy { .. } => Some((AudioKind::Effect, "sounds/prize.ogg")),
+        GameEvent::WaveStarted { wave: 0 } => Some((AudioKind::Effect, "sounds/awooga.ogg")),
         GameEvent::HugeWaveSound { .. } => Some((AudioKind::Effect, "sounds/hugewave.ogg")),
         GameEvent::PlantSpecialTriggered {
             plant_type: neopvz_core::PlantType::Other(14),
@@ -3180,6 +3187,10 @@ mod tests {
                 aquatic: false,
             }),
             Some((AudioKind::Effect, "sounds/prize.ogg"))
+        );
+        assert_eq!(
+            audio_for_event(&GameEvent::WaveStarted { wave: 0 }),
+            Some((AudioKind::Effect, "sounds/awooga.ogg"))
         );
         assert_eq!(
             audio_for_event(&GameEvent::HugeWaveSound { wave: 9 }),

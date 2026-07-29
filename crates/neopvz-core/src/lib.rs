@@ -3692,6 +3692,19 @@ impl Game {
     }
 
     #[doc(hidden)]
+    pub fn debug_prepare_first_wave_sound(&mut self) -> Vec<GameEvent> {
+        self.state.level_scene = SceneKind::Day;
+        self.state.scene = SceneKind::Day;
+        self.state.mode = ModeKind::Adventure;
+        self.state.level = 1;
+        self.state.board.wave.current = 0;
+        self.state.board.wave.countdown = 1;
+        self.state.board.wave.countdown_start = 1;
+        self.state.board.wave_plan = vec![vec![ZombieType::Normal]; 8];
+        self.advance(InputFrame::default())
+    }
+
+    #[doc(hidden)]
     pub fn debug_prepare_plant_firing_audio(&mut self) -> Vec<GameEvent> {
         self.state.level_scene = SceneKind::Night;
         self.state.scene = SceneKind::Night;
