@@ -29,6 +29,7 @@ const SUN_COUNTDOWN_RANGE: u32 = 275;
 const SUN_COUNTDOWN_MAX: u32 = 950;
 const MAX_SUN: u32 = 9_990;
 const MAX_SEED_SLOTS: u8 = 53;
+const SOURCE_SEED_SLOTS: u8 = 49;
 const CONVEYOR_SEED_SLOTS: usize = 10;
 const SUNSHROOM_GROWTH_TICKS: u32 = 12_000;
 const NORMAL_SUN_VALUE: u32 = 25;
@@ -657,7 +658,7 @@ fn initial_challenge_state(mode: ModeKind, level: u8) -> ChallengeState {
     let kind = challenge_kind(level);
     let (target, countdown) = match kind {
         ChallengeKind::SlotMachine => (2_000, 0),
-        ChallengeKind::RainingSeeds => (0, 200),
+        ChallengeKind::RainingSeeds => (0, 100),
         ChallengeKind::Beghouled => (75, 1_500),
         ChallengeKind::Zombiquarium => (1_000, 0),
         ChallengeKind::WhackAZombie => (0, 200),
@@ -1278,6 +1279,14 @@ impl PlantType {
 
     fn is_nocturnal(self) -> bool {
         matches!(self.slot(), 8 | 9 | 10 | 12 | 13 | 14 | 15 | 24 | 31 | 42)
+    }
+
+    fn is_aquatic(self) -> bool {
+        matches!(self.slot(), 16 | 19 | 24 | 43)
+    }
+
+    fn is_upgrade(self) -> bool {
+        matches!(self.slot(), 40 | 41 | 42 | 43 | 44 | 45 | 46 | 47)
     }
 
     fn is_gravebuster(self) -> bool {
@@ -2437,6 +2446,8 @@ pub struct BoardState {
     pub columns: u8,
     pub next_entity_id: EntityId,
     pub selected_seed: Option<u8>,
+    #[serde(default)]
+    pub selected_usable_seed: Option<PlantType>,
     pub seed_packets: Vec<SeedPacketState>,
     #[serde(default)]
     pub zombie_packets: Vec<ZombieType>,
@@ -2537,6 +2548,7 @@ impl BoardState {
             columns: GRID_COLUMNS,
             next_entity_id,
             selected_seed: None,
+            selected_usable_seed: None,
             seed_packets: (0..MAX_SEED_SLOTS)
                 .filter_map(|slot| {
                     PlantType::from_slot(slot).map(|plant_type| SeedPacketState {
@@ -2879,6 +2891,8 @@ pub struct GameState {
     pub coins: u32,
     #[serde(default)]
     pub unlocked_modes: u8,
+    #[serde(default)]
+    pub unlocked_plants: Vec<PlantType>,
     #[serde(default)]
     pub chocolates: u32,
     #[serde(default)]
@@ -4703,6 +4717,7 @@ impl Game {
             },
             coins: 0,
             unlocked_modes: 0,
+            unlocked_plants: Vec::new(),
             chocolates: 0,
             pickup_inventory: Vec::new(),
             wave: 0,
@@ -4739,6 +4754,7 @@ impl Game {
 
     pub fn apply_profile(&mut self, profile: &SaveProfile) {
         self.state.coins = profile.inventory.coins;
+        self.state.unlocked_plants = profile.unlocked_plants.clone();
         self.state.garden = profile.garden.clone();
     }
 
@@ -4909,6 +4925,7 @@ impl Game {
         self.state.challenge.stage = self.state.challenge.stage.saturating_add(1);
         self.state.scene = SceneKind::SeedChooser;
         self.state.board.selected_seed = None;
+        self.state.board.selected_usable_seed = None;
         self.state.board.zombies.clear();
         self.state.board.projectiles.clear();
         self.state.board.suns.clear();
@@ -5067,12 +5084,98 @@ impl Game {
             };
             self.state.challenge.countdown = next_countdown;
             if kind == ChallengeKind::RainingSeeds {
-                events.push(GameEvent::ChallengeAction {
-                    kind,
-                    value: self.rng.range(53),
-                });
+                self.spawn_raining_seed(events);
             }
         }
+    }
+
+    fn spawn_raining_seed(&mut self, events: &mut Vec<GameEvent>) {
+        let position_x = i64::from(self.rng.range_inclusive(100, 649)) * POSITION_SCALE;
+        let target_y = i64::from(300 + self.rng.range(250)) * POSITION_SCALE;
+        let Some(usable_seed_type) = self.pick_raining_seed() else {
+            return;
+        };
+        let id = self.state.board.allocate_entity();
+        self.state.board.coins.push(CoinPickupState {
+            id,
+            coin_type: CoinType::UsableSeedPacket,
+            value: 0,
+            position_x,
+            position_y: 60 * POSITION_SCALE,
+            plant_type: None,
+            usable_seed_type: Some(usable_seed_type),
+            target_y: Some(target_y),
+            velocity_x: 0,
+            velocity_y: 330_000,
+            from_present: false,
+            age: 0,
+        });
+        events.push(GameEvent::CoinProduced {
+            entity: id,
+            coin_type: CoinType::UsableSeedPacket,
+            value: 0,
+        });
+    }
+
+    fn pick_raining_seed(&mut self) -> Option<PlantType> {
+        let candidates = (0..SOURCE_SEED_SLOTS)
+            .filter_map(PlantType::from_slot)
+            .filter(|plant_type| self.raining_seed_allowed(*plant_type))
+            .collect::<Vec<_>>();
+        let seed_type = candidates
+            .get(self.rng.range(u32::try_from(candidates.len()).unwrap_or(1)) as usize)
+            .copied()?;
+        let lily_count = self
+            .state
+            .board
+            .plants
+            .iter()
+            .filter(|plant| plant.plant_type.slot() == 16)
+            .count();
+        // Challenge::UpdateRainingSeeds uses TodAnimateCurve(0, 18, count, 30, 1).
+        let lily_chance = u32::try_from(lily_count)
+            .unwrap_or(u32::MAX)
+            .min(18);
+        let lily_chance = 30 - (lily_chance * 29 + 9) / 18;
+        Some(if self.rng.range(100) < lily_chance {
+            PlantType::Other(16)
+        } else {
+            seed_type
+        })
+    }
+
+    fn raining_seed_allowed(&self, plant_type: PlantType) -> bool {
+        if !plant_type.is_plant()
+            || plant_type.slot() >= SOURCE_SEED_SLOTS
+            || plant_type.is_upgrade()
+            || (!self.state.unlocked_plants.is_empty()
+                && !self.state.unlocked_plants.contains(&plant_type))
+            || matches!(plant_type.slot(), 1 | 9 | 35 | 37 | 41 | 48)
+        {
+            return false;
+        }
+        if plant_type.is_nocturnal() && !scene_is_night(self.state.scene) {
+            return false;
+        }
+        if plant_type.is_instant_coffee() && scene_is_night(self.state.scene) {
+            return false;
+        }
+        if plant_type.is_gravebuster() && self.state.board.graves.is_empty() {
+            return false;
+        }
+        if plant_type.slot() == 25 && self.state.scene != SceneKind::Fog {
+            return false;
+        }
+        if plant_type.slot() == 33 && self.state.scene != SceneKind::Roof {
+            return false;
+        }
+        if matches!(plant_type.slot(), 21 | 46) && self.state.scene == SceneKind::Roof {
+            return false;
+        }
+        if plant_type.is_aquatic() && !scene_has_water_rows(self.state.scene) {
+            return false;
+        }
+        true
     }
 
     fn initialize_zombiquarium(&mut self) {
@@ -5204,6 +5307,7 @@ impl Game {
         }
         self.state.sun = 150;
         self.state.board.selected_seed = None;
+        self.state.board.selected_usable_seed = None;
     }
 
     fn initialize_izombie_endless(&mut self) {
@@ -5606,6 +5710,7 @@ impl Game {
             return;
         }
 
+        self.state.board.selected_usable_seed = None;
         self.state.board.selected_seed = Some(slot);
         events.push(GameEvent::SeedSelected {
             slot,
@@ -5710,27 +5815,31 @@ impl Game {
 
     fn plant(&mut self, row: u8, column: u8, events: &mut Vec<GameEvent>) {
         let action = InputAction::Plant { row, column };
-        let Some(slot) = self.state.board.selected_seed else {
-            events.push(GameEvent::InputRejected {
-                action,
-                reason: InputRejectReason::NoSeedSelected,
-            });
-            return;
+        let plant_type = if let Some(plant_type) = self.state.board.selected_usable_seed {
+            plant_type
+        } else {
+            let Some(slot) = self.state.board.selected_seed else {
+                events.push(GameEvent::InputRejected {
+                    action,
+                    reason: InputRejectReason::NoSeedSelected,
+                });
+                return;
+            };
+            let Some(packet) = self
+                .state
+                .board
+                .seed_packets
+                .iter()
+                .find(|packet| packet.slot == slot)
+            else {
+                events.push(GameEvent::InputRejected {
+                    action,
+                    reason: InputRejectReason::InvalidSlot,
+                });
+                return;
+            };
+            packet.plant_type
         };
-        let Some(packet) = self
-            .state
-            .board
-            .seed_packets
-            .iter()
-            .find(|packet| packet.slot == slot)
-        else {
-            events.push(GameEvent::InputRejected {
-                action,
-                reason: InputRejectReason::InvalidSlot,
-            });
-            return;
-        };
-        let plant_type = packet.plant_type;
         if !plant_type.is_plant() {
             events.push(GameEvent::InputRejected {
                 action,
@@ -5829,6 +5938,7 @@ impl Game {
             .expect("selected CobCannon packet must exist");
         self.state.sun -= cannon_type.cost();
         self.state.board.selected_seed = None;
+        self.state.board.selected_usable_seed = None;
         self.state.board.seed_packets[packet_index].refresh_remaining =
             cannon_type.refresh_time() + 1;
 
@@ -5995,7 +6105,7 @@ impl Game {
         let has_flowerpot = self.state.board.plants.iter().any(|plant| {
             plant.row == row && plant.column == column && plant.plant_type.slot() == 33
         });
-        let aquatic = matches!(effective_type.slot(), 16 | 19 | 24);
+        let aquatic = effective_type.is_aquatic();
         let valid_terrain = if scene_row_is_water(self.state.scene, row) {
             aquatic || effective_type.slot() == 43 || has_lilypad
         } else if self.state.scene == SceneKind::Roof {
@@ -6106,20 +6216,26 @@ impl Game {
             return;
         }
 
-        let packet_slot = self
-            .state
-            .board
-            .selected_seed
-            .expect("planting requires a selected seed packet");
-        let packet_index = self
-            .state
-            .board
-            .seed_packets
-            .iter()
-            .position(|packet| packet.slot == packet_slot)
-            .expect("selected seed packet must exist");
+        let usable_seed = self.state.board.selected_usable_seed.is_some();
+        let packet_index = if usable_seed {
+            None
+        } else {
+            let packet_slot = self
+                .state
+                .board
+                .selected_seed
+                .expect("planting requires a selected seed packet");
+            Some(
+                self.state
+                    .board
+                    .seed_packets
+                    .iter()
+                    .position(|packet| packet.slot == packet_slot)
+                    .expect("selected seed packet must exist"),
+            )
+        };
         let conveyor = self.has_conveyor_seed_bank();
-        if !conveyor && self.state.sun < effective_type.cost() {
+        if !usable_seed && !conveyor && self.state.sun < effective_type.cost() {
             events.push(GameEvent::InputRejected {
                 action,
                 reason: InputRejectReason::NotEnoughSun,
@@ -6127,15 +6243,18 @@ impl Game {
             return;
         }
 
-        if !conveyor {
+        if !usable_seed && !conveyor {
             self.state.sun -= effective_type.cost();
         }
         self.state.board.selected_seed = None;
-        if conveyor {
-            self.remove_conveyor_seed(packet_index);
-        } else {
-            self.state.board.seed_packets[packet_index].refresh_remaining =
-                effective_type.refresh_time() + 1;
+        self.state.board.selected_usable_seed = None;
+        if let Some(packet_index) = packet_index {
+            if conveyor {
+                self.remove_conveyor_seed(packet_index);
+            } else {
+                self.state.board.seed_packets[packet_index].refresh_remaining =
+                    effective_type.refresh_time() + 1;
+            }
         }
         let id = self.state.board.allocate_entity();
 
@@ -6402,6 +6521,7 @@ impl Game {
             value = 1;
         } else if coin.coin_type == CoinType::UsableSeedPacket {
             if let Some(plant_type) = coin.usable_seed_type {
+                self.state.board.selected_usable_seed = Some(plant_type);
                 self.state.board.selected_seed = Some(plant_type.slot());
             } else {
                 self.state.pickup_inventory.push(coin.coin_type);
@@ -10159,7 +10279,9 @@ impl Game {
                 if coin.position_y + coin.velocity_y < target_y {
                     coin.position_x += coin.velocity_x;
                     coin.position_y += coin.velocity_y;
-                    coin.velocity_y += COIN_GRAVITY;
+                    if coin.coin_type != CoinType::UsableSeedPacket {
+                        coin.velocity_y += COIN_GRAVITY;
+                    }
                 } else {
                     let entity = coin.id;
                     let coin_type = coin.coin_type;
@@ -21103,6 +21225,10 @@ mod tests {
             )
         }));
         assert_eq!(game.state.board.selected_seed, Some(0));
+        assert_eq!(
+            game.state.board.selected_usable_seed,
+            Some(PlantType::Peashooter)
+        );
         assert!(game.state.board.coins.is_empty());
     }
 
@@ -21734,6 +21860,164 @@ mod tests {
         assert_eq!(boss.state().board.zombies.len(), 1);
         assert_eq!(boss.state().board.zombies[0].zombie_type, ZombieType::Boss);
         assert_eq!(boss.state().board.zombies[0].health, BOSS_CHALLENGE_HEALTH);
+    }
+
+    #[test]
+    fn raining_seeds_spawn_on_source_cadence_with_filtered_payloads() {
+        let mut game = Game::new_mode(7, ModeKind::MiniGame, 3);
+        game.state.unlocked_plants = vec![
+            PlantType::Peashooter,
+            PlantType::Sunflower,
+            PlantType::Other(9),
+            PlantType::Other(35),
+            PlantType::Other(37),
+            PlantType::Other(40),
+            PlantType::Other(48),
+            PlantType::Other(16),
+        ];
+
+        assert_eq!(game.state.challenge.kind, ChallengeKind::RainingSeeds);
+        assert_eq!(game.state.challenge.countdown, 100);
+        assert!(game.raining_seed_allowed(PlantType::Peashooter));
+        for plant_type in [
+            PlantType::Sunflower,
+            PlantType::Other(9),
+            PlantType::Other(35),
+            PlantType::Other(37),
+            PlantType::Other(40),
+            PlantType::Other(48),
+        ] {
+            assert!(!game.raining_seed_allowed(plant_type));
+        }
+
+        for _ in 0..99 {
+            let events = game.advance(InputFrame::default());
+            assert!(game.state.board.coins.is_empty());
+            assert!(!events.iter().any(|event| matches!(
+                event,
+                GameEvent::CoinProduced {
+                    coin_type: CoinType::UsableSeedPacket,
+                    ..
+                }
+            )));
+        }
+
+        let events = game.advance(InputFrame::default());
+        let first = game
+            .state
+            .board
+            .coins
+            .first()
+            .expect("first Raining Seeds packet");
+        assert_eq!(first.coin_type, CoinType::UsableSeedPacket);
+        assert!(matches!(
+            first.usable_seed_type,
+            Some(PlantType::Peashooter | PlantType::Other(16))
+        ));
+        assert!((100 * POSITION_SCALE..=649 * POSITION_SCALE).contains(&first.position_x));
+        assert_eq!(first.position_y, 60 * POSITION_SCALE);
+        assert!((300 * POSITION_SCALE..=549 * POSITION_SCALE)
+            .contains(&first.target_y.expect("seed packet landing target")));
+        assert_eq!(first.velocity_y, 330_000);
+        assert!(events.iter().any(|event| matches!(
+            event,
+            GameEvent::CoinProduced {
+                coin_type: CoinType::UsableSeedPacket,
+                ..
+            }
+        )));
+        assert!(!events.iter().any(|event| matches!(
+            event,
+            GameEvent::ChallengeAction {
+                kind: ChallengeKind::RainingSeeds,
+                ..
+            }
+        )));
+
+        let next_countdown = game.state.challenge.countdown;
+        assert!((500..=999).contains(&next_countdown));
+        game.advance(InputFrame::default());
+        assert_eq!(game.state.board.coins[0].velocity_y, 330_000);
+        let mut repeated_events = Vec::new();
+        for _ in 1..next_countdown {
+            repeated_events = game.advance(InputFrame::default());
+        }
+        assert_eq!(game.state.board.coins.len(), 2);
+        assert!((500..=999).contains(&game.state.challenge.countdown));
+        assert_eq!(
+            repeated_events
+                .iter()
+                .filter(|event| matches!(
+                    event,
+                    GameEvent::CoinProduced {
+                        coin_type: CoinType::UsableSeedPacket,
+                        ..
+                    }
+                ))
+                .count(),
+            1
+        );
+    }
+
+    #[test]
+    fn raining_seed_collection_preserves_payload_for_free_planting() {
+        let mut game = Game::new_mode(7, ModeKind::MiniGame, 3);
+        game.state.unlocked_plants = vec![
+            PlantType::Peashooter,
+            PlantType::Sunflower,
+            PlantType::Other(16),
+        ];
+        game.state.sun = 0;
+        game.state.challenge.countdown = 1;
+        game.advance(InputFrame::default());
+
+        let coin = game
+            .state
+            .board
+            .coins
+            .first()
+            .expect("Raining Seeds packet")
+            .clone();
+        let payload = coin.usable_seed_type.expect("seed payload");
+        let row = u8::from(payload == PlantType::Other(16)) * 2;
+        let events = game.advance(InputFrame {
+            actions: vec![
+                InputAction::CollectCoin { entity: coin.id },
+                InputAction::Plant { row, column: 0 },
+            ],
+        });
+
+        assert!(events.iter().any(|event| matches!(
+            event,
+            GameEvent::PickupCollected {
+                entity,
+                coin_type: CoinType::UsableSeedPacket,
+                ..
+            } if *entity == coin.id
+        )));
+        assert!(events.iter().any(|event| matches!(
+            event,
+            GameEvent::PlantPlaced {
+                plant_type,
+                row: placed_row,
+                column: 0,
+                ..
+            } if *plant_type == payload && *placed_row == row
+        )));
+        assert!(game.state.board.coins.is_empty());
+        assert!(game.state.board.selected_seed.is_none());
+        assert!(game.state.board.selected_usable_seed.is_none());
+        assert_eq!(game.state.sun, 0);
+        assert_eq!(
+            game.state
+                .board
+                .seed_packets
+                .iter()
+                .find(|packet| packet.slot == PlantType::Peashooter.slot())
+                .expect("Peashooter bank packet")
+                .refresh_remaining,
+            0
+        );
     }
 
     #[test]

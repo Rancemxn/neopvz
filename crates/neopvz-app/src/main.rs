@@ -1912,6 +1912,35 @@ impl App {
             }
             return;
         }
+        if button == MouseButton::Left {
+            let hit = |position_x: i64, position_y: i64| {
+                (fixed_point_to_logical(position_x) - x).abs() <= 35.0
+                    && (fixed_point_to_logical(position_y) - y).abs() <= 35.0
+            };
+            if let Some(sun) = self
+                .game
+                .state()
+                .board
+                .suns
+                .iter()
+                .find(|sun| hit(sun.position_x, sun.position_y))
+            {
+                self.pending_input.push(InputAction::CollectSun { entity: sun.id });
+                return;
+            }
+            if let Some(coin) = self
+                .game
+                .state()
+                .board
+                .coins
+                .iter()
+                .find(|coin| hit(coin.position_x, coin.position_y))
+            {
+                self.pending_input
+                    .push(InputAction::CollectCoin { entity: coin.id });
+                return;
+            }
+        }
         if !(80.0..800.0).contains(&x) || !(120.0..570.0).contains(&y) {
             return;
         }
@@ -2449,6 +2478,19 @@ impl App {
                             alpha: 1.0,
                         });
                     }
+                    if coin.coin_type == CoinType::UsableSeedPacket
+                        && let Some(plant_type) = coin.usable_seed_type
+                        && let Some((resource_id, _, _, scale)) = board_plant_image(plant_type)
+                    {
+                        frame.sprites.push(SpriteCommand {
+                            resource_id,
+                            x: fixed_point_to_logical(coin.position_x) - 14.0,
+                            y: fixed_point_to_logical(coin.position_y) - 14.0,
+                            z: 7,
+                            scale: scale * 0.55,
+                            alpha: 1.0,
+                        });
+                    }
                 }
                 for zombie in &self.game.state().board.zombies {
                     if board_zombie_image(zombie.zombie_type).is_some() {
@@ -2590,6 +2632,7 @@ fn board_coin_image(coin_type: CoinType) -> Option<(u32, f32)> {
         CoinType::Silver => Some((BOARD_COIN_SILVER_IMAGE_ID, 0.65)),
         CoinType::Gold => Some((BOARD_COIN_GOLD_IMAGE_ID, 0.65)),
         CoinType::Diamond => Some((BOARD_DIAMOND_IMAGE_ID, 0.65)),
+        CoinType::UsableSeedPacket => Some((SEED_PACKET_NORMAL_IMAGE_ID, 0.8)),
         _ => None,
     }
 }
@@ -4074,6 +4117,10 @@ mod tests {
         assert_eq!(
             board_coin_image(CoinType::Diamond),
             Some((BOARD_DIAMOND_IMAGE_ID, 0.65))
+        );
+        assert_eq!(
+            board_coin_image(CoinType::UsableSeedPacket),
+            Some((SEED_PACKET_NORMAL_IMAGE_ID, 0.8))
         );
         assert_eq!(board_coin_image(CoinType::Trophy), None);
     }
