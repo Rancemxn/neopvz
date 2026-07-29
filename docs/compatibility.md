@@ -104,8 +104,8 @@ the 120-update arc with source gravity, applies Day/Pool/Fog/Roof/Boss ground
 and collision-height rules, and resolves impact from the current rectangle and
 top-plant priority. Focused checks cover first eligible collision, scene
 heights and roof slope, stack priority, and target replacement; evidence is in
-ignored `artifacts/pult-trajectories/verification.md`. Issue `#217`, PR and
-Actions pending.
+ignored `artifacts/pult-trajectories/verification.md`. Issue `#217`, PR `#261`,
+Actions `30490198714`/`30490198670`.
 
 ## Player-Accessible Modes
 
