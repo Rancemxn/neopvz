@@ -3646,6 +3646,17 @@ impl Game {
     }
 
     #[doc(hidden)]
+    pub fn debug_prepare_garden_fulfill(&mut self) -> Vec<GameEvent> {
+        self.state.level_scene = SceneKind::Garden;
+        self.state.scene = SceneKind::Garden;
+        self.state.garden_service = Some(GardenServiceKind::Zen);
+        self.state.garden = initial_garden_state(GardenServiceKind::Zen);
+        let mut events = Vec::new();
+        self.garden_fulfill_need(0, &mut events);
+        events
+    }
+
+    #[doc(hidden)]
     pub fn debug_prepare_plant_firing_audio(&mut self) -> Vec<GameEvent> {
         self.state.level_scene = SceneKind::Night;
         self.state.scene = SceneKind::Night;

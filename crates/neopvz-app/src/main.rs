@@ -97,6 +97,7 @@ enum Checkpoint {
     Torchwood,
     GardenWater,
     GardenFertilize,
+    GardenFulfill,
     IceShroom,
     PotatoMine,
     ExplosionPlants,
@@ -155,8 +156,9 @@ impl From<Checkpoint> for SceneKind {
             Checkpoint::SunProduction => Self::Day,
             Checkpoint::PlantFiring => Self::Night,
             Checkpoint::Torchwood => Self::Day,
-            Checkpoint::GardenWater => Self::Garden,
-            Checkpoint::GardenFertilize => Self::Garden,
+            Checkpoint::GardenWater | Checkpoint::GardenFertilize | Checkpoint::GardenFulfill => {
+                Self::Garden
+            }
             Checkpoint::IceShroom => Self::Night,
             Checkpoint::PotatoMine => Self::Day,
             Checkpoint::ExplosionPlants => Self::Night,
@@ -1319,9 +1321,9 @@ impl App {
         profile: Option<SaveProfile>,
     ) -> Self {
         let mut game = match checkpoint {
-            Some(Checkpoint::GardenWater | Checkpoint::GardenFertilize) => {
-                Game::new_mode(0, ModeKind::ZenGarden, 0)
-            }
+            Some(
+                Checkpoint::GardenWater | Checkpoint::GardenFertilize | Checkpoint::GardenFulfill,
+            ) => Game::new_mode(0, ModeKind::ZenGarden, 0),
             Some(Checkpoint::Butter) => Game::new(0, SceneKind::Day),
             Some(Checkpoint::ProjectileImpacts) => Game::new(0, SceneKind::Day),
             Some(Checkpoint::PrizeChime) => Game::new(0, SceneKind::Day),
@@ -1402,6 +1404,9 @@ impl App {
             }
             Some(Checkpoint::GardenFertilize) => {
                 pending_input.push(InputAction::GardenFertilize { plant: 0 });
+            }
+            Some(Checkpoint::GardenFulfill) => {
+                startup_events = game.debug_prepare_garden_fulfill();
             }
             Some(Checkpoint::IceShroom) => game.debug_prepare_ice_shroom(),
             Some(Checkpoint::PotatoMine) => game.debug_prepare_potato_mine(),
@@ -1963,10 +1968,10 @@ impl App {
                     tracing::debug!(path, "audio resource is unavailable");
                     continue;
                 };
-                tracing::debug!(tick, ?kind, ?event, path, "audio event queued");
+                tracing::info!(tick, ?kind, ?event, path, "audio event queued");
                 if let Some(audio) = &mut self.audio {
                     match audio.play_bytes(kind, path, bytes) {
-                        Ok(()) => tracing::debug!(tick, ?kind, path, "audio playback started"),
+                        Ok(()) => tracing::info!(tick, ?kind, path, "audio playback started"),
                         Err(error) => tracing::warn!(%error, path, "audio playback failed"),
                     }
                 }
@@ -2639,6 +2644,7 @@ fn audio_for_event(event: &GameEvent) -> Option<(AudioKind, &'static str)> {
         GameEvent::CoinCollected { .. } => Some((AudioKind::Effect, "sounds/coin.ogg")),
         GameEvent::GardenWatered { .. } => Some((AudioKind::Effect, "sounds/watering.ogg")),
         GameEvent::GardenFertilized { .. } => Some((AudioKind::Effect, "sounds/fertilizer.ogg")),
+        GameEvent::GardenBecameHappy { .. } => Some((AudioKind::Effect, "sounds/prize.ogg")),
         GameEvent::PlantSpecialTriggered {
             plant_type: neopvz_core::PlantType::Other(14),
             ..
@@ -3154,6 +3160,13 @@ mod tests {
                 age_ticks: 100,
             }),
             Some((AudioKind::Effect, "sounds/fertilizer.ogg"))
+        );
+        assert_eq!(
+            audio_for_event(&GameEvent::GardenBecameHappy {
+                plant: 0,
+                aquatic: false,
+            }),
+            Some((AudioKind::Effect, "sounds/prize.ogg"))
         );
         assert_eq!(
             audio_for_event(&GameEvent::PlantSpecialTriggered {
