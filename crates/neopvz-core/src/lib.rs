@@ -236,13 +236,24 @@ const SCREEN_DOOR_SHIELD_HEALTH: i32 = 1_100;
 // levels.
 const DIGGER_WALK_SPEED: i64 = 120_000;
 const DIGGER_IZOMBIE_WALK_SPEED: i64 = 230_000;
-// Zombie_UpdateDolphin in the target build uses a 120-tick jump and the
-// source's 0.9/0.5/0.3 walk-speed phases.
+// Zombie_UpdateDolphin in the target build uses a timed pool entry, a
+// 120-tick jump, and the source's 0.9/0.5/0.3 walk-speed phases.
+const DOLPHIN_ENTRY_TICKS: u32 = 100;
+// Zombie.cpp emits the entry splash at animation time 0.56.
+const DOLPHIN_SPLASH_TICKS: u32 = 56;
+const DOLPHIN_EXIT_TICKS: u32 = 40;
 const DOLPHIN_JUMP_TIME: u32 = 120;
+const DOLPHIN_WALKING_PHASE: u8 = 0;
+const DOLPHIN_INTO_POOL_PHASE: u8 = 1;
+const DOLPHIN_RIDING_PHASE: u8 = 2;
+const DOLPHIN_IN_JUMP_PHASE: u8 = 3;
+const DOLPHIN_WALKING_IN_POOL_PHASE: u8 = 4;
+const DOLPHIN_WALKING_WITHOUT_DOLPHIN_PHASE: u8 = 5;
 const DOLPHIN_WALK_SPEED: i64 = 900_000;
 const DOLPHIN_RIDE_SPEED: i64 = 500_000;
 const DOLPHIN_POOL_SPEED: i64 = 300_000;
-const DOLPHIN_JUMP_TARGET_OFFSET: i64 = 94 * POSITION_SCALE;
+const DOLPHIN_JUMP_BONK_COUNTER: u32 = 84;
+const DOLPHIN_JUMP_SPLASH_COUNTER: u32 = 61;
 const SNORKEL_ENTRY_SPEED: i64 = 200_000;
 const SNORKEL_POOL_SPEED: i64 = 300_000;
 const SNORKEL_ENTRY_TICKS: u32 = 100;
@@ -7177,41 +7188,160 @@ impl Game {
         events.push(GameEvent::ZombieDied { entity });
     }
 
-    fn update_dolphin_state(&mut self, zombie_index: usize) {
-        let zombie = &mut self.state.board.zombies[zombie_index];
-        if zombie.zombie_type != ZombieType::DolphinRider {
-            return;
+    fn dolphin_is_tangle_target(&self, entity: EntityId) -> bool {
+        self.state.board.plants.iter().any(|plant| {
+            plant.plant_type.is_tangle_kelp()
+                && plant.special_armed
+                && plant.special_target == Some(entity)
+        })
+    }
+
+    fn update_dolphin_state(&mut self, zombie_index: usize, events: &mut Vec<GameEvent>) -> bool {
+        let (entity, row, position_x, phase, counter, backwards) = {
+            let zombie = &self.state.board.zombies[zombie_index];
+            if zombie.zombie_type != ZombieType::DolphinRider {
+                return false;
+            }
+            (
+                zombie.id,
+                zombie.row,
+                zombie.position_x,
+                zombie.dolphin_phase,
+                zombie.dolphin_counter,
+                zombie.hypnotized,
+            )
+        };
+        if self.state.scene != SceneKind::Pool || !matches!(row, 2 | 3) {
+            return false;
+        }
+        if self.dolphin_is_tangle_target(entity) {
+            return false;
         }
 
-        let in_pool = self.state.scene == SceneKind::Pool && matches!(zombie.row, 2 | 3);
-        match zombie.dolphin_phase {
-            0 if in_pool
-                && zombie.position_x > 700 * POSITION_SCALE
-                && zombie.position_x <= 720 * POSITION_SCALE =>
+        let next_counter = counter.saturating_sub(1);
+        let ride_target = phase == DOLPHIN_RIDING_PHASE
+            && self
+                .find_plant_for_dolphin(row, position_x, false)
+                .is_some();
+        let jump_target = if phase == DOLPHIN_IN_JUMP_PHASE
+            && next_counter == DOLPHIN_JUMP_BONK_COUNTER
+        {
+            self.find_plant_for_dolphin(row, position_x, true)
+                .filter(|&plant_index| self.state.board.plants[plant_index].plant_type.slot() == 23)
+                .map(|plant_index| {
+                    (
+                        grid_x(self.state.board.plants[plant_index].column) + 25 * POSITION_SCALE,
+                        self.state.board.plants[plant_index].id,
+                    )
+                })
+        } else {
+            None
+        };
+
+        let mut pool_splash = false;
+        let mut jump_started = false;
+        let mut suppress_attack = false;
+        let mut jump_blocked = None;
+        let mut reset_walk_speed = false;
+        {
+            let zombie = &mut self.state.board.zombies[zombie_index];
+            if matches!(
+                zombie.dolphin_phase,
+                DOLPHIN_WALKING_PHASE | DOLPHIN_WALKING_WITHOUT_DOLPHIN_PHASE
+            ) && zombie.in_pool
+                && zombie.dolphin_counter > 0
             {
-                zombie.position_x -= 70 * POSITION_SCALE;
-                zombie.dolphin_phase = 1;
-                zombie.speed = DOLPHIN_RIDE_SPEED;
-            }
-            1 if zombie.position_x <= 10 * POSITION_SCALE => {
-                zombie.dolphin_phase = 0;
-                zombie.speed = DOLPHIN_WALK_SPEED;
-            }
-            2 => {
                 zombie.dolphin_counter = zombie.dolphin_counter.saturating_sub(1);
                 if zombie.dolphin_counter == 0 {
-                    zombie.position_x = zombie.dolphin_target_x.unwrap_or(zombie.position_x);
-                    zombie.dolphin_target_x = None;
-                    zombie.dolphin_phase = 3;
-                    zombie.speed = DOLPHIN_POOL_SPEED;
+                    zombie.in_pool = false;
                 }
             }
-            3 if in_pool && zombie.position_x <= 10 * POSITION_SCALE => {
-                zombie.dolphin_phase = 4;
-                zombie.speed = DOLPHIN_WALK_SPEED;
+
+            match zombie.dolphin_phase {
+                DOLPHIN_WALKING_PHASE
+                    if !backwards
+                        && zombie.position_x > 700 * POSITION_SCALE
+                        && zombie.position_x <= 720 * POSITION_SCALE =>
+                {
+                    zombie.dolphin_phase = DOLPHIN_INTO_POOL_PHASE;
+                    zombie.dolphin_counter = DOLPHIN_ENTRY_TICKS;
+                }
+                DOLPHIN_INTO_POOL_PHASE => {
+                    zombie.dolphin_counter = next_counter;
+                    if zombie.dolphin_counter == DOLPHIN_ENTRY_TICKS - DOLPHIN_SPLASH_TICKS {
+                        pool_splash = true;
+                    }
+                    if zombie.dolphin_counter == 0 {
+                        zombie.position_x -= 70 * POSITION_SCALE;
+                        zombie.dolphin_phase = DOLPHIN_RIDING_PHASE;
+                        zombie.in_pool = true;
+                        zombie.speed = DOLPHIN_RIDE_SPEED;
+                        suppress_attack = true;
+                    }
+                }
+                DOLPHIN_RIDING_PHASE => {
+                    if zombie.position_x <= 10 * POSITION_SCALE {
+                        zombie.dolphin_phase = DOLPHIN_WALKING_PHASE;
+                        zombie.dolphin_counter = DOLPHIN_EXIT_TICKS;
+                        reset_walk_speed = true;
+                    } else if ride_target {
+                        zombie.dolphin_phase = DOLPHIN_IN_JUMP_PHASE;
+                        zombie.dolphin_counter = DOLPHIN_JUMP_TIME;
+                        zombie.speed = DOLPHIN_RIDE_SPEED;
+                        zombie.dolphin_target_x = None;
+                        zombie.eating = false;
+                        jump_started = true;
+                    }
+                }
+                DOLPHIN_IN_JUMP_PHASE => {
+                    zombie.dolphin_counter = next_counter;
+                    if let Some((target_x, plant)) = jump_target {
+                        zombie.position_x = target_x;
+                        zombie.dolphin_phase = DOLPHIN_WALKING_IN_POOL_PHASE;
+                        zombie.dolphin_counter = 0;
+                        zombie.speed = DOLPHIN_POOL_SPEED;
+                        suppress_attack = true;
+                        jump_blocked = Some(plant);
+                    } else if zombie.dolphin_counter == DOLPHIN_JUMP_SPLASH_COUNTER {
+                        zombie.speed = 0;
+                    } else if zombie.dolphin_counter == 0 {
+                        zombie.position_x -= 94 * POSITION_SCALE;
+                        zombie.dolphin_phase = DOLPHIN_WALKING_IN_POOL_PHASE;
+                        zombie.speed = DOLPHIN_POOL_SPEED;
+                        suppress_attack = true;
+                    }
+                }
+                DOLPHIN_WALKING_IN_POOL_PHASE
+                    if (!backwards && zombie.position_x <= 10 * POSITION_SCALE)
+                        || (backwards && zombie.position_x > 680 * POSITION_SCALE) =>
+                {
+                    zombie.dolphin_phase = DOLPHIN_WALKING_WITHOUT_DOLPHIN_PHASE;
+                    zombie.dolphin_counter = DOLPHIN_EXIT_TICKS;
+                    reset_walk_speed = true;
+                }
+                _ => {}
             }
-            _ => {}
         }
+
+        if reset_walk_speed {
+            self.state.board.zombies[zombie_index].speed = self.rng.fixed_range(890_000, 910_000);
+        }
+        if pool_splash {
+            events.push(GameEvent::ZombieEnteredPool {
+                entity,
+                variant: self.rng.range(2) as u8,
+            });
+        }
+        if jump_started {
+            events.push(GameEvent::DolphinJumpStarted { entity });
+        }
+        if let Some(plant) = jump_blocked {
+            events.push(GameEvent::JumpBlocked {
+                zombie: entity,
+                plant,
+            });
+        }
+        suppress_attack
     }
 
     fn update_snorkel_state(&mut self, zombie_index: usize, events: &mut Vec<GameEvent>) {
@@ -8204,6 +8334,7 @@ impl Game {
                     && zombie.position_x < 680 * POSITION_SCALE
                     && !zombie.in_pool
                     && zombie.zombie_type != ZombieType::Snorkel
+                    && zombie.zombie_type != ZombieType::DolphinRider
                     && (zombie_type_can_go_in_pool(zombie.zombie_type)
                         || zombie.zombie_type == ZombieType::DuckyTube)
                 {
@@ -8217,7 +8348,7 @@ impl Game {
                     variant: self.rng.range(2) as u8,
                 });
             }
-            self.update_dolphin_state(zombie_index);
+            let dolphin_suppress_attack = self.update_dolphin_state(zombie_index, events);
             self.update_snorkel_state(zombie_index, events);
             self.update_zamboni_state(zombie_index);
             let garlic_active = self.advance_garlic_state(zombie_index, events);
@@ -8399,7 +8530,6 @@ impl Game {
                 pogo_bouncing,
                 dancer_dancing,
                 digger_hidden,
-                dolphin_jumping,
                 balloon_airborne,
                 bobsled_sliding,
             ) = {
@@ -8426,8 +8556,6 @@ impl Game {
                     || (zombie.zombie_type == ZombieType::Digger
                         && (zombie.digger_underground || zombie.digger_counter > 0))
                     || snorkel_blocks_movement(zombie)
-                    || (zombie.zombie_type == ZombieType::DolphinRider
-                        && zombie.dolphin_phase == 2)
                     || (zombie.zombie_type == ZombieType::Balloon
                         && zombie.balloon_phase == BALLOON_POPPING_PHASE)
                     || zombie.zombie_type == ZombieType::Bungee)
@@ -8468,7 +8596,6 @@ impl Game {
                     zombie.zombie_type == ZombieType::Dancer && zombie.dancer_counter > 0,
                     zombie.zombie_type == ZombieType::Digger
                         && (zombie.digger_underground || zombie.digger_counter > 0),
-                    zombie.zombie_type == ZombieType::DolphinRider && zombie.dolphin_phase == 2,
                     balloon_is_airborne(zombie),
                     zombie.zombie_type == ZombieType::Bobsled && zombie.bobsled_sliding,
                 )
@@ -8484,7 +8611,10 @@ impl Game {
                 && !dancer_dancing
                 && !digger_hidden
                 && !snorkel_blocks_attack(&self.state.board.zombies[zombie_index])
-                && !dolphin_jumping
+                && !dolphin_suppress_attack
+                && !dolphin_blocks_attack(&self.state.board.zombies[zombie_index])
+                && !(self.state.board.zombies[zombie_index].zombie_type == ZombieType::DolphinRider
+                    && self.dolphin_is_tangle_target(entity))
                 && !balloon_airborne
                 && !bobsled_sliding
                 && self.state.board.zombies[zombie_index].zombie_type != ZombieType::Bungee
@@ -8494,7 +8624,14 @@ impl Game {
                     self.attack_zombie_target(entity, row, events);
                 } else {
                     let ztype = self.state.board.zombies[zombie_index].zombie_type;
-                    let target = self.find_plant_for_zombie(row, position_x, ztype);
+                    let target = if ztype == ZombieType::DolphinRider
+                        && self.state.board.zombies[zombie_index].dolphin_phase
+                            == DOLPHIN_RIDING_PHASE
+                    {
+                        self.find_plant_for_dolphin(row, position_x, false)
+                    } else {
+                        self.find_plant_for_zombie(row, position_x, ztype)
+                    };
                     let pogo_has_stick = ztype == ZombieType::Pogo
                         && self.state.board.zombies[zombie_index].special_phase == 0;
                     self.state.board.zombies[zombie_index].eating =
@@ -8555,20 +8692,6 @@ impl Game {
                                     (target_x - position_x) / i64::from(POGO_BOUNCE_TICKS);
                                 zombie.eating = false;
                             }
-                        } else if ztype == ZombieType::DolphinRider
-                            && self.state.board.zombies[zombie_index].dolphin_phase == 1
-                            && self.state.board.plants[plant_index].plant_type.slot() != 23
-                        {
-                            let zombie = &mut self.state.board.zombies[zombie_index];
-                            zombie.dolphin_phase = 2;
-                            zombie.dolphin_counter = DOLPHIN_JUMP_TIME;
-                            zombie.dolphin_target_x = Some(
-                                grid_x(self.state.board.plants[plant_index].column)
-                                    - DOLPHIN_JUMP_TARGET_OFFSET,
-                            );
-                            zombie.speed = 0;
-                            zombie.eating = false;
-                            events.push(GameEvent::DolphinJumpStarted { entity });
                         } else if ztype == ZombieType::Zamboni {
                             self.state.board.plants.remove(plant_index);
                             self.state.board.zombies[zombie_index].eating = false;
@@ -9909,6 +10032,15 @@ impl Game {
                 )
             })
             .map(|(index, _)| index)
+    }
+
+    fn find_plant_for_dolphin(&self, row: u8, zombie_x: i64, in_jump: bool) -> Option<usize> {
+        self.find_plant_for_pole_vault(row, zombie_x, in_jump)
+            .filter(|&plant_index| {
+                !self.state.board.plants[plant_index]
+                    .plant_type
+                    .is_tangle_kelp()
+            })
     }
 
     fn find_catapult_target(&self, row: u8, zombie_x: i64) -> Option<usize> {
@@ -11856,7 +11988,7 @@ fn zombie_horizontal_rect(zombie: &ZombieState) -> (i64, i64) {
         ZombieType::Snorkel => (12, 62),
         ZombieType::Bobsled if zombie.bobsled_leader && zombie.bobsled_sliding => (-50, 275),
         ZombieType::Boss => (700, 90),
-        ZombieType::DolphinRider if zombie.dolphin_phase >= 3 => (20, 42),
+        ZombieType::DolphinRider if zombie.dolphin_phase >= DOLPHIN_IN_JUMP_PHASE => (20, 42),
         _ => (36, 42),
     };
     let left = zombie.position_x + left * POSITION_SCALE;
@@ -11885,7 +12017,8 @@ fn squash_hits_zombie(zombie: &ZombieState, row: u8, target_x: i64) -> bool {
         || zombie.imp_flight_ticks > 0
         || (zombie.zombie_type == ZombieType::Digger
             && (zombie.digger_underground || zombie.digger_counter > 0))
-        || (zombie.zombie_type == ZombieType::DolphinRider && zombie.dolphin_phase == 2)
+        || (zombie.zombie_type == ZombieType::DolphinRider
+            && zombie.dolphin_phase == DOLPHIN_IN_JUMP_PHASE)
         || (zombie.zombie_type == ZombieType::Pogo && zombie.pogo_counter > 0)
         || (zombie.zombie_type == ZombieType::Dancer
             && !zombie.dancer_summoned
@@ -11970,6 +12103,18 @@ fn snorkel_blocks_attack(zombie: &ZombieState) -> bool {
                 | SNORKEL_EATING_IN_POOL_PHASE
                 | SNORKEL_DOWN_FROM_EAT_PHASE
                 | SNORKEL_OUT_OF_POOL_PHASE
+        )
+}
+
+fn dolphin_blocks_attack(zombie: &ZombieState) -> bool {
+    zombie.zombie_type == ZombieType::DolphinRider
+        && matches!(
+            zombie.dolphin_phase,
+            DOLPHIN_WALKING_PHASE
+                | DOLPHIN_INTO_POOL_PHASE
+                | DOLPHIN_RIDING_PHASE
+                | DOLPHIN_IN_JUMP_PHASE
+                | DOLPHIN_WALKING_WITHOUT_DOLPHIN_PHASE
         )
 }
 
@@ -14566,17 +14711,13 @@ mod tests {
     }
 
     #[test]
-    fn dolphin_rider_enters_pool_and_jumps_over_a_plant_but_not_tallnut() {
+    fn dolphin_rider_restores_source_pool_and_jump_phases() {
         let mut game = Game::new(7, SceneKind::Pool);
-        game.advance(InputFrame {
-            actions: vec![
-                InputAction::SelectSeed { slot: 24 },
-                InputAction::Plant { row: 2, column: 2 },
-            ],
-        });
-        let plant_id = game.state.board.plants[0].id;
         let mut setup = Vec::new();
         let dolphin = game.spawn_dolphin_rider_zombie(2, 0, Some(720 * POSITION_SCALE), &mut setup);
+        assert_eq!(game.state.board.zombies[0].health, 500);
+
+        let first_events = game.advance(InputFrame::default());
         let dolphin_state = game
             .state
             .board
@@ -14584,11 +14725,28 @@ mod tests {
             .iter()
             .find(|candidate| candidate.id == dolphin)
             .unwrap();
-        // Zombie_Init gives the Dolphin Rider a 500-HP body, not the plain 270.
-        assert_eq!(dolphin_state.health, 500);
+        assert_eq!(dolphin_state.dolphin_phase, DOLPHIN_INTO_POOL_PHASE);
+        assert_eq!(dolphin_state.dolphin_counter, DOLPHIN_ENTRY_TICKS);
         assert_eq!(dolphin_state.speed, DOLPHIN_WALK_SPEED);
+        assert!(!dolphin_state.in_pool);
+        assert!(!first_events.iter().any(|event| matches!(
+            event,
+            GameEvent::ZombieEnteredPool { entity, .. } if *entity == dolphin
+        )));
 
-        game.advance(InputFrame::default());
+        let splash_events = (0..DOLPHIN_SPLASH_TICKS)
+            .flat_map(|_| game.advance(InputFrame::default()))
+            .collect::<Vec<_>>();
+        assert_eq!(
+            splash_events
+                .iter()
+                .filter(|event| matches!(
+                    event,
+                    GameEvent::ZombieEnteredPool { entity, .. } if *entity == dolphin
+                ))
+                .count(),
+            1
+        );
         let dolphin_state = game
             .state
             .board
@@ -14596,19 +14754,50 @@ mod tests {
             .iter()
             .find(|candidate| candidate.id == dolphin)
             .unwrap();
-        assert_eq!(dolphin_state.dolphin_phase, 1);
-        assert_eq!(dolphin_state.speed, DOLPHIN_RIDE_SPEED);
+        assert_eq!(
+            dolphin_state.dolphin_counter,
+            DOLPHIN_ENTRY_TICKS - DOLPHIN_SPLASH_TICKS
+        );
+        assert_eq!(dolphin_state.dolphin_phase, DOLPHIN_INTO_POOL_PHASE);
+        assert!(!dolphin_state.in_pool);
 
+        let entry_events = (DOLPHIN_SPLASH_TICKS..DOLPHIN_ENTRY_TICKS)
+            .flat_map(|_| game.advance(InputFrame::default()))
+            .collect::<Vec<_>>();
+        assert!(!entry_events.iter().any(|event| matches!(
+            event,
+            GameEvent::ZombieEnteredPool { entity, .. } if *entity == dolphin
+        )));
         let dolphin_state = game
             .state
             .board
             .zombies
-            .iter_mut()
+            .iter()
             .find(|candidate| candidate.id == dolphin)
             .unwrap();
-        dolphin_state.position_x = grid_x(2) + 20 * POSITION_SCALE;
-        dolphin_state.speed = 0;
-        dolphin_state.age = 3;
+        assert_eq!(dolphin_state.dolphin_phase, DOLPHIN_RIDING_PHASE);
+        assert_eq!(dolphin_state.dolphin_counter, 0);
+        assert_eq!(dolphin_state.speed, DOLPHIN_RIDE_SPEED);
+        assert!(dolphin_state.in_pool);
+
+        game.place_izombie_plant(PlantType::Sunflower, 2, 2);
+        let plant_id = game.state.board.plants[0].id;
+        game.state.board.plants[0].launch_counter = 10_000;
+        {
+            let dolphin_state = game
+                .state
+                .board
+                .zombies
+                .iter_mut()
+                .find(|candidate| candidate.id == dolphin)
+                .unwrap();
+            dolphin_state.position_x = grid_x(2) + 20 * POSITION_SCALE;
+            dolphin_state.dolphin_phase = DOLPHIN_RIDING_PHASE;
+            dolphin_state.dolphin_counter = 0;
+            dolphin_state.in_pool = true;
+            dolphin_state.speed = DOLPHIN_RIDE_SPEED;
+            dolphin_state.age = 3;
+        }
         let jump_events = game.advance(InputFrame::default());
         assert!(jump_events.iter().any(|event| matches!(
             event,
@@ -14619,18 +14808,48 @@ mod tests {
             GameEvent::PlantDamaged { entity, .. } | GameEvent::PlantDied { entity }
                 if *entity == plant_id
         )));
-        let dolphin_state = game
+        let jump_start_position = game
             .state
             .board
             .zombies
             .iter()
             .find(|candidate| candidate.id == dolphin)
-            .unwrap();
-        assert_eq!(dolphin_state.dolphin_phase, 2);
-        assert_eq!(dolphin_state.dolphin_counter, DOLPHIN_JUMP_TIME);
-        assert_eq!(game.state.board.plants[0].health, 300);
-
-        for _ in 0..DOLPHIN_JUMP_TIME {
+            .unwrap()
+            .position_x;
+        assert_eq!(
+            game.state
+                .board
+                .zombies
+                .iter()
+                .find(|candidate| candidate.id == dolphin)
+                .unwrap()
+                .dolphin_phase,
+            DOLPHIN_IN_JUMP_PHASE
+        );
+        assert_eq!(
+            game.state
+                .board
+                .zombies
+                .iter()
+                .find(|candidate| candidate.id == dolphin)
+                .unwrap()
+                .dolphin_counter,
+            DOLPHIN_JUMP_TIME
+        );
+        for _ in 0..10 {
+            game.advance(InputFrame::default());
+        }
+        assert!(
+            game.state
+                .board
+                .zombies
+                .iter()
+                .find(|candidate| candidate.id == dolphin)
+                .unwrap()
+                .position_x
+                < jump_start_position
+        );
+        for _ in 10..DOLPHIN_JUMP_TIME {
             game.advance(InputFrame::default());
         }
         let dolphin_state = game
@@ -14640,21 +14859,75 @@ mod tests {
             .iter()
             .find(|candidate| candidate.id == dolphin)
             .unwrap();
-        assert_eq!(dolphin_state.dolphin_phase, 3);
-        assert_eq!(
-            dolphin_state.position_x,
-            grid_x(2) - DOLPHIN_JUMP_TARGET_OFFSET - DOLPHIN_POOL_SPEED
-        );
+        assert_eq!(dolphin_state.dolphin_phase, DOLPHIN_WALKING_IN_POOL_PHASE);
+        assert_eq!(dolphin_state.speed, DOLPHIN_POOL_SPEED);
+        assert!(dolphin_state.in_pool);
         assert_eq!(game.state.board.plants[0].health, 300);
 
-        let mut blocked = Game::new(7, SceneKind::Day);
-        blocked.state.sun = 125;
-        blocked.advance(InputFrame {
-            actions: vec![
-                InputAction::SelectSeed { slot: 23 },
-                InputAction::Plant { row: 2, column: 2 },
-            ],
-        });
+        let dolphin_index = game
+            .state
+            .board
+            .zombies
+            .iter()
+            .position(|candidate| candidate.id == dolphin)
+            .unwrap();
+        {
+            let dolphin_state = &mut game.state.board.zombies[dolphin_index];
+            dolphin_state.position_x = 10 * POSITION_SCALE;
+            dolphin_state.dolphin_phase = DOLPHIN_RIDING_PHASE;
+            dolphin_state.dolphin_counter = 0;
+            dolphin_state.speed = 0;
+        }
+        let mut exit_events = Vec::new();
+        game.update_dolphin_state(dolphin_index, &mut exit_events);
+        assert_eq!(
+            game.state.board.zombies[dolphin_index].dolphin_phase,
+            DOLPHIN_WALKING_PHASE
+        );
+        assert_eq!(
+            game.state.board.zombies[dolphin_index].dolphin_counter,
+            DOLPHIN_EXIT_TICKS
+        );
+        assert!(game.state.board.zombies[dolphin_index].in_pool);
+        for _ in 0..DOLPHIN_EXIT_TICKS {
+            game.update_dolphin_state(dolphin_index, &mut exit_events);
+        }
+        assert!(!game.state.board.zombies[dolphin_index].in_pool);
+
+        let mut backwards = Game::new(7, SceneKind::Pool);
+        let mut setup = Vec::new();
+        let backwards_id =
+            backwards.spawn_dolphin_rider_zombie(2, 0, Some(681 * POSITION_SCALE), &mut setup);
+        let backwards_index = backwards
+            .state
+            .board
+            .zombies
+            .iter()
+            .position(|candidate| candidate.id == backwards_id)
+            .unwrap();
+        {
+            let state = &mut backwards.state.board.zombies[backwards_index];
+            state.dolphin_phase = DOLPHIN_WALKING_IN_POOL_PHASE;
+            state.dolphin_counter = 0;
+            state.in_pool = true;
+            state.hypnotized = true;
+            state.speed = 0;
+        }
+        let mut backwards_events = Vec::new();
+        backwards.update_dolphin_state(backwards_index, &mut backwards_events);
+        assert_eq!(
+            backwards.state.board.zombies[backwards_index].dolphin_phase,
+            DOLPHIN_WALKING_WITHOUT_DOLPHIN_PHASE
+        );
+        assert!(backwards.state.board.zombies[backwards_index].in_pool);
+        for _ in 0..DOLPHIN_EXIT_TICKS {
+            backwards.update_dolphin_state(backwards_index, &mut backwards_events);
+        }
+        assert!(!backwards.state.board.zombies[backwards_index].in_pool);
+
+        let mut blocked = Game::new(7, SceneKind::Pool);
+        blocked.place_izombie_plant(PlantType::Other(23), 2, 2);
+        let tallnut = blocked.state.board.plants[0].id;
         let tallnut_health = blocked.state.board.plants[0].health;
         let mut setup = Vec::new();
         let blocked_dolphin = blocked.spawn_dolphin_rider_zombie(
@@ -14663,28 +14936,93 @@ mod tests {
             Some(grid_x(2) + 20 * POSITION_SCALE),
             &mut setup,
         );
-        let dolphin_state = blocked
-            .state
-            .board
-            .zombies
-            .iter_mut()
-            .find(|candidate| candidate.id == blocked_dolphin)
-            .unwrap();
-        dolphin_state.dolphin_phase = 1;
-        dolphin_state.speed = 0;
-        dolphin_state.age = 3;
-        blocked.advance(InputFrame::default());
-        let dolphin_state = blocked
+        {
+            let state = blocked
+                .state
+                .board
+                .zombies
+                .iter_mut()
+                .find(|candidate| candidate.id == blocked_dolphin)
+                .unwrap();
+            state.dolphin_phase = DOLPHIN_RIDING_PHASE;
+            state.dolphin_counter = 0;
+            state.in_pool = true;
+            state.speed = DOLPHIN_RIDE_SPEED;
+            state.age = 3;
+        }
+        let start_events = blocked.advance(InputFrame::default());
+        assert!(start_events.iter().any(|event| matches!(
+            event,
+            GameEvent::DolphinJumpStarted { entity } if *entity == blocked_dolphin
+        )));
+        let blocked_events = (0..(DOLPHIN_JUMP_TIME - DOLPHIN_JUMP_BONK_COUNTER))
+            .flat_map(|_| blocked.advance(InputFrame::default()))
+            .collect::<Vec<_>>();
+        assert!(blocked_events.iter().any(|event| matches!(
+            event,
+            GameEvent::JumpBlocked { zombie, plant }
+                if *zombie == blocked_dolphin && *plant == tallnut
+        )));
+        let blocked_state = blocked
             .state
             .board
             .zombies
             .iter()
             .find(|candidate| candidate.id == blocked_dolphin)
             .unwrap();
-        assert_eq!(dolphin_state.dolphin_phase, 1);
+        assert_eq!(blocked_state.dolphin_phase, DOLPHIN_WALKING_IN_POOL_PHASE);
         assert_eq!(
-            blocked.state.board.plants[0].health,
-            tallnut_health - ZOMBIE_BITE_DAMAGE
+            blocked_state.position_x,
+            grid_x(2) + 25 * POSITION_SCALE - DOLPHIN_POOL_SPEED
+        );
+        assert_eq!(blocked.state.board.plants[0].health, tallnut_health);
+        assert!(!blocked_events.iter().any(|event| matches!(
+            event,
+            GameEvent::PlantDamaged { entity, .. } | GameEvent::PlantDied { entity }
+                if *entity == tallnut
+        )));
+    }
+
+    #[test]
+    fn dolphin_rider_does_not_jump_while_tanglekelp_targets_it() {
+        let mut game = Game::new(7, SceneKind::Pool);
+        game.place_izombie_plant(PlantType::Other(19), 2, 2);
+        let tanglekelp = game.state.board.plants[0].id;
+        let mut setup = Vec::new();
+        let dolphin = game.spawn_dolphin_rider_zombie(
+            2,
+            0,
+            Some(grid_x(2) + 20 * POSITION_SCALE),
+            &mut setup,
+        );
+        {
+            let plant = &mut game.state.board.plants[0];
+            plant.special_armed = true;
+            plant.special_counter = TANGLE_KELP_GRAB_TICKS;
+            plant.special_target = Some(dolphin);
+        }
+        {
+            let state = game
+                .state
+                .board
+                .zombies
+                .iter_mut()
+                .find(|candidate| candidate.id == dolphin)
+                .unwrap();
+            state.dolphin_phase = DOLPHIN_RIDING_PHASE;
+            state.in_pool = true;
+            state.speed = DOLPHIN_RIDE_SPEED;
+            state.age = 3;
+        }
+        let events = game.advance(InputFrame::default());
+        assert!(!events.iter().any(|event| matches!(
+            event,
+            GameEvent::DolphinJumpStarted { entity } if *entity == dolphin
+        )));
+        assert_eq!(game.state.board.plants[0].id, tanglekelp);
+        assert_eq!(
+            game.state.board.zombies[0].dolphin_phase,
+            DOLPHIN_RIDING_PHASE
         );
     }
 
