@@ -193,6 +193,8 @@ const BUNGEE_DROP_DIVE_ALTITUDE: i64 = 3_000;
 const BUNGEE_DROP_SPEED: i64 = 8;
 const BUNGEE_RISE_DEPART_TICKS: u32 = 75;
 const SKY_DROP_DELAY_TICKS: u32 = 210;
+const GRAVE_RISE_TICKS: u32 = 150;
+const WATER_RISE_TICKS: u32 = 50;
 const DANCER_ENTRANCE_TICKS: u32 = 300;
 const DANCER_SNAP_TICKS: u32 = 50;
 const DANCER_HOLD_TICKS: u32 = 200;
@@ -2184,6 +2186,8 @@ pub struct ZombieState {
     pub zombie_type: ZombieType,
     pub row: u8,
     pub position_x: i64,
+    #[serde(default)]
+    pub altitude: i64,
     pub speed: i64,
     pub health: i32,
     pub max_health: i32,
@@ -2269,6 +2273,8 @@ pub struct ZombieState {
     pub departed: bool,
     #[serde(default)]
     pub in_pool: bool,
+    #[serde(default)]
+    pub rise_counter: u32,
     #[serde(default)]
     pub armor_intact: bool,
     #[serde(default)]
@@ -8779,6 +8785,16 @@ impl Game {
                 // a Jack killed by damage never explodes.
                 continue;
             }
+            let rising_from_grave = {
+                let zombie = &mut self.state.board.zombies[zombie_index];
+                if zombie.rise_counter == 0 {
+                    false
+                } else {
+                    zombie.rise_counter -= 1;
+                    zombie.altitude = rising_zombie_altitude(zombie.rise_counter, zombie.in_pool);
+                    true
+                }
+            };
             self.update_balloon_state(zombie_index);
             let bobsled_finished = {
                 let zombie = &mut self.state.board.zombies[zombie_index];
@@ -9116,7 +9132,8 @@ impl Game {
                     || snorkel_blocks_movement(zombie)
                     || (zombie.zombie_type == ZombieType::Balloon
                         && zombie.balloon_phase == BALLOON_POPPING_PHASE)
-                    || zombie.zombie_type == ZombieType::Bungee)
+                    || zombie.zombie_type == ZombieType::Bungee
+                    || rising_from_grave)
                 {
                     let sledding =
                         zombie.zombie_type == ZombieType::Bobsled && zombie.bobsled_sliding;
@@ -9173,6 +9190,7 @@ impl Game {
                 && !pole_vaulting
                 && !dancer_dancing
                 && !digger_hidden
+                && !rising_from_grave
                 && !snorkel_blocks_attack(&self.state.board.zombies[zombie_index])
                 && !dolphin_suppress_attack
                 && !dolphin_blocks_attack(&self.state.board.zombies[zombie_index])
@@ -10323,7 +10341,7 @@ impl Game {
         // gravestones on night boards, pool emerges, or the roof sky drop.
         if matches!(
             self.state.scene,
-            SceneKind::Roof | SceneKind::Night | SceneKind::Pool
+            SceneKind::Roof | SceneKind::Night | SceneKind::Pool | SceneKind::Fog
         ) && self.state.board.wave.current >= self.state.board.wave.total
             && !self.state.board.wave.endless
         {
@@ -10359,7 +10377,24 @@ impl Game {
             _ => 270,
         };
         let position = grid_x(column) - 25 * POSITION_SCALE;
-        self._spawn_zombie_inner(zombie_type, health, row, wave, Some(position), events);
+        let entity =
+            self._spawn_zombie_inner(zombie_type, health, row, wave, Some(position), events);
+        let in_pool = scene_has_water_rows(self.state.scene);
+        let counter = if in_pool {
+            WATER_RISE_TICKS
+        } else {
+            GRAVE_RISE_TICKS
+        };
+        let zombie = self
+            .state
+            .board
+            .zombies
+            .iter_mut()
+            .find(|zombie| zombie.id == entity)
+            .unwrap();
+        zombie.in_pool = in_pool;
+        zombie.rise_counter = counter;
+        zombie.altitude = rising_zombie_altitude(counter, in_pool);
     }
 
     /// TotalZombiesHealthInWave for the most recently spawned wave: body plus
@@ -10405,7 +10440,7 @@ impl Game {
                 }
                 return;
             }
-            SceneKind::Pool => {
+            SceneKind::Pool | SceneKind::Fog => {
                 let count = if matches!(self.state.level, 21 | 22 | 31 | 32) {
                     2
                 } else {
@@ -12360,6 +12395,7 @@ impl Game {
             zombie_type,
             row,
             position_x,
+            altitude: 0,
             speed,
             health,
             max_health: health,
@@ -12444,6 +12480,7 @@ impl Game {
             blowing_away: false,
             departed: false,
             in_pool: false,
+            rise_counter: 0,
             armor_intact: matches!(
                 zombie_type,
                 ZombieType::Buckethead
@@ -12724,9 +12761,21 @@ fn plant_damage_can_hit_zombie(zombie: &ZombieState) -> bool {
 }
 
 fn zombie_rejects_ground_damage(zombie: &ZombieState) -> bool {
-    (zombie.zombie_type == ZombieType::BackupDancer && zombie.dancer_phase == DANCER_RISE_PHASE)
+    zombie.rise_counter > 0
+        || (zombie.zombie_type == ZombieType::BackupDancer
+            && zombie.dancer_phase == DANCER_RISE_PHASE)
         || (zombie.zombie_type == ZombieType::Digger
             && (zombie.digger_underground || zombie.digger_counter > 0))
+}
+
+fn rising_zombie_altitude(counter: u32, in_pool: bool) -> i64 {
+    let curve_counter = i64::from(counter.min(WATER_RISE_TICKS));
+    let curve_ticks = i64::from(WATER_RISE_TICKS);
+    if in_pool {
+        -40 * POSITION_SCALE - 110 * POSITION_SCALE * curve_counter / curve_ticks
+    } else {
+        -200 * POSITION_SCALE * curve_counter / curve_ticks
+    }
 }
 
 fn snorkel_blocks_movement(zombie: &ZombieState) -> bool {
@@ -18306,7 +18355,7 @@ mod tests {
         game.advance(InputFrame::default());
         assert!(game.state.board.sky_drop_countdown > 0);
         let before: Vec<EntityId> = game.state.board.zombies.iter().map(|z| z.id).collect();
-        for _ in 0..SKY_DROP_DELAY_TICKS {
+        while game.state.board.sky_drop_countdown > 0 {
             game.advance(InputFrame::default());
         }
         let risers: Vec<&ZombieState> = game
@@ -18322,6 +18371,11 @@ mod tests {
                 .iter()
                 .all(|z| matches!(z.zombie_type, ZombieType::Normal | ZombieType::Conehead))
         );
+        assert!(risers.iter().all(|zombie| {
+            !zombie.in_pool
+                && zombie.rise_counter == GRAVE_RISE_TICKS
+                && zombie.altitude == -200 * POSITION_SCALE
+        }));
 
         let mut pool = Game::new_mode(7, ModeKind::Adventure, 21);
         let total = pool.state.board.wave.total;
@@ -18329,7 +18383,7 @@ mod tests {
         pool.state.board.wave.countdown = 1;
         pool.advance(InputFrame::default());
         let before: Vec<EntityId> = pool.state.board.zombies.iter().map(|z| z.id).collect();
-        for _ in 0..SKY_DROP_DELAY_TICKS {
+        while pool.state.board.sky_drop_countdown > 0 {
             pool.advance(InputFrame::default());
         }
         let emerged: Vec<&ZombieState> = pool
@@ -18341,11 +18395,146 @@ mod tests {
             .collect();
         assert_eq!(emerged.len(), 2, "levels 21-22 emerge two zombies");
         assert!(
-            emerged
-                .iter()
-                .all(|z| matches!(z.row, 2 | 3) && z.position_x < grid_x(8)),
+            emerged.iter().all(|z| {
+                matches!(z.row, 2 | 3)
+                    && z.position_x < grid_x(8)
+                    && z.in_pool
+                    && z.rise_counter == WATER_RISE_TICKS
+                    && z.altitude == -150 * POSITION_SCALE
+            }),
             "pool emerges use the source cell block"
         );
+
+        let mut fog = Game::new_mode(7, ModeKind::Adventure, 31);
+        let total = fog.state.board.wave.total;
+        fog.state.board.wave.current = total - 1;
+        fog.state.board.wave.countdown = 1;
+        fog.advance(InputFrame::default());
+        assert!(fog.state.board.sky_drop_countdown > 0);
+        let before: Vec<EntityId> = fog.state.board.zombies.iter().map(|z| z.id).collect();
+        while fog.state.board.sky_drop_countdown > 0 {
+            fog.advance(InputFrame::default());
+        }
+        let emerged: Vec<&ZombieState> = fog
+            .state
+            .board
+            .zombies
+            .iter()
+            .filter(|zombie| !before.contains(&zombie.id))
+            .collect();
+        assert_eq!(emerged.len(), 2, "levels 31-32 emerge two zombies");
+        assert!(emerged.iter().all(|zombie| {
+            zombie.in_pool && zombie.rise_counter == WATER_RISE_TICKS && matches!(zombie.row, 2 | 3)
+        }));
+    }
+
+    #[test]
+    fn rising_zombies_follow_land_and_water_damage_boundaries() {
+        let mut land = Game::new(7, SceneKind::Night);
+        let mut events = Vec::new();
+        land.spawn_rising_zombie(ZombieType::Normal, 1, 4, 0, &mut events);
+        let zombie = land.state.board.zombies[0].id;
+        let position = land.state.board.zombies[0].position_x;
+        assert_eq!(land.state.board.zombies[0].rise_counter, GRAVE_RISE_TICKS);
+        assert_eq!(land.state.board.zombies[0].altitude, -200 * POSITION_SCALE);
+        assert!(!projectile_can_hit_zombie(
+            &land.state.board.zombies[0],
+            ProjectileType::Pea
+        ));
+
+        land.fire_projectile(
+            0,
+            ProjectileType::Pea,
+            1,
+            ProjectileTrajectory {
+                motion: ProjectileMotion::Straight,
+                position_x: position,
+                position_y: grid_y(1),
+                velocity_x: 0,
+                velocity_y: 0,
+            },
+            &mut events,
+        );
+        land.update_projectiles(&mut events);
+        assert!(!events.iter().any(|event| matches!(
+            event,
+            GameEvent::ProjectileHit { zombie: hit, .. } if *hit == zombie
+        )));
+        land.state.board.projectiles.clear();
+
+        for _ in 1..GRAVE_RISE_TICKS {
+            land.advance(InputFrame::default());
+        }
+        assert_eq!(land.state.board.zombies[0].rise_counter, 1);
+        assert_eq!(land.state.board.zombies[0].altitude, -4 * POSITION_SCALE);
+        assert!(!projectile_can_hit_zombie(
+            &land.state.board.zombies[0],
+            ProjectileType::Pea
+        ));
+        land.advance(InputFrame::default());
+        assert_eq!(land.state.board.zombies[0].rise_counter, 0);
+        assert_eq!(land.state.board.zombies[0].altitude, 0);
+        assert_eq!(land.state.board.zombies[0].position_x, position);
+        assert!(projectile_can_hit_zombie(
+            &land.state.board.zombies[0],
+            ProjectileType::Pea
+        ));
+
+        events.clear();
+        land.fire_projectile(
+            0,
+            ProjectileType::Pea,
+            1,
+            ProjectileTrajectory {
+                motion: ProjectileMotion::Straight,
+                position_x: position,
+                position_y: grid_y(1),
+                velocity_x: 0,
+                velocity_y: 0,
+            },
+            &mut events,
+        );
+        land.update_projectiles(&mut events);
+        assert!(events.iter().any(|event| matches!(
+            event,
+            GameEvent::ProjectileHit { zombie: hit, damage: 20, .. } if *hit == zombie
+        )));
+        land.advance(InputFrame::default());
+        assert!(land.state.board.zombies[0].position_x < position);
+
+        let mut pool = Game::new(7, SceneKind::Pool);
+        let mut pool_events = Vec::new();
+        pool.spawn_rising_zombie(ZombieType::Normal, 2, 5, 0, &mut pool_events);
+        assert!(pool.state.board.zombies[0].in_pool);
+        assert_eq!(pool.state.board.zombies[0].rise_counter, WATER_RISE_TICKS);
+        assert_eq!(pool.state.board.zombies[0].altitude, -150 * POSITION_SCALE);
+        for _ in 1..WATER_RISE_TICKS {
+            pool.advance(InputFrame::default());
+        }
+        assert_eq!(pool.state.board.zombies[0].rise_counter, 1);
+        assert_eq!(
+            pool.state.board.zombies[0].altitude,
+            -40 * POSITION_SCALE - 110 * POSITION_SCALE / i64::from(WATER_RISE_TICKS)
+        );
+        pool.advance(InputFrame::default());
+        assert_eq!(pool.state.board.zombies[0].rise_counter, 0);
+        assert_eq!(pool.state.board.zombies[0].altitude, -40 * POSITION_SCALE);
+        assert!(projectile_can_hit_zombie(
+            &pool.state.board.zombies[0],
+            ProjectileType::Pea
+        ));
+
+        let mut cob = Game::new(7, SceneKind::Night);
+        let mut cob_events = Vec::new();
+        cob.spawn_rising_zombie(ZombieType::Normal, 1, 4, 0, &mut cob_events);
+        let cob_target = cob.state.board.zombies[0].id;
+        cob.fire_cob_projectile(0, 1, 0, 1, 4, &mut cob_events);
+        let projectile = cob.state.board.projectiles.pop().unwrap();
+        cob.apply_cob_explosion(&projectile, 1, grid_x(4), &mut cob_events);
+        assert!(cob_events.iter().any(|event| matches!(
+            event,
+            GameEvent::ProjectileHit { zombie, damage: 1_800, .. } if *zombie == cob_target
+        )));
     }
 
     #[test]

@@ -2453,7 +2453,7 @@ impl App {
                 for zombie in &self.game.state().board.zombies {
                     if board_zombie_image(zombie.zombie_type).is_some() {
                         let x = fixed_point_to_logical(zombie.position_x);
-                        let y = board_row_y(zombie.row);
+                        let y = board_row_y(zombie.row) - fixed_point_to_logical(zombie.altitude);
                         frame.sprites.push(SpriteCommand {
                             resource_id: BOARD_ZOMBIE_BODY_IMAGE_ID,
                             x: x - 34.0,
