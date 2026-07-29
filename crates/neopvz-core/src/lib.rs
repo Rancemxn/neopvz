@@ -5133,9 +5133,7 @@ impl Game {
             .filter(|plant| plant.plant_type.slot() == 16)
             .count();
         // Challenge::UpdateRainingSeeds uses TodAnimateCurve(0, 18, count, 30, 1).
-        let lily_chance = u32::try_from(lily_count)
-            .unwrap_or(u32::MAX)
-            .min(18);
+        let lily_chance = u32::try_from(lily_count).unwrap_or(u32::MAX).min(18);
         let lily_chance = 30 - (lily_chance * 29 + 9) / 18;
         Some(if self.rng.range(100) < lily_chance {
             PlantType::Other(16)
@@ -21916,8 +21914,10 @@ mod tests {
         ));
         assert!((100 * POSITION_SCALE..=649 * POSITION_SCALE).contains(&first.position_x));
         assert_eq!(first.position_y, 60 * POSITION_SCALE);
-        assert!((300 * POSITION_SCALE..=549 * POSITION_SCALE)
-            .contains(&first.target_y.expect("seed packet landing target")));
+        assert!(
+            (300 * POSITION_SCALE..=549 * POSITION_SCALE)
+                .contains(&first.target_y.expect("seed packet landing target"))
+        );
         assert_eq!(first.velocity_y, 330_000);
         assert!(events.iter().any(|event| matches!(
             event,

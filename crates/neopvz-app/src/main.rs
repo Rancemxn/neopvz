@@ -1925,7 +1925,8 @@ impl App {
                 .iter()
                 .find(|sun| hit(sun.position_x, sun.position_y))
             {
-                self.pending_input.push(InputAction::CollectSun { entity: sun.id });
+                self.pending_input
+                    .push(InputAction::CollectSun { entity: sun.id });
                 return;
             }
             if let Some(coin) = self
