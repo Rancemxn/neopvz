@@ -10543,6 +10543,7 @@ impl Game {
             .iter()
             .enumerate()
             .filter(|(_, plant)| plant.row == row && plant.health > 0)
+            .filter(|(_, plant)| !plant.plant_type.is_tangle_kelp())
             .filter(|(_, plant)| {
                 !plant.plant_type.is_squash()
                     || (!plant.special_armed
@@ -10588,6 +10589,7 @@ impl Game {
             .iter()
             .enumerate()
             .filter(|(_, plant)| plant.row == row && plant.health > 0)
+            .filter(|(_, plant)| !plant.plant_type.is_tangle_kelp())
             .filter(|(_, plant)| !plant.plant_type.is_spikeweed())
             .filter(|(_, plant)| {
                 let plant_x = grid_x(plant.column);
@@ -19786,12 +19788,13 @@ mod tests {
         });
         let tangle_kelp = game.state.board.plants[0].id;
         let mut setup_events = Vec::new();
-        let zombie = game.spawn_normal_zombie(
-            2,
-            0,
-            Some(grid_x(2) + 30 * POSITION_SCALE),
-            &mut setup_events,
+        let zombie_x = grid_x(2) + 20 * POSITION_SCALE;
+        let zombie = game.spawn_normal_zombie(2, 0, Some(zombie_x), &mut setup_events);
+        assert_eq!(
+            game.find_plant_for_zombie(2, zombie_x, ZombieType::Normal),
+            None
         );
+        assert_eq!(game.find_plant_for_pole_vault(2, zombie_x, false), None);
 
         let events = (0..=TANGLE_KELP_GRAB_TICKS)
             .flat_map(|_| game.advance(InputFrame::default()))
