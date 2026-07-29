@@ -13441,6 +13441,12 @@ mod tests {
             ],
         });
         let mut setup_events = Vec::new();
+        let target = game.spawn_normal_zombie(2, 0, Some(500 * POSITION_SCALE), &mut setup_events);
+        let adjacent =
+            game.spawn_normal_zombie(1, 0, Some(500 * POSITION_SCALE), &mut setup_events);
+        for zombie in &mut game.state.board.zombies {
+            zombie.speed = 0;
+        }
         game.fire_projectile(
             0,
             ProjectileType::SnowPea,
@@ -13480,6 +13486,51 @@ mod tests {
         assert_eq!(
             game.state.board.projectiles[0].projectile_type,
             ProjectileType::Pea
+        );
+
+        let mut hit = false;
+        let mut splash = false;
+        let mut chilled = false;
+        for _ in 0..200 {
+            for event in game.advance(InputFrame::default()) {
+                hit |= matches!(
+                    event,
+                    GameEvent::ProjectileHit {
+                        zombie,
+                        damage: 20,
+                        ..
+                    } if zombie == target
+                );
+                splash |= matches!(event, GameEvent::ProjectileSplashHit { .. });
+                chilled |= matches!(event, GameEvent::ZombieChilled { .. });
+            }
+            if hit {
+                break;
+            }
+        }
+
+        assert!(hit);
+        assert!(!splash);
+        assert!(!chilled);
+        assert_eq!(
+            game.state
+                .board
+                .zombies
+                .iter()
+                .find(|zombie| zombie.id == target)
+                .expect("target")
+                .health,
+            250
+        );
+        assert_eq!(
+            game.state
+                .board
+                .zombies
+                .iter()
+                .find(|zombie| zombie.id == adjacent)
+                .expect("adjacent")
+                .health,
+            270
         );
     }
 
