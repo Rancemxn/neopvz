@@ -18,6 +18,11 @@ pub const POOL_ROWS: u8 = 6;
 pub const REPLAY_FORMAT_VERSION: u32 = 1;
 
 const POSITION_SCALE: i64 = 1_000_000;
+
+pub fn fixed_point_to_logical(position: i64) -> f32 {
+    position as f32 / POSITION_SCALE as f32
+}
+
 const FIRST_WAVE_COUNTDOWN: u32 = 1_800;
 const SUN_COUNTDOWN: u32 = 425;
 const SUN_COUNTDOWN_RANGE: u32 = 275;
@@ -3034,6 +3039,10 @@ pub enum GameEvent {
         coin_type: CoinType,
         value: u32,
     },
+    CoinLanded {
+        entity: EntityId,
+        coin_type: CoinType,
+    },
     CoinCollected {
         entity: EntityId,
         coin_type: CoinType,
@@ -3089,6 +3098,12 @@ pub enum GameEvent {
         source: EntityId,
         projectile_type: ProjectileType,
         row: u8,
+    },
+    ProjectileIgnited {
+        projectile: EntityId,
+    },
+    ProjectileWarmed {
+        projectile: EntityId,
     },
     CobCannonFired {
         entity: EntityId,
@@ -3508,6 +3523,107 @@ impl Game {
     }
 
     #[doc(hidden)]
+    pub fn debug_prepare_gold_coin_landing(&mut self) -> Vec<GameEvent> {
+        self.state.level_scene = SceneKind::Day;
+        self.state.scene = SceneKind::Day;
+        self.state.board.coins.clear();
+        let mut setup_events = Vec::new();
+        self.spawn_coin(
+            CoinType::Gold,
+            300 * POSITION_SCALE,
+            200 * POSITION_SCALE,
+            &mut setup_events,
+        );
+        for _ in 0..100 {
+            let events = self.advance(InputFrame::default());
+            if events.iter().any(|event| {
+                matches!(
+                    event,
+                    GameEvent::CoinLanded {
+                        coin_type: CoinType::Gold,
+                        ..
+                    }
+                )
+            }) {
+                return events;
+            }
+        }
+        panic!("gold coin landing checkpoint did not settle");
+    }
+
+    #[doc(hidden)]
+    pub fn debug_prepare_diamond_collection(&mut self) -> Vec<GameEvent> {
+        self.state.level_scene = SceneKind::Day;
+        self.state.scene = SceneKind::Day;
+        self.state.board.coins.clear();
+        let mut events = Vec::new();
+        self.spawn_pickup(
+            CoinType::Diamond,
+            300 * POSITION_SCALE,
+            200 * POSITION_SCALE,
+            &mut events,
+        );
+        let entity = self.state.board.coins[0].id;
+        self.collect_coin(entity, &mut events);
+        events
+    }
+
+    #[doc(hidden)]
+    pub fn debug_prepare_usable_seed_collection(&mut self) -> Vec<GameEvent> {
+        self.state.level_scene = SceneKind::Day;
+        self.state.scene = SceneKind::Day;
+        self.state.board.coins.clear();
+        let mut events = Vec::new();
+        self.spawn_pickup_with_payload(
+            CoinType::UsableSeedPacket,
+            300 * POSITION_SCALE,
+            200 * POSITION_SCALE,
+            Some(PlantType::Peashooter),
+            Some(PlantType::Peashooter),
+            &mut events,
+        );
+        let entity = self.state.board.coins[0].id;
+        self.collect_coin(entity, &mut events);
+        events
+    }
+
+    #[doc(hidden)]
+    pub fn debug_prepare_prize_collection(&mut self) -> Vec<GameEvent> {
+        self.state.level_scene = SceneKind::Day;
+        self.state.scene = SceneKind::Day;
+        self.state.board.coins.clear();
+        let mut events = Vec::new();
+        self.spawn_pickup_with_payload(
+            CoinType::PresentPlant,
+            300 * POSITION_SCALE,
+            200 * POSITION_SCALE,
+            Some(PlantType::Peashooter),
+            None,
+            &mut events,
+        );
+        let entity = self.state.board.coins[0].id;
+        self.collect_coin(entity, &mut events);
+        events
+    }
+
+    #[doc(hidden)]
+    pub fn debug_prepare_sun_pickup_collection(&mut self) -> Vec<GameEvent> {
+        self.state.level_scene = SceneKind::Day;
+        self.state.scene = SceneKind::Day;
+        self.state.board.coins.clear();
+        let mut events = Vec::new();
+        self.spawn_pickup(
+            CoinType::Sun,
+            300 * POSITION_SCALE,
+            200 * POSITION_SCALE,
+            &mut events,
+        );
+        let entity = self.state.board.coins[0].id;
+        self.collect_coin(entity, &mut events);
+        events
+    }
+
+    #[doc(hidden)]
     pub fn debug_prepare_sun_production(&mut self) {
         self.state.level_scene = SceneKind::Day;
         self.state.scene = SceneKind::Day;
@@ -3859,17 +3975,59 @@ impl Game {
     }
 
     #[doc(hidden)]
+    pub fn debug_prepare_torchwood(&mut self) -> Vec<GameEvent> {
+        self.state.level_scene = SceneKind::Day;
+        self.state.scene = SceneKind::Day;
+        self.state.sun = 300;
+        self.state.board.plants.clear();
+        self.state.board.zombies.clear();
+        self.state.board.projectiles.clear();
+        self.advance(InputFrame {
+            actions: vec![
+                InputAction::SelectSeed { slot: 22 },
+                InputAction::Plant { row: 2, column: 1 },
+            ],
+        });
+
+        let mut setup_events = Vec::new();
+        self.fire_projectile(
+            0,
+            ProjectileType::Pea,
+            2,
+            ProjectileTrajectory {
+                motion: ProjectileMotion::Straight,
+                position_x: grid_x(1) - POSITION_SCALE,
+                position_y: grid_y(2),
+                velocity_x: 3_330_000,
+                velocity_y: 0,
+            },
+            &mut setup_events,
+        );
+        self.advance(InputFrame::default())
+    }
+
+    #[doc(hidden)]
     pub fn debug_prepare_vase_break(&mut self) -> Vec<GameEvent> {
         self.state.level_scene = SceneKind::Day;
         self.state.scene = SceneKind::Day;
         self.state.mode = ModeKind::Vasebreaker;
-        self.state.board.vases = vec![VaseState {
-            id: 1,
-            row: 2,
-            column: 2,
-            contents: VaseContents::Plant(PlantType::Peashooter),
-            leaf: false,
-        }];
+        // Keep one vase so this audio checkpoint remains on the board scene.
+        self.state.board.vases = vec![
+            VaseState {
+                id: 1,
+                row: 2,
+                column: 2,
+                contents: VaseContents::Plant(PlantType::Peashooter),
+                leaf: false,
+            },
+            VaseState {
+                id: 2,
+                row: 0,
+                column: 1,
+                contents: VaseContents::Plant(PlantType::Sunflower),
+                leaf: false,
+            },
+        ];
         let mut events = Vec::new();
         self.break_vase(2, 2, &mut events);
         events
@@ -4466,6 +4624,32 @@ impl Game {
         &self.state
     }
 
+    pub fn apply_profile(&mut self, profile: &SaveProfile) {
+        self.state.coins = profile.inventory.coins;
+        self.state.garden = profile.garden.clone();
+    }
+
+    pub fn update_profile(&self, profile: &mut SaveProfile) {
+        profile.inventory.coins = self.state.coins;
+        profile.garden = self.state.garden.clone();
+        if self.state.scene == SceneKind::Complete {
+            let completed_levels = u16::from(self.state.level).saturating_add(1);
+            if let Some(completion) = profile
+                .mode_completion
+                .iter_mut()
+                .find(|completion| completion.mode == self.state.mode)
+            {
+                completion.completed_levels = completion.completed_levels.max(completed_levels);
+            } else if profile.mode_completion.len() < 6 {
+                profile.mode_completion.push(ModeCompletion {
+                    mode: self.state.mode,
+                    completed_levels,
+                    endless_unlocked: false,
+                });
+            }
+        }
+    }
+
     pub fn advance(&mut self, input: InputFrame) -> Vec<GameEvent> {
         let mut events = Vec::new();
         let mut restarted = false;
@@ -4495,7 +4679,7 @@ impl Game {
                 self.state.board.ice_counter = self.state.board.ice_counter.saturating_sub(1);
                 self.update_craters();
                 self.update_ice();
-                self.update_suns();
+                self.update_suns(&mut events);
                 self.update_sky_drop(&mut events);
                 self.state.tick = self.state.tick.saturating_add(1);
                 self.state.wave = self.state.board.wave.current;
@@ -9362,7 +9546,7 @@ impl Game {
                 }
                 continue;
             }
-            self.apply_torchwood(projectile_index);
+            self.apply_torchwood(projectile_index, events);
             let projectile = self.state.board.projectiles[projectile_index].clone();
             let projectile_row = projectile_row(projectile.position_y, self.state.board.rows);
             let target = self
@@ -9413,7 +9597,7 @@ impl Game {
         }
     }
 
-    fn apply_torchwood(&mut self, projectile_index: usize) {
+    fn apply_torchwood(&mut self, projectile_index: usize, events: &mut Vec<GameEvent>) {
         let projectile_type = self.state.board.projectiles[projectile_index].projectile_type;
         if !matches!(
             projectile_type,
@@ -9426,26 +9610,34 @@ impl Game {
         let projectile_row = projectile.row;
         let previous_x = projectile.position_x - projectile.velocity_x;
         let current_x = projectile.position_x;
-        let (left_x, right_x) = if previous_x <= current_x {
-            (previous_x, current_x)
-        } else {
-            (current_x, previous_x)
-        };
         if !self.state.board.plants.iter().any(|plant| {
             let torchwood_x = grid_x(plant.column);
             plant.row == projectile_row
                 && plant.plant_type.is_torchwood()
-                && left_x <= torchwood_x
-                && torchwood_x <= right_x
+                && if previous_x <= current_x {
+                    previous_x < torchwood_x && torchwood_x <= current_x
+                } else {
+                    current_x <= torchwood_x && torchwood_x < previous_x
+                }
         }) {
             return;
         }
 
-        // ponytail: upgrade only the verified pea-family shots here; widen the bullet matrix once
-        // the remaining torchwood cases are observed locally.
+        let projectile_id = self.state.board.projectiles[projectile_index].id;
         let projectile = &mut self.state.board.projectiles[projectile_index];
-        projectile.projectile_type = ProjectileType::Fireball;
-        projectile.damage = ProjectileType::Fireball.damage();
+        if projectile_type == ProjectileType::Pea {
+            projectile.projectile_type = ProjectileType::Fireball;
+            projectile.damage = ProjectileType::Fireball.damage();
+            events.push(GameEvent::ProjectileIgnited {
+                projectile: projectile_id,
+            });
+        } else {
+            projectile.projectile_type = ProjectileType::Pea;
+            projectile.damage = ProjectileType::Pea.damage();
+            events.push(GameEvent::ProjectileWarmed {
+                projectile: projectile_id,
+            });
+        }
     }
 
     fn emit_projectile_impact(
@@ -9788,7 +9980,7 @@ impl Game {
         }
     }
 
-    fn update_suns(&mut self) {
+    fn update_suns(&mut self, events: &mut Vec<GameEvent>) {
         for sun in &mut self.state.board.suns {
             if let Some(target_y) = sun.target_y {
                 if sun.velocity_y != 0 || sun.velocity_x != 0 {
@@ -9817,10 +10009,13 @@ impl Game {
                     coin.position_y += coin.velocity_y;
                     coin.velocity_y += COIN_GRAVITY;
                 } else {
+                    let entity = coin.id;
+                    let coin_type = coin.coin_type;
                     coin.position_y = target_y;
                     coin.target_y = None;
                     coin.velocity_x = 0;
                     coin.velocity_y = 0;
+                    events.push(GameEvent::CoinLanded { entity, coin_type });
                 }
             }
         }
@@ -12374,6 +12569,13 @@ mod tests {
     use super::*;
 
     #[test]
+    fn fixed_point_positions_convert_to_logical_units() {
+        assert_eq!(fixed_point_to_logical(0), 0.0);
+        assert_eq!(fixed_point_to_logical(POSITION_SCALE), 1.0);
+        assert_eq!(fixed_point_to_logical(-2 * POSITION_SCALE), -2.0);
+    }
+
+    #[test]
     fn mt19937_matches_the_target_generator_sequence() {
         let mut rng = Mt19937::new(0);
         assert_eq!(
@@ -12994,10 +13196,14 @@ mod tests {
         }
 
         let mut saw_fireball = false;
+        let mut saw_firepea = false;
         let mut saw_fireball_hit = false;
         let mut saw_fireball_splash = false;
         for _ in 0..200 {
             let events = game.advance(InputFrame::default());
+            saw_firepea |= events
+                .iter()
+                .any(|event| matches!(event, GameEvent::ProjectileIgnited { .. }));
             saw_fireball |= game.state.board.projectiles.iter().any(|projectile| {
                 projectile.projectile_type == ProjectileType::Fireball && projectile.damage == 40
             });
@@ -13012,9 +13218,63 @@ mod tests {
             }
         }
 
+        assert!(saw_firepea);
         assert!(saw_fireball);
         assert!(saw_fireball_hit);
         assert!(saw_fireball_splash);
+    }
+
+    #[test]
+    fn torchwood_warms_snowpeas_without_igniting_them() {
+        let mut game = Game::new(7, SceneKind::Day);
+        game.state.sun = 175;
+        game.advance(InputFrame {
+            actions: vec![
+                InputAction::SelectSeed { slot: 22 },
+                InputAction::Plant { row: 2, column: 1 },
+            ],
+        });
+        let mut setup_events = Vec::new();
+        game.fire_projectile(
+            0,
+            ProjectileType::SnowPea,
+            2,
+            ProjectileTrajectory {
+                motion: ProjectileMotion::Straight,
+                position_x: grid_x(1) - POSITION_SCALE,
+                position_y: grid_y(2),
+                velocity_x: 3_330_000,
+                velocity_y: 0,
+            },
+            &mut setup_events,
+        );
+
+        let events = game.advance(InputFrame::default());
+        assert!(
+            events
+                .iter()
+                .any(|event| matches!(event, GameEvent::ProjectileWarmed { .. }))
+        );
+        assert!(
+            events
+                .iter()
+                .all(|event| !matches!(event, GameEvent::ProjectileIgnited { .. }))
+        );
+        assert_eq!(
+            game.state.board.projectiles[0].projectile_type,
+            ProjectileType::Pea
+        );
+        assert_eq!(game.state.board.projectiles[0].damage, 20);
+
+        let events = game.advance(InputFrame::default());
+        assert!(events.iter().all(|event| !matches!(
+            event,
+            GameEvent::ProjectileIgnited { .. } | GameEvent::ProjectileWarmed { .. }
+        )));
+        assert_eq!(
+            game.state.board.projectiles[0].projectile_type,
+            ProjectileType::Pea
+        );
     }
 
     #[test]
@@ -20003,6 +20263,145 @@ mod tests {
                 GameEvent::ProjectileImpact { kind: actual, .. } if *actual == kind
             )));
         }
+    }
+
+    #[test]
+    fn debug_vase_break_checkpoint_keeps_a_board_vase_visible() {
+        let mut game = Game::new(0, SceneKind::Day);
+        let events = game.debug_prepare_vase_break();
+        assert!(
+            events
+                .iter()
+                .any(|event| matches!(event, GameEvent::VaseBroken { .. }))
+        );
+        assert_eq!(game.state.scene, SceneKind::Day);
+        assert_eq!(game.state.board.vases.len(), 1);
+    }
+
+    #[test]
+    fn debug_torchwood_checkpoint_emits_firepea_event() {
+        let mut game = Game::new(0, SceneKind::Day);
+        let events = game.debug_prepare_torchwood();
+        assert!(
+            events
+                .iter()
+                .any(|event| matches!(event, GameEvent::ProjectileIgnited { .. }))
+        );
+        assert!(game.state.board.projectiles.iter().any(|projectile| {
+            projectile.projectile_type == ProjectileType::Fireball && projectile.damage == 40
+        }));
+    }
+
+    #[test]
+    fn debug_gold_coin_checkpoint_emits_landing_event() {
+        let mut game = Game::new(0, SceneKind::Day);
+        let events = game.debug_prepare_gold_coin_landing();
+        assert!(events.iter().any(|event| {
+            matches!(
+                event,
+                GameEvent::CoinLanded {
+                    coin_type: CoinType::Gold,
+                    ..
+                }
+            )
+        }));
+        assert_eq!(game.state.board.coins[0].target_y, None);
+        assert_eq!(game.state.board.coins[0].velocity_y, 0);
+    }
+
+    #[test]
+    fn debug_diamond_checkpoint_emits_collection_event() {
+        let mut game = Game::new(0, SceneKind::Day);
+        let events = game.debug_prepare_diamond_collection();
+        assert!(events.iter().any(|event| {
+            matches!(
+                event,
+                GameEvent::CoinCollected {
+                    coin_type: CoinType::Diamond,
+                    ..
+                }
+            )
+        }));
+        assert!(game.state.board.coins.is_empty());
+    }
+
+    #[test]
+    fn debug_usable_seed_checkpoint_emits_collection_event() {
+        let mut game = Game::new(0, SceneKind::Day);
+        let events = game.debug_prepare_usable_seed_collection();
+        assert!(events.iter().any(|event| {
+            matches!(
+                event,
+                GameEvent::PickupCollected {
+                    coin_type: CoinType::UsableSeedPacket,
+                    ..
+                }
+            )
+        }));
+        assert_eq!(game.state.board.selected_seed, Some(0));
+        assert!(game.state.board.coins.is_empty());
+    }
+
+    #[test]
+    fn debug_prize_checkpoint_emits_collection_event() {
+        let mut game = Game::new(0, SceneKind::Day);
+        let events = game.debug_prepare_prize_collection();
+        assert!(events.iter().any(|event| {
+            matches!(
+                event,
+                GameEvent::PickupCollected {
+                    coin_type: CoinType::PresentPlant,
+                    ..
+                }
+            )
+        }));
+        assert_eq!(
+            game.state.garden.plants[0].plant_type,
+            PlantType::Peashooter
+        );
+        assert!(game.state.board.coins.is_empty());
+    }
+
+    #[test]
+    fn debug_sun_pickup_checkpoint_emits_collection_event() {
+        let mut game = Game::new(0, SceneKind::Day);
+        let events = game.debug_prepare_sun_pickup_collection();
+        assert!(events.iter().any(|event| {
+            matches!(
+                event,
+                GameEvent::PickupCollected {
+                    coin_type: CoinType::Sun,
+                    ..
+                }
+            )
+        }));
+        assert_eq!(game.state.sun, 75);
+        assert!(game.state.board.coins.is_empty());
+    }
+
+    #[test]
+    fn profile_progression_round_trips_game_state() {
+        let mut profile = SaveProfile::new("profile-test");
+        profile.inventory.coins = 125;
+        profile.garden.plants.push(GardenPlant {
+            plant_type: PlantType::Sunflower,
+            age_ticks: 240,
+            watered: true,
+            happy: true,
+        });
+
+        let mut game = Game::new(0, SceneKind::Day);
+        game.apply_profile(&profile);
+        assert_eq!(game.state.coins, 125);
+        assert_eq!(game.state.garden, profile.garden);
+
+        game.state.coins = 225;
+        game.state.scene = SceneKind::Complete;
+        game.state.mode = ModeKind::Adventure;
+        game.state.level = 2;
+        game.update_profile(&mut profile);
+        assert_eq!(profile.inventory.coins, 225);
+        assert_eq!(profile.mode_completion[0].completed_levels, 3);
     }
 
     #[test]
