@@ -1908,6 +1908,13 @@ pub enum ProjectileMotion {
     Gloom,
 }
 
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+enum ShieldDamageMode {
+    Consume,
+    Bypass,
+    HitShieldAndBody,
+}
+
 #[derive(Clone, Copy, Debug)]
 struct ProjectileTrajectory {
     motion: ProjectileMotion,
@@ -8407,6 +8414,23 @@ impl Game {
     }
 
     fn damage_zombie(&mut self, zombie_index: usize, damage: i32, events: &mut Vec<GameEvent>) {
+        self.damage_zombie_with_mode(
+            zombie_index,
+            damage,
+            ShieldDamageMode::Consume,
+            false,
+            events,
+        );
+    }
+
+    fn damage_zombie_with_mode(
+        &mut self,
+        zombie_index: usize,
+        damage: i32,
+        mode: ShieldDamageMode,
+        spike: bool,
+        events: &mut Vec<GameEvent>,
+    ) {
         let pool_lane = self.state.scene == SceneKind::Pool
             && matches!(self.state.board.zombies[zombie_index].row, 2 | 3);
         let (entity, shield_damage, shield_type, newspaper_ripped) = {
@@ -8428,10 +8452,17 @@ impl Game {
                     }
                 }
             }
-            let shield_damage = remaining.min(zombie.shield_health);
+            let shield_damage = if mode == ShieldDamageMode::Bypass {
+                0
+            } else {
+                remaining.min(zombie.shield_health)
+            };
             zombie.shield_health -= shield_damage;
-            remaining -= shield_damage;
-            zombie.health -= remaining;
+            zombie.health -= if mode == ShieldDamageMode::HitShieldAndBody {
+                damage.max(0)
+            } else {
+                remaining - shield_damage
+            };
             (
                 zombie.id,
                 shield_damage,
@@ -8451,7 +8482,7 @@ impl Game {
                 variant: self.rng.range(2) as u8,
             });
         }
-        self.update_damage_tier(zombie_index, false, events);
+        self.update_damage_tier(zombie_index, spike, events);
     }
 
     /// Fume, gloom, and spike damage carry DAMAGE_BYPASSES_SHIELD: doors,
@@ -8471,9 +8502,39 @@ impl Game {
             self.damage_zombie(zombie_index, damage, events);
             return;
         }
-        let zombie = &mut self.state.board.zombies[zombie_index];
-        zombie.health -= damage.max(0);
-        self.update_damage_tier(zombie_index, spike, events);
+        self.damage_zombie_with_mode(
+            zombie_index,
+            damage,
+            ShieldDamageMode::Bypass,
+            spike,
+            events,
+        );
+    }
+
+    fn damage_zombie_from_projectile(
+        &mut self,
+        zombie_index: usize,
+        projectile: &ProjectileState,
+        damage: i32,
+        events: &mut Vec<GameEvent>,
+    ) {
+        if projectile.projectile_type.is_splash() {
+            self.damage_zombie_with_mode(
+                zombie_index,
+                damage,
+                ShieldDamageMode::HitShieldAndBody,
+                false,
+                events,
+            );
+        } else if matches!(
+            projectile.motion,
+            ProjectileMotion::Lobbed | ProjectileMotion::Backwards
+        ) || (projectile.motion == ProjectileMotion::Star && projectile.velocity_x < 0)
+        {
+            self.damage_zombie_bypassing_shield(zombie_index, damage, false, events);
+        } else {
+            self.damage_zombie(zombie_index, damage, events);
+        }
     }
 
     fn update_damage_tier(
@@ -9745,7 +9806,7 @@ impl Game {
             else {
                 continue;
             };
-            self.damage_zombie(zombie_index, projectile.damage, events);
+            self.damage_zombie_from_projectile(zombie_index, projectile, projectile.damage, events);
             let health_remaining = self.state.board.zombies[zombie_index].health;
             if target_index == 0 {
                 events.push(GameEvent::ProjectileHit {
@@ -10041,7 +10102,12 @@ impl Game {
                 let zombie_id = self.state.board.zombies[zombie_index].id;
                 let target_zombie = self.state.board.zombies[zombie_index].clone();
                 self.emit_projectile_impact(&projectile, Some(&target_zombie), events);
-                self.damage_zombie(zombie_index, projectile.damage, events);
+                self.damage_zombie_from_projectile(
+                    zombie_index,
+                    &projectile,
+                    projectile.damage,
+                    events,
+                );
                 let health_remaining = self.state.board.zombies[zombie_index].health;
                 events.push(GameEvent::ProjectileHit {
                     projectile: projectile.id,
@@ -10309,7 +10375,7 @@ impl Game {
             else {
                 continue;
             };
-            self.damage_zombie(zombie_index, splash_damage, events);
+            self.damage_zombie_from_projectile(zombie_index, projectile, splash_damage, events);
             let health_remaining = self.state.board.zombies[zombie_index].health;
             events.push(GameEvent::ProjectileSplashHit {
                 projectile: projectile.id,
@@ -16560,6 +16626,128 @@ mod tests {
             "fumes pass through the door"
         );
         assert!(state.health < 270, "the body takes the fume damage instead");
+    }
+
+    #[test]
+    fn projectile_motion_preserves_source_shield_damage_flags() {
+        let shielded_types = [
+            ZombieType::ScreenDoor,
+            ZombieType::Ladder,
+            ZombieType::Newspaper,
+        ];
+        let projectiles = [
+            (
+                ProjectileType::Pea,
+                ProjectileMotion::Straight,
+                POSITION_SCALE,
+            ),
+            (
+                ProjectileType::Pea,
+                ProjectileMotion::Backwards,
+                -POSITION_SCALE,
+            ),
+            (ProjectileType::Cabbage, ProjectileMotion::Lobbed, 0),
+            (
+                ProjectileType::Star,
+                ProjectileMotion::Star,
+                -POSITION_SCALE,
+            ),
+            (ProjectileType::Star, ProjectileMotion::Star, POSITION_SCALE),
+            (ProjectileType::Melon, ProjectileMotion::Lobbed, 0),
+        ];
+
+        for zombie_type in shielded_types {
+            for (projectile_type, motion, velocity_x) in projectiles {
+                let mut game = Game::new(7, SceneKind::Day);
+                let mut setup = Vec::new();
+                let zombie_id = match zombie_type {
+                    ZombieType::ScreenDoor => {
+                        game.spawn_screen_door_zombie(2, 0, Some(500 * POSITION_SCALE), &mut setup)
+                    }
+                    ZombieType::Ladder => {
+                        game.spawn_ladder_zombie(2, 0, Some(500 * POSITION_SCALE), &mut setup)
+                    }
+                    ZombieType::Newspaper => {
+                        game.spawn_newspaper_zombie(2, 0, Some(500 * POSITION_SCALE), &mut setup)
+                    }
+                    _ => unreachable!(),
+                };
+                let (target_x, starting_health, starting_shield) = {
+                    let zombie = game
+                        .state
+                        .board
+                        .zombies
+                        .iter_mut()
+                        .find(|zombie| zombie.id == zombie_id)
+                        .unwrap();
+                    zombie.speed = 0;
+                    (zombie.position_x, zombie.health, zombie.shield_health)
+                };
+                let mut events = Vec::new();
+                game.fire_projectile(
+                    0,
+                    projectile_type,
+                    2,
+                    ProjectileTrajectory {
+                        motion,
+                        position_x: target_x - velocity_x,
+                        position_y: grid_y(2),
+                        velocity_x,
+                        velocity_y: 0,
+                    },
+                    &mut events,
+                );
+                game.update_projectiles(&mut events);
+
+                let splash = projectile_type.is_splash();
+                let bypass = !splash
+                    && (matches!(
+                        motion,
+                        ProjectileMotion::Lobbed | ProjectileMotion::Backwards
+                    ) || (motion == ProjectileMotion::Star && velocity_x < 0));
+                let damage = projectile_type.damage();
+                let state = game
+                    .state
+                    .board
+                    .zombies
+                    .iter()
+                    .find(|zombie| zombie.id == zombie_id)
+                    .unwrap();
+                assert_eq!(
+                    state.shield_health,
+                    if bypass {
+                        starting_shield
+                    } else {
+                        starting_shield - damage.min(starting_shield)
+                    },
+                    "shield result for {zombie_type:?} with {projectile_type:?}/{motion:?}"
+                );
+                assert_eq!(
+                    state.health,
+                    if bypass || splash {
+                        starting_health - damage
+                    } else {
+                        starting_health
+                    },
+                    "body result for {zombie_type:?} with {projectile_type:?}/{motion:?}"
+                );
+                assert!(events.iter().any(|event| matches!(
+                    event,
+                    GameEvent::ProjectileHit { zombie, .. } if *zombie == zombie_id
+                )));
+                assert_eq!(
+                    events.iter().any(|event| matches!(
+                        event,
+                        GameEvent::ZombieShieldHit { entity, .. } if *entity == zombie_id
+                    )),
+                    matches!(zombie_type, ZombieType::ScreenDoor | ZombieType::Ladder) && !bypass
+                );
+                assert!(!events.iter().any(|event| matches!(
+                    event,
+                    GameEvent::ZombieNewspaperRipped { entity } if *entity == zombie_id
+                )));
+            }
+        }
     }
 
     #[test]
