@@ -3691,10 +3691,7 @@ mod tests {
 
     #[test]
     fn zombie_died_has_no_direct_audio_mapping() {
-        assert_eq!(
-            audio_for_event(&GameEvent::ZombieDied { entity: 2 }),
-            None
-        );
+        assert_eq!(audio_for_event(&GameEvent::ZombieDied { entity: 2 }), None);
     }
 
     #[test]
