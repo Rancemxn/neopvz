@@ -7233,7 +7233,6 @@ impl Game {
             .iter()
             .filter(|zombie| {
                 plant_damage_can_hit_zombie(zombie)
-                    && !zombie.bungee_held
                     && (!plant_type.is_potato_mine() || !zombie_rejects_ground_damage(zombie))
                     && zombie.row.abs_diff(row) <= row_radius
                     && (row_wide || (zombie.position_x - center_x).abs() <= radius)
@@ -9502,10 +9501,8 @@ impl Game {
             .zombies
             .iter()
             .filter(|zombie| {
-                // Cob blasts carry every positional damage flag, but retain the
-                // shared mind-control and bungee-delivery exclusions.
+                // Cob blasts carry every positional damage flag.
                 plant_damage_can_hit_zombie(zombie)
-                    && !zombie.bungee_held
                     && zombie.row.abs_diff(target_row) <= 1
                     && (zombie.position_x - target_x).abs() <= 115 * POSITION_SCALE
             })
@@ -12640,7 +12637,6 @@ fn squash_hits_zombie(zombie: &ZombieState, row: u8, target_x: i64) -> bool {
     if !plant_damage_can_hit_zombie(zombie)
         || zombie_rejects_ground_damage(zombie)
         || zombie.departed
-        || zombie.bungee_held
         || balloon_is_airborne(zombie)
         || zombie.imp_flight_ticks > 0
         || (zombie.zombie_type == ZombieType::Digger
@@ -12683,10 +12679,7 @@ fn projectile_hits_plant(projectile_x: i64, plant_x: i64) -> bool {
 }
 
 fn projectile_can_hit_zombie(zombie: &ZombieState, projectile_type: ProjectileType) -> bool {
-    if !plant_damage_can_hit_zombie(zombie)
-        || zombie.bungee_held
-        || zombie_rejects_ground_damage(zombie)
-    {
+    if !plant_damage_can_hit_zombie(zombie) || zombie_rejects_ground_damage(zombie) {
         return false;
     }
     if zombie.zombie_type == ZombieType::Bobsled && zombie.bobsled_sliding && !zombie.bobsled_leader
@@ -12724,7 +12717,10 @@ fn projectile_can_hit_zombie(zombie: &ZombieState, projectile_type: ProjectileTy
 }
 
 fn plant_damage_can_hit_zombie(zombie: &ZombieState) -> bool {
-    zombie.health > 0 && !zombie.hypnotized
+    zombie.health > 0
+        && !(zombie.hypnotized
+            || zombie.bungee_held
+            || (zombie.zombie_type == ZombieType::Bungee && zombie.special_phase > 0))
 }
 
 fn zombie_rejects_ground_damage(zombie: &ZombieState) -> bool {
@@ -17718,6 +17714,110 @@ mod tests {
             find(&game, carried).unwrap().position_x < walk_start,
             "the released zombie walks like a normal spawn"
         );
+    }
+
+    #[test]
+    fn bungee_delivery_pair_rejects_plant_damage_until_release() {
+        let target_x = grid_x(4);
+        let mut game = Game::new(7, SceneKind::Day);
+        let mut setup = Vec::new();
+        let (carrier, carried) = game.spawn_bungee_drop(ZombieType::Normal, 1, 4, 0, &mut setup);
+        let carrier_index = game
+            .state
+            .board
+            .zombies
+            .iter()
+            .position(|zombie| zombie.id == carrier)
+            .unwrap();
+        let carried_index = game
+            .state
+            .board
+            .zombies
+            .iter()
+            .position(|zombie| zombie.id == carried)
+            .unwrap();
+        let carrier_health = game.state.board.zombies[carrier_index].health;
+        let carried_health = game.state.board.zombies[carried_index].health;
+        assert_eq!(game.state.board.zombies[carrier_index].special_phase, 1);
+        assert!(game.state.board.zombies[carried_index].bungee_held);
+        assert!(!plant_damage_can_hit_zombie(
+            &game.state.board.zombies[carrier_index]
+        ));
+        assert!(!plant_damage_can_hit_zombie(
+            &game.state.board.zombies[carried_index]
+        ));
+        assert!(!projectile_can_hit_zombie(
+            &game.state.board.zombies[carrier_index],
+            ProjectileType::Puff
+        ));
+
+        let mut events = Vec::new();
+        game.fire_projectile(
+            0,
+            ProjectileType::Pea,
+            1,
+            ProjectileTrajectory {
+                motion: ProjectileMotion::Straight,
+                position_x: target_x,
+                position_y: grid_y(1),
+                velocity_x: 0,
+                velocity_y: 0,
+            },
+            &mut events,
+        );
+        game.update_projectiles(&mut events);
+        assert!(!events.iter().any(|event| matches!(
+            event,
+            GameEvent::ProjectileHit { zombie, .. } if *zombie == carrier || *zombie == carried
+        )));
+        game.state.board.projectiles.clear();
+
+        game.state.board.zombies[carrier_index].special_phase = 2;
+        assert!(!plant_damage_can_hit_zombie(
+            &game.state.board.zombies[carrier_index]
+        ));
+        game.fire_cob_projectile(0, 1, 0, 1, 4, &mut events);
+        let cob = game.state.board.projectiles.pop().unwrap();
+        game.apply_cob_explosion(&cob, 1, target_x, &mut events);
+        assert!(!events.iter().any(|event| matches!(
+            event,
+            GameEvent::ProjectileHit { zombie, .. } if *zombie == carrier || *zombie == carried
+        )));
+        assert_eq!(
+            game.state.board.zombies[carrier_index].health,
+            carrier_health
+        );
+        assert_eq!(
+            game.state.board.zombies[carried_index].health,
+            carried_health
+        );
+
+        let mut bottom_game = Game::new(7, SceneKind::Day);
+        let mut bottom_events = Vec::new();
+        let bottom = bottom_game.spawn_bungee_zombie(1, 0, Some(target_x), &mut bottom_events);
+        bottom_game.state.board.zombies[0].speed = 0;
+        assert_eq!(bottom_game.state.board.zombies[0].special_phase, 0);
+        assert!(plant_damage_can_hit_zombie(
+            &bottom_game.state.board.zombies[0]
+        ));
+        bottom_game.fire_projectile(
+            0,
+            ProjectileType::Pea,
+            1,
+            ProjectileTrajectory {
+                motion: ProjectileMotion::Straight,
+                position_x: target_x,
+                position_y: grid_y(1),
+                velocity_x: 0,
+                velocity_y: 0,
+            },
+            &mut bottom_events,
+        );
+        bottom_game.update_projectiles(&mut bottom_events);
+        assert!(bottom_events.iter().any(|event| matches!(
+            event,
+            GameEvent::ProjectileHit { zombie, damage: 20, .. } if *zombie == bottom
+        )));
     }
 
     #[test]
