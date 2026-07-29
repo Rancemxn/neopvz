@@ -6514,7 +6514,7 @@ impl Game {
                 continue;
             }
             let has_target = self.state.board.zombies.iter().any(|zombie| {
-                if zombie.health <= 0 {
+                if !plant_damage_can_hit_zombie(zombie) {
                     return false;
                 }
                 // Only Cactus (slot 26) and homing Cattail spikes target fliers.
@@ -6603,14 +6603,14 @@ impl Game {
             };
             let potato_trigger = plant_type.is_potato_mine()
                 && self.state.board.zombies.iter().any(|zombie| {
-                    zombie.health > 0
+                    plant_damage_can_hit_zombie(zombie)
                         && zombie.row == row
                         && !balloon_is_airborne(zombie)
                         && (zombie.position_x - grid_x(column)).abs() <= 60 * POSITION_SCALE
                 });
             let spikeweed_target = plant_type.is_spikeweed()
                 && self.state.board.zombies.iter().any(|zombie| {
-                    zombie.health > 0
+                    plant_damage_can_hit_zombie(zombie)
                         && zombie.row == row
                         && !balloon_is_airborne(zombie)
                         && spikeweed_hits(zombie.position_x, column)
@@ -6852,12 +6852,9 @@ impl Game {
                 self.collect_coin(coin_id, events);
             }
             if let Some(zombie_id) = chomper_bite_target
-                && let Some(zombie_index) = self
-                    .state
-                    .board
-                    .zombies
-                    .iter()
-                    .position(|zombie| zombie.id == zombie_id && zombie.health > 0)
+                && let Some(zombie_index) = self.state.board.zombies.iter().position(|zombie| {
+                    zombie.id == zombie_id && plant_damage_can_hit_zombie(zombie)
+                })
             {
                 self.emit_zombie_died(zombie_id, events);
                 self.state.board.zombies.remove(zombie_index);
@@ -6906,13 +6903,9 @@ impl Game {
                     entity: id,
                     plant_type,
                 });
-                if let Some(zombie_index) = self
-                    .state
-                    .board
-                    .zombies
-                    .iter()
-                    .position(|zombie| zombie.id == zombie_id && zombie.health > 0)
-                {
+                if let Some(zombie_index) = self.state.board.zombies.iter().position(|zombie| {
+                    zombie.id == zombie_id && plant_damage_can_hit_zombie(zombie)
+                }) {
                     self.emit_zombie_died(zombie_id, events);
                     self.state.board.zombies.remove(zombie_index);
                 }
@@ -7081,7 +7074,7 @@ impl Game {
                 .zombies
                 .iter()
                 .filter(|zombie| {
-                    zombie.health > 0
+                    plant_damage_can_hit_zombie(zombie)
                         && zombie.row.abs_diff(row) <= DOOM_SHROOM_ROW_RADIUS
                         && (zombie.position_x - center_x).abs() <= radius
                 })
@@ -7143,7 +7136,7 @@ impl Game {
                 .board
                 .zombies
                 .iter()
-                .filter(|zombie| zombie.health > 0)
+                .filter(|zombie| plant_damage_can_hit_zombie(zombie))
                 .map(|zombie| zombie.id)
                 .collect::<Vec<_>>();
 
@@ -7235,7 +7228,7 @@ impl Game {
             .zombies
             .iter()
             .filter(|zombie| {
-                zombie.health > 0
+                plant_damage_can_hit_zombie(zombie)
                     && !zombie.bungee_held
                     && zombie.row.abs_diff(row) <= row_radius
                     && (row_wide || (zombie.position_x - center_x).abs() <= radius)
@@ -9292,7 +9285,7 @@ impl Game {
                                         .zombies
                                         .iter()
                                         .filter(|z| {
-                                            z.health > 0
+                                            plant_damage_can_hit_zombie(z)
                                                 && z.row.abs_diff(row) <= 1
                                                 && (z.position_x - center_x).abs()
                                                     <= 115 * POSITION_SCALE
@@ -9504,9 +9497,9 @@ impl Game {
             .zombies
             .iter()
             .filter(|zombie| {
-                // Cob blasts carry every damage-range flag: airborne and submerged
-                // zombies are all valid targets, but not bungee-held deliveries.
-                zombie.health > 0
+                // Cob blasts carry every positional damage flag, but retain the
+                // shared mind-control and bungee-delivery exclusions.
+                plant_damage_can_hit_zombie(zombie)
                     && !zombie.bungee_held
                     && zombie.row.abs_diff(target_row) <= 1
                     && (zombie.position_x - target_x).abs() <= 115 * POSITION_SCALE
@@ -10456,7 +10449,7 @@ impl Game {
         let mut zombie_index = 0;
         while zombie_index < self.state.board.zombies.len() {
             let zombie = &self.state.board.zombies[zombie_index];
-            if zombie.health <= 0
+            if !plant_damage_can_hit_zombie(zombie)
                 || zombie.row != row
                 || balloon_is_airborne(zombie)
                 || !spikeweed_hits(zombie.position_x, column)
@@ -10644,7 +10637,7 @@ impl Game {
             .zombies
             .iter()
             .filter(|zombie| {
-                zombie.health > 0
+                plant_damage_can_hit_zombie(zombie)
                     && zombie.row == row
                     && matches!(zombie.zombie_type, ZombieType::Normal)
                     && zombie.position_x >= center_x - 20 * POSITION_SCALE
@@ -10666,7 +10659,7 @@ impl Game {
                 } else {
                     SQUASH_TARGET_GAP
                 } * POSITION_SCALE;
-                zombie.health > 0
+                plant_damage_can_hit_zombie(zombie)
                     && zombie.row == row
                     && matches!(zombie.zombie_type, ZombieType::Normal)
                     && (zombie.position_x - center_x).abs() <= maximum_gap
@@ -12638,8 +12631,7 @@ fn squash_target_x(zombie: &ZombieState, lead_ticks: i64) -> i64 {
 }
 
 fn squash_hits_zombie(zombie: &ZombieState, row: u8, target_x: i64) -> bool {
-    if zombie.health <= 0
-        || zombie.hypnotized
+    if !plant_damage_can_hit_zombie(zombie)
         || zombie.departed
         || zombie.bungee_held
         || balloon_is_airborne(zombie)
@@ -12684,7 +12676,7 @@ fn projectile_hits_plant(projectile_x: i64, plant_x: i64) -> bool {
 }
 
 fn projectile_can_hit_zombie(zombie: &ZombieState, projectile_type: ProjectileType) -> bool {
-    if zombie.bungee_held {
+    if !plant_damage_can_hit_zombie(zombie) || zombie.bungee_held {
         return false;
     }
     if zombie.zombie_type == ZombieType::Bobsled && zombie.bobsled_sliding && !zombie.bobsled_leader
@@ -12714,6 +12706,10 @@ fn projectile_can_hit_zombie(zombie: &ZombieState, projectile_type: ProjectileTy
         return false;
     }
     true
+}
+
+fn plant_damage_can_hit_zombie(zombie: &ZombieState) -> bool {
+    zombie.health > 0 && !zombie.hypnotized
 }
 
 fn snorkel_blocks_movement(zombie: &ZombieState) -> bool {
@@ -13291,13 +13287,29 @@ mod tests {
         });
         game.state.board.plants[0].launch_counter = 1;
         let mut setup_events = Vec::new();
-        game.spawn_normal_zombie(2, 0, Some(500 * POSITION_SCALE), &mut setup_events);
+        let immune = game.spawn_normal_zombie(2, 0, Some(450 * POSITION_SCALE), &mut setup_events);
+        let target = game.spawn_normal_zombie(2, 0, Some(500 * POSITION_SCALE), &mut setup_events);
+        game.state.board.zombies[0].hypnotized = true;
+        game.state.board.zombies[0].frozen_counter = 1_000;
+        for zombie in &mut game.state.board.zombies {
+            zombie.speed = 0;
+        }
 
         let mut hit = false;
+        let mut immune_hit = false;
         let mut impacts = 0;
         for _ in 0..200 {
             for event in game.advance(InputFrame::default()) {
-                hit |= matches!(event, GameEvent::ProjectileHit { damage: 20, .. });
+                hit |= matches!(
+                    event,
+                    GameEvent::ProjectileHit {
+                        zombie,
+                        damage: 20,
+                        ..
+                    } if zombie == target
+                );
+                immune_hit |=
+                    matches!(event, GameEvent::ProjectileHit { zombie, .. } if zombie == immune);
                 if matches!(
                     event,
                     GameEvent::ProjectileImpact {
@@ -13312,13 +13324,33 @@ mod tests {
         }
 
         assert!(hit);
+        assert!(!immune_hit);
         assert!(impacts > 0);
         assert!(
             game.advance(InputFrame::default())
                 .iter()
                 .all(|event| !matches!(event, GameEvent::ZombieDied { .. }))
         );
-        assert!(game.state.board.zombies[0].health < 270);
+        assert_eq!(
+            game.state
+                .board
+                .zombies
+                .iter()
+                .find(|zombie| zombie.id == immune)
+                .unwrap()
+                .health,
+            270
+        );
+        assert!(
+            game.state
+                .board
+                .zombies
+                .iter()
+                .find(|zombie| zombie.id == target)
+                .unwrap()
+                .health
+                < 270
+        );
     }
 
     #[test]
@@ -13403,6 +13435,8 @@ mod tests {
         let mut setup_events = Vec::new();
         game.spawn_normal_zombie(2, 0, Some(500 * POSITION_SCALE), &mut setup_events);
         game.spawn_normal_zombie(1, 0, Some(500 * POSITION_SCALE), &mut setup_events);
+        let immune = game.spawn_normal_zombie(3, 0, Some(500 * POSITION_SCALE), &mut setup_events);
+        game.state.board.zombies[2].hypnotized = true;
         for zombie in &mut game.state.board.zombies {
             zombie.speed = 0;
         }
@@ -13411,6 +13445,7 @@ mod tests {
         let mut saw_firepea = false;
         let mut saw_fireball_hit = false;
         let mut saw_fireball_splash = false;
+        let mut immune_hit = false;
         for _ in 0..200 {
             let events = game.advance(InputFrame::default());
             saw_firepea |= events
@@ -13425,6 +13460,14 @@ mod tests {
             saw_fireball_splash |= events
                 .iter()
                 .any(|event| matches!(event, GameEvent::ProjectileSplashHit { damage: 13, .. }));
+            immune_hit |= events.iter().any(|event| {
+                matches!(
+                    event,
+                    GameEvent::ProjectileHit { zombie, .. }
+                        | GameEvent::ProjectileSplashHit { zombie, .. }
+                        if *zombie == immune
+                )
+            });
             if saw_fireball && saw_fireball_hit && saw_fireball_splash {
                 break;
             }
@@ -13434,6 +13477,17 @@ mod tests {
         assert!(saw_fireball);
         assert!(saw_fireball_hit);
         assert!(saw_fireball_splash);
+        assert!(!immune_hit);
+        assert_eq!(
+            game.state
+                .board
+                .zombies
+                .iter()
+                .find(|zombie| zombie.id == immune)
+                .unwrap()
+                .health,
+            270
+        );
     }
 
     #[test]
@@ -14804,6 +14858,14 @@ mod tests {
             Some(grid_x(0) + 10 * POSITION_SCALE),
             &mut setup_events,
         );
+        let immune = game.spawn_normal_zombie(
+            2,
+            0,
+            Some(grid_x(0) + 10 * POSITION_SCALE),
+            &mut setup_events,
+        );
+        game.state.board.zombies[1].hypnotized = true;
+        game.state.board.zombies[1].frozen_counter = 1_000;
         let starting_health = game.state.board.zombies[0].health;
 
         let events = (0..=(SPIKEWEED_ATTACK_TICKS - SPIKEWEED_DAMAGE_COUNTDOWN))
@@ -14832,6 +14894,11 @@ mod tests {
             game.state.board.zombies[0].health,
             starting_health - SPIKEWEED_DAMAGE
         );
+        assert!(!events.iter().any(|event| matches!(
+            event,
+            GameEvent::PlantSpecialHit { zombie, .. } if *zombie == immune
+        )));
+        assert_eq!(game.state.board.zombies[1].health, 270);
         // Zombies walk over spikeweed instead of chewing it.
         assert_eq!(
             game.state.board.plants[0].health,
@@ -20980,6 +21047,19 @@ mod tests {
             Some(grid_x(4) - 20 * POSITION_SCALE),
             &mut setup_events,
         );
+        let immune = game.spawn_normal_zombie(
+            1,
+            0,
+            Some(grid_x(4) - 20 * POSITION_SCALE),
+            &mut setup_events,
+        );
+        game.state
+            .board
+            .zombies
+            .iter_mut()
+            .find(|zombie| zombie.id == immune)
+            .unwrap()
+            .hypnotized = true;
         let fire_events = game.advance(InputFrame {
             actions: vec![InputAction::FireCobCannon {
                 entity: cannon,
@@ -21010,6 +21090,14 @@ mod tests {
             event,
             GameEvent::ProjectileSplashHit { zombie, damage: 1_800, .. } if *zombie == adjacent
         )));
+        assert!(!impact_events.iter().any(|event| matches!(
+            event,
+            GameEvent::ProjectileHit { zombie, .. }
+                | GameEvent::ProjectileSplashHit { zombie, .. }
+                if *zombie == immune
+        )));
+        assert_eq!(game.state.board.zombies[0].id, immune);
+        assert_eq!(game.state.board.zombies[0].health, 270);
         assert_eq!(
             impact_events
                 .iter()
@@ -21024,7 +21112,7 @@ mod tests {
                 .count(),
             1
         );
-        assert!(game.state.board.zombies.is_empty());
+        assert_eq!(game.state.board.zombies.len(), 1);
     }
 
     #[test]
