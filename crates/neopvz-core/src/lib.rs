@@ -161,6 +161,10 @@ const SUN_FALL_SPEED: i64 = 670_000;
 const SUN_GRAVITY: i64 = 90_000;
 // Coin.cpp:491: dropped coins fall under the heavier 0.15 gravity.
 const COIN_GRAVITY: i64 = 150_000;
+// Coin.cpp:471-480: coins fanned out from an award drift for 80 updates,
+// then collect themselves.
+const PRESENT_COIN_TICKS: u32 = 80;
+const PRESENT_COIN_DECAY_PERCENT: i64 = 95;
 const ZOMBIE_NEXT_WAVE_COUNTDOWN: u32 = 2_500;
 const ZOMBIE_NEXT_WAVE_RANGE: u32 = 600;
 const ICE_START_X: i64 = 800 * POSITION_SCALE;
@@ -2010,15 +2014,6 @@ impl CoinType {
         self.sun_value() != 0
     }
 
-    fn award_value(self) -> u32 {
-        match self {
-            Self::Trophy => Self::Diamond.value(),
-            Self::AwardMoneyBag => Self::Gold.value() * 5,
-            Self::AwardBagDiamond | Self::AwardGoldSunflower => Self::Diamond.value() * 5,
-            _ => 0,
-        }
-    }
-
     fn unlock_mask(self) -> u8 {
         match self {
             Self::PresentMinigames => 1,
@@ -2370,6 +2365,10 @@ pub struct CoinPickupState {
     pub velocity_x: i64,
     #[serde(default)]
     pub velocity_y: i64,
+    #[serde(default)]
+    pub from_present: bool,
+    #[serde(default)]
+    pub age: u32,
 }
 
 #[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
@@ -4659,7 +4658,11 @@ impl Game {
         }
 
         if !restarted && !self.state.paused {
-            if self.state.scene == SceneKind::Garden {
+            if self.state.scene == SceneKind::Complete {
+                self.update_suns(&mut events);
+                self.state.tick = self.state.tick.saturating_add(1);
+                events.push(GameEvent::StateChanged);
+            } else if self.state.scene == SceneKind::Garden {
                 self.update_garden();
                 self.state.tick = self.state.tick.saturating_add(1);
                 events.push(GameEvent::StateChanged);
@@ -6268,9 +6271,6 @@ impl Game {
             self.state.sun = self.state.sun.saturating_add(value).min(MAX_SUN);
         } else if coin.coin_type.is_money() {
             self.state.coins = self.state.coins.saturating_add(value);
-        } else if coin.coin_type.award_value() != 0 {
-            value = coin.coin_type.award_value();
-            self.state.coins = self.state.coins.saturating_add(value);
         } else if coin.coin_type.unlock_mask() != 0 {
             self.state.unlocked_modes |= coin.coin_type.unlock_mask();
         } else if matches!(
@@ -6305,6 +6305,14 @@ impl Game {
                 coin.value.max(1)
             };
         }
+        if let Some((fanout_type, count)) = self.award_fanout(coin.coin_type) {
+            self.spawn_coins_from_present(
+                fanout_type,
+                coin.position_x + 20 * POSITION_SCALE,
+                coin.position_y,
+                count,
+            );
+        }
         events.push(GameEvent::PickupCollected {
             entity,
             coin_type: coin.coin_type,
@@ -6319,6 +6327,32 @@ impl Game {
                 value: coin.value,
                 coin_total: self.state.coins,
             });
+        }
+    }
+
+    fn award_fanout(&self, coin_type: CoinType) -> Option<(CoinType, usize)> {
+        if coin_type.is_level_award()
+            && self.state.mode == ModeKind::Adventure
+            && self.state.level == 50
+        {
+            return Some((CoinType::Diamond, 3));
+        }
+        if self.state.mode == ModeKind::Adventure && self.state.level == 35 {
+            return matches!(coin_type, CoinType::Trophy | CoinType::AwardMoneyBag)
+                .then_some((CoinType::Gold, 5));
+        }
+        if self.state.mode == ModeKind::IZombie && self.state.level == 9 {
+            return match coin_type {
+                CoinType::AwardBagDiamond => Some((CoinType::Diamond, 1)),
+                CoinType::AwardMoneyBag => Some((CoinType::Gold, 5)),
+                _ => None,
+            };
+        }
+        match coin_type {
+            CoinType::Trophy => Some((CoinType::Diamond, 1)),
+            CoinType::AwardMoneyBag => Some((CoinType::Gold, 5)),
+            CoinType::AwardGoldSunflower => Some((CoinType::Diamond, 5)),
+            _ => None,
         }
     }
 
@@ -10002,8 +10036,18 @@ impl Game {
                 }
             }
         }
+        let mut present_coins_to_collect = Vec::new();
         for coin in &mut self.state.board.coins {
-            if let Some(target_y) = coin.target_y {
+            if coin.from_present {
+                coin.position_x += coin.velocity_x;
+                coin.position_y += coin.velocity_y;
+                coin.velocity_x = coin.velocity_x * PRESENT_COIN_DECAY_PERCENT / 100;
+                coin.velocity_y = coin.velocity_y * PRESENT_COIN_DECAY_PERCENT / 100;
+                coin.age = coin.age.saturating_add(1);
+                if coin.age >= PRESENT_COIN_TICKS {
+                    present_coins_to_collect.push(coin.id);
+                }
+            } else if let Some(target_y) = coin.target_y {
                 if coin.position_y + coin.velocity_y < target_y {
                     coin.position_x += coin.velocity_x;
                     coin.position_y += coin.velocity_y;
@@ -10018,6 +10062,9 @@ impl Game {
                     events.push(GameEvent::CoinLanded { entity, coin_type });
                 }
             }
+        }
+        for entity in present_coins_to_collect {
+            self.collect_coin(entity, events);
         }
     }
 
@@ -10878,6 +10925,34 @@ impl Game {
         }
     }
 
+    fn spawn_coins_from_present(
+        &mut self,
+        coin_type: CoinType,
+        position_x: i64,
+        position_y: i64,
+        count: usize,
+    ) {
+        for index in 0..count {
+            let angle = std::f64::consts::PI / 2.0
+                + std::f64::consts::PI * (index + 1) as f64 / (count + 1) as f64;
+            let id = self.state.board.allocate_entity();
+            self.state.board.coins.push(CoinPickupState {
+                id,
+                coin_type,
+                value: coin_type.value(),
+                position_x,
+                position_y,
+                plant_type: None,
+                usable_seed_type: None,
+                target_y: None,
+                velocity_x: (5.0 * angle.sin() * POSITION_SCALE as f64).round() as i64,
+                velocity_y: (5.0 * angle.cos() * POSITION_SCALE as f64).round() as i64,
+                from_present: true,
+                age: 0,
+            });
+        }
+    }
+
     fn spawn_pickup(
         &mut self,
         coin_type: CoinType,
@@ -10951,6 +11026,8 @@ impl Game {
             target_y,
             velocity_x,
             velocity_y,
+            from_present: false,
+            age: 0,
         });
         events.push(GameEvent::CoinProduced {
             entity: id,
@@ -19555,7 +19632,77 @@ mod tests {
         collect(&mut game, CoinType::AwardMoneyBag, None, None);
         collect(&mut game, CoinType::AwardBagDiamond, None, None);
         assert_eq!(game.state.chocolates, 1);
-        assert_eq!(game.state.coins, 525);
+        assert_eq!(game.state.coins, 0);
+    }
+
+    #[test]
+    fn award_money_bag_fans_out_present_coins_and_auto_collects() {
+        let mut game = Game::new(7, SceneKind::Day);
+        let mut produced = Vec::new();
+        game.spawn_pickup(CoinType::AwardMoneyBag, grid_x(4), grid_y(2), &mut produced);
+        let award_id = game.state.board.coins[0].id;
+        game.state.scene = SceneKind::Complete;
+        let collected = game.advance(InputFrame {
+            actions: vec![InputAction::CollectCoin { entity: award_id }],
+        });
+        assert!(collected.iter().any(|event| matches!(
+            event,
+            GameEvent::PickupCollected {
+                entity,
+                coin_type: CoinType::AwardMoneyBag,
+                value: 1,
+                ..
+            } if *entity == award_id
+        )));
+        assert_eq!(game.state.coins, 0);
+        assert_eq!(game.state.board.coins.len(), 5);
+        assert!(game.state.board.coins.iter().all(|coin| {
+            coin.coin_type == CoinType::Gold && coin.from_present && coin.age == 1
+        }));
+
+        let mut auto_collected = Vec::new();
+        for _ in 1..PRESENT_COIN_TICKS {
+            auto_collected = game.advance(InputFrame::default());
+        }
+        assert_eq!(game.state.coins, 25);
+        assert!(game.state.board.coins.is_empty());
+        assert_eq!(
+            auto_collected
+                .iter()
+                .filter(|event| matches!(event, GameEvent::CoinCollected { .. }))
+                .count(),
+            5
+        );
+    }
+
+    #[test]
+    fn final_award_diamonds_do_not_retrigger_fanout() {
+        let mut game = Game::new_mode(7, ModeKind::Adventure, 50);
+        let mut produced = Vec::new();
+        game.spawn_pickup(
+            CoinType::AwardSilverSunflower,
+            grid_x(4),
+            grid_y(2),
+            &mut produced,
+        );
+        let award_id = game.state.board.coins[0].id;
+        game.state.scene = SceneKind::Complete;
+        game.advance(InputFrame {
+            actions: vec![InputAction::CollectCoin { entity: award_id }],
+        });
+        assert_eq!(game.state.board.coins.len(), 3);
+        assert!(
+            game.state
+                .board
+                .coins
+                .iter()
+                .all(|coin| coin.coin_type == CoinType::Diamond)
+        );
+        for _ in 1..PRESENT_COIN_TICKS {
+            game.advance(InputFrame::default());
+        }
+        assert_eq!(game.state.coins, 300);
+        assert!(game.state.board.coins.is_empty());
     }
 
     #[test]
