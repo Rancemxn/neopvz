@@ -80,6 +80,10 @@ Spikeweed, SpikeRock, LilyPad, FlowerPot, Garlic, PuffShroom, SeaShroom, TangleK
 GloomShroom, ScaredyShroom, CabbagePult, KernelPult, WinterMelon, GatlingPea, Cactus, LeftPeater, Marigold, GoldMagnet, Blover, GraveBuster, InstantCoffee, ExplodeONut, HypnoShroom, GiantWallnut, UmbrellaLeaf, PumpkinShell, Imitater, and Yeti behavior; the normal, PoleVaulter, Balloon, Bobsled, Ladder, Catapult, PeaHead, Pogo, Gargantuar, Dancer, Backup Dancer, Digger, Bungee, Dolphin Rider, Snorkel, Boss, WallnutHead, JalapenoHead, GatlingHead, SquashHead, TallnutHead, Gigagargantuar, and Zamboni zombies; and Pea, SnowPea, Puff, Cabbage,
 Kernel, Butter, Melon, WinterMelon, Fireball, Star, Spike, Cob, ZombiePea, and Generic(Other) projectile/collision behavior. Remaining entity, mode, visual, audio, and effect obligations remain listed in the ledger above.
 
+The aquatic-placement units in `ENT-PLANT` and `SIM-SYSTEM` were re-evaluated
+for Issue `#192`: the earlier scene-wide acceptance is superseded by the
+per-row Pool/Fog check in ignored `artifacts/aquatic-placement/verification.md`.
+
 ## Player-Accessible Modes
 
 | Obligation | Mode domain | Accepted | Total | Status | Evidence / owner |

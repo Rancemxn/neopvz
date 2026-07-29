@@ -2481,7 +2481,7 @@ pub struct BoardState {
 
 impl BoardState {
     fn new(scene: SceneKind, mode: ModeKind, level: u8, rng: &mut Mt19937) -> Self {
-        let rows = if scene == SceneKind::Pool {
+        let rows = if scene_has_water_rows(scene) {
             POOL_ROWS
         } else {
             DAY_ROWS
@@ -5996,16 +5996,12 @@ impl Game {
             plant.row == row && plant.column == column && plant.plant_type.slot() == 33
         });
         let aquatic = matches!(effective_type.slot(), 16 | 19 | 24);
-        let valid_terrain = match self.state.scene {
-            SceneKind::Pool => {
-                if aquatic {
-                    true
-                } else {
-                    effective_type.slot() == 43 || has_lilypad
-                }
-            }
-            SceneKind::Roof => effective_type.slot() == 33 || has_flowerpot,
-            _ => !aquatic && effective_type.slot() != 33,
+        let valid_terrain = if scene_row_is_water(self.state.scene, row) {
+            aquatic || effective_type.slot() == 43 || has_lilypad
+        } else if self.state.scene == SceneKind::Roof {
+            effective_type.slot() == 33 || has_flowerpot
+        } else {
+            !aquatic && effective_type.slot() != 33
         };
         if !valid_terrain {
             events.push(GameEvent::InputRejected {
@@ -12543,6 +12539,14 @@ fn damage_tier(health: i32, max_health: i32) -> u8 {
 /// alongside the night and fog lawns.
 fn scene_is_night(scene: SceneKind) -> bool {
     matches!(scene, SceneKind::Night | SceneKind::Fog | SceneKind::Boss)
+}
+
+fn scene_has_water_rows(scene: SceneKind) -> bool {
+    matches!(scene, SceneKind::Pool | SceneKind::Fog)
+}
+
+fn scene_row_is_water(scene: SceneKind, row: u8) -> bool {
+    scene_has_water_rows(scene) && matches!(row, 2 | 3)
 }
 
 fn is_ladder_target(plant_type: PlantType) -> bool {
@@ -19193,59 +19197,165 @@ mod tests {
     }
 
     #[test]
-    fn aquatic_plants_require_pool_and_lilypad_supports_a_land_plant() {
-        let mut lawn = Game::new(7, SceneKind::Day);
-        lawn.state.sun = 500;
-        let rejected = lawn.advance(InputFrame {
-            actions: vec![
-                InputAction::SelectSeed { slot: 16 },
-                InputAction::Plant { row: 2, column: 2 },
-            ],
-        });
-        assert!(rejected.iter().any(|event| matches!(
-            event,
-            GameEvent::InputRejected {
-                reason: InputRejectReason::InvalidTerrain,
-                ..
+    fn pool_and_fog_planting_uses_per_row_terrain() {
+        for scene in [SceneKind::Pool, SceneKind::Fog] {
+            let board = Game::new(7, scene);
+            assert_eq!(board.state.board.rows, POOL_ROWS);
+
+            for row in [0, 5] {
+                for slot in [16, 19, 24] {
+                    let mut aquatic = Game::new(7, scene);
+                    aquatic.state.sun = 500;
+                    let events = aquatic.advance(InputFrame {
+                        actions: vec![
+                            InputAction::SelectSeed { slot },
+                            InputAction::Plant { row, column: 2 },
+                        ],
+                    });
+                    assert!(
+                        events.iter().any(|event| matches!(
+                            event,
+                            GameEvent::InputRejected {
+                                reason: InputRejectReason::InvalidTerrain,
+                                ..
+                            }
+                        )),
+                        "{scene:?} row {row} accepted aquatic slot {slot}"
+                    );
+                    assert!(aquatic.state.board.plants.is_empty());
+                }
+
+                let mut land = Game::new(7, scene);
+                land.state.sun = 500;
+                land.advance(InputFrame {
+                    actions: vec![
+                        InputAction::SelectSeed { slot: 0 },
+                        InputAction::Plant { row, column: 2 },
+                    ],
+                });
+                assert_eq!(land.state.board.plants.len(), 1, "{scene:?} row {row}");
+                assert_eq!(land.state.board.plants[0].row, row);
+                assert_eq!(land.state.board.plants[0].plant_type, PlantType::Peashooter);
             }
-        )));
-        assert!(lawn.state.board.plants.is_empty());
-        assert_eq!(lawn.state.sun, 500);
 
-        let mut pool = Game::new(7, SceneKind::Pool);
-        pool.state.sun = 500;
-        pool.advance(InputFrame {
-            actions: vec![
-                InputAction::SelectSeed { slot: 16 },
-                InputAction::Plant { row: 2, column: 2 },
-                InputAction::SelectSeed { slot: 0 },
-                InputAction::Plant { row: 2, column: 2 },
-            ],
-        });
-        assert_eq!(pool.state.board.plants.len(), 2);
-        assert_eq!(pool.state.board.plants[0].plant_type, PlantType::Other(16));
-        assert_eq!(pool.state.board.plants[1].plant_type, PlantType::Peashooter);
+            let mut water = Game::new(7, scene);
+            water.state.sun = 500;
+            let events = water.advance(InputFrame {
+                actions: vec![
+                    InputAction::SelectSeed { slot: 19 },
+                    InputAction::Plant { row: 2, column: 2 },
+                ],
+            });
+            assert!(events.iter().any(|event| matches!(
+                event,
+                GameEvent::PlantPlaced {
+                    plant_type: PlantType::Other(19),
+                    row: 2,
+                    column: 2,
+                    ..
+                }
+            )));
 
-        let top = pool.state.board.plants[1].id;
-        let events = pool.advance(InputFrame {
-            actions: vec![InputAction::Shovel { row: 2, column: 2 }],
-        });
-        assert!(events.iter().any(|event| matches!(
-            event,
-            GameEvent::PlantShoveled { entity } if *entity == top
-        )));
-        assert_eq!(pool.state.board.plants.len(), 1);
-        assert_eq!(pool.state.board.plants[0].plant_type, PlantType::Other(16));
+            let mut imitater_land = Game::new(7, scene);
+            imitater_land.state.sun = 500;
+            let events = imitater_land.advance(InputFrame {
+                actions: vec![
+                    InputAction::SelectSeed { slot: 48 },
+                    InputAction::PlantImitater {
+                        plant_slot: 19,
+                        row: 0,
+                        column: 2,
+                    },
+                ],
+            });
+            assert!(events.iter().any(|event| matches!(
+                event,
+                GameEvent::InputRejected {
+                    reason: InputRejectReason::InvalidTerrain,
+                    ..
+                }
+            )));
+            assert!(imitater_land.state.board.plants.is_empty());
 
-        let base = pool.state.board.plants[0].id;
-        let events = pool.advance(InputFrame {
-            actions: vec![InputAction::Shovel { row: 2, column: 2 }],
-        });
-        assert!(events.iter().any(|event| matches!(
-            event,
-            GameEvent::PlantShoveled { entity } if *entity == base
-        )));
-        assert!(pool.state.board.plants.is_empty());
+            let mut imitater_water = Game::new(7, scene);
+            imitater_water.state.sun = 500;
+            imitater_water.advance(InputFrame {
+                actions: vec![
+                    InputAction::SelectSeed { slot: 48 },
+                    InputAction::PlantImitater {
+                        plant_slot: 19,
+                        row: 2,
+                        column: 2,
+                    },
+                ],
+            });
+            assert_eq!(imitater_water.state.board.plants.len(), 1);
+            assert_eq!(
+                imitater_water.state.board.plants[0].imitater_type,
+                Some(PlantType::Other(19))
+            );
+
+            let mut unsupported = Game::new(7, scene);
+            unsupported.state.sun = 500;
+            let events = unsupported.advance(InputFrame {
+                actions: vec![
+                    InputAction::SelectSeed { slot: 0 },
+                    InputAction::Plant { row: 2, column: 2 },
+                ],
+            });
+            assert!(events.iter().any(|event| matches!(
+                event,
+                GameEvent::InputRejected {
+                    reason: InputRejectReason::InvalidTerrain,
+                    ..
+                }
+            )));
+            assert!(unsupported.state.board.plants.is_empty());
+
+            let mut supported = Game::new(7, scene);
+            supported.state.sun = 500;
+            supported.advance(InputFrame {
+                actions: vec![
+                    InputAction::SelectSeed { slot: 16 },
+                    InputAction::Plant { row: 2, column: 2 },
+                    InputAction::SelectSeed { slot: 0 },
+                    InputAction::Plant { row: 2, column: 2 },
+                ],
+            });
+            assert_eq!(supported.state.board.plants.len(), 2, "{scene:?}");
+            assert_eq!(
+                supported.state.board.plants[0].plant_type,
+                PlantType::Other(16)
+            );
+            assert_eq!(
+                supported.state.board.plants[1].plant_type,
+                PlantType::Peashooter
+            );
+
+            let top = supported.state.board.plants[1].id;
+            let events = supported.advance(InputFrame {
+                actions: vec![InputAction::Shovel { row: 2, column: 2 }],
+            });
+            assert!(events.iter().any(|event| matches!(
+                event,
+                GameEvent::PlantShoveled { entity } if *entity == top
+            )));
+            assert_eq!(supported.state.board.plants.len(), 1);
+            assert_eq!(
+                supported.state.board.plants[0].plant_type,
+                PlantType::Other(16)
+            );
+
+            let base = supported.state.board.plants[0].id;
+            let events = supported.advance(InputFrame {
+                actions: vec![InputAction::Shovel { row: 2, column: 2 }],
+            });
+            assert!(events.iter().any(|event| matches!(
+                event,
+                GameEvent::PlantShoveled { entity } if *entity == base
+            )));
+            assert!(supported.state.board.plants.is_empty());
+        }
     }
 
     #[test]
