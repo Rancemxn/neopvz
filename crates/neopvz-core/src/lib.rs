@@ -88,6 +88,12 @@ const SPIKEWEED_DAMAGE_COUNTDOWN: u32 = 75;
 const SPIKEWEED_DAMAGE: i32 = 20;
 // Projectile::CheckForCollision MOTION_PUFF: die when mProjectileAge >= 75.
 const PUFF_PROJECTILE_MAX_AGE: u32 = 75;
+// Plant pult height state uses millipixels so the source's 0.115 gravity is
+// deterministic without floating-point simulation.
+const PULT_LOB_SCALE: i64 = 1_000;
+const PULT_LOB_GRAVITY: i32 = 115;
+const PULT_LOB_COLLISION_AGE: u32 = 20;
+const PULT_LOB_SNORKEL_CLEARANCE: i32 = 45 * PULT_LOB_SCALE as i32;
 // Plant::GetPlantAttackRect SEED_PUFFSHROOM/SEASHROOM width 230 from mX+60.
 const PUFF_ATTACK_RANGE: i64 = 230;
 // Plant::GetPlantAttackRect SEED_FUMESHROOM width 340 from mX+60.
@@ -1394,6 +1400,10 @@ impl PlantType {
         )
     }
 
+    fn is_pult(self) -> bool {
+        matches!(self.slot(), 32 | 34 | 39 | 44)
+    }
+
     fn burst_count(self) -> u8 {
         match self.firing_pattern() {
             FiringPattern::Burst(count) => count,
@@ -1904,6 +1914,13 @@ struct ProjectileTrajectory {
     velocity_y: i64,
 }
 
+#[derive(Clone, Copy, Debug)]
+struct PultAim {
+    target_x: i64,
+    target_y: i64,
+    range_x_adjustment: i64,
+}
+
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 enum FiringPattern {
     Single,
@@ -1939,6 +1956,22 @@ impl ProjectileType {
             | Self::Cob
             | Self::Other(1) => ProjectileMotion::Lobbed,
             _ => ProjectileMotion::Straight,
+        }
+    }
+
+    fn is_pult(self) -> bool {
+        matches!(
+            self,
+            Self::Cabbage | Self::Melon | Self::WinterMelon | Self::Kernel | Self::Butter
+        )
+    }
+
+    fn pult_min_collision_height(self) -> Option<i32> {
+        match self {
+            Self::Butter => Some(-32),
+            Self::Cabbage | Self::Kernel => Some(-30),
+            Self::Melon | Self::WinterMelon => Some(-35),
+            _ => None,
         }
     }
 
@@ -6689,7 +6722,10 @@ impl Game {
                             && zombie.position_x
                                 < plant_attack_start(column) + PUFF_ATTACK_RANGE * POSITION_SCALE
                     }
-                    _ => row_distance == 0 && zombie.position_x > plant_attack_start(column),
+                    _ => {
+                        zombie.zombie_type == ZombieType::Boss
+                            || (row_distance == 0 && zombie.position_x > plant_attack_start(column))
+                    }
                 }
             });
             let chomper_target = if plant_type.is_chomper() {
@@ -9697,6 +9733,12 @@ impl Game {
                 projectile.age = projectile.age.saturating_add(1);
                 projectile.position_x += projectile.velocity_x;
                 projectile.position_y += projectile.velocity_y;
+                if projectile.motion == ProjectileMotion::Lobbed
+                    && projectile.projectile_type.is_pult()
+                {
+                    projectile.lob_velocity += PULT_LOB_GRAVITY;
+                    projectile.lob_height += projectile.lob_velocity;
+                }
             }
             if self.state.board.projectiles[projectile_index].projectile_type == ProjectileType::Cob
             {
@@ -9724,6 +9766,37 @@ impl Game {
                     projectile_index += 1;
                 }
                 continue;
+            }
+            if self.state.board.projectiles[projectile_index].motion == ProjectileMotion::Lobbed
+                && self.state.board.projectiles[projectile_index]
+                    .projectile_type
+                    .is_pult()
+            {
+                let projectile = self.state.board.projectiles[projectile_index].clone();
+                if projectile.position_x > i64::from(LOGICAL_WIDTH) * POSITION_SCALE
+                    || projectile.position_x < -100 * POSITION_SCALE
+                {
+                    self.state.board.projectiles.remove(projectile_index);
+                    continue;
+                }
+                let minimum_height = i64::from(
+                    projectile
+                        .projectile_type
+                        .pult_min_collision_height()
+                        .expect("pult minimum collision height"),
+                ) * PULT_LOB_SCALE
+                    + if scene_row_is_water(self.state.scene, projectile.row) {
+                        40 * PULT_LOB_SCALE
+                    } else {
+                        0
+                    };
+                if projectile.age > PULT_LOB_COLLISION_AGE
+                    && (projectile.lob_velocity < 0
+                        || i64::from(projectile.lob_height) <= minimum_height)
+                {
+                    projectile_index += 1;
+                    continue;
+                }
             }
             if self.state.board.projectiles[projectile_index].motion == ProjectileMotion::Puff
                 && self.state.board.projectiles[projectile_index].age >= PUFF_PROJECTILE_MAX_AGE
@@ -9833,7 +9906,11 @@ impl Game {
             }
             self.apply_torchwood(projectile_index, events);
             let projectile = self.state.board.projectiles[projectile_index].clone();
-            let projectile_row = projectile_row(projectile.position_y, self.state.board.rows);
+            let projectile_row = if projectile.projectile_type.is_pult() {
+                Some(projectile.row)
+            } else {
+                projectile_row(projectile.position_y, self.state.board.rows)
+            };
             let target = self
                 .state
                 .board
@@ -9841,9 +9918,13 @@ impl Game {
                 .iter()
                 .enumerate()
                 .filter(|(_, zombie)| {
-                    Some(zombie.row) == projectile_row
+                    (Some(zombie.row) == projectile_row || zombie.zombie_type == ZombieType::Boss)
                         && zombie.health > 0
                         && projectile_can_hit_zombie(zombie, projectile.projectile_type)
+                        && !(projectile.projectile_type.is_pult()
+                            && zombie.zombie_type == ZombieType::Snorkel
+                            && zombie.snorkel_phase == SNORKEL_WALKING_IN_POOL_PHASE
+                            && projectile.lob_height >= PULT_LOB_SNORKEL_CLEARANCE)
                 })
                 .filter(|(_, zombie)| projectile_hits(projectile.position_x, zombie.position_x))
                 .min_by_key(|(_, zombie)| zombie.position_x)
@@ -10908,6 +10989,129 @@ impl Game {
         });
     }
 
+    fn find_pult_target(&self, row: u8, column: u8) -> Option<&ZombieState> {
+        self.state
+            .board
+            .zombies
+            .iter()
+            .filter(|zombie| {
+                if !plant_damage_can_hit_zombie(zombie)
+                    || zombie_rejects_ground_damage(zombie)
+                    || zombie.imp_flight_ticks > 0
+                    || balloon_is_airborne(zombie)
+                {
+                    return false;
+                }
+                let (left, _) = zombie_horizontal_rect(zombie);
+                (zombie.zombie_type == ZombieType::Boss || zombie.row == row)
+                    && left > plant_attack_start(column)
+            })
+            .min_by_key(|zombie| zombie_horizontal_rect(zombie).0)
+    }
+
+    fn pult_origin(
+        plant_type: PlantType,
+        projectile_type: ProjectileType,
+        row: u8,
+        column: u8,
+    ) -> (i64, i64) {
+        let (offset_x, offset_y) = match plant_type.slot() {
+            32 => (5, -12),
+            34 if projectile_type == ProjectileType::Butter => (12, -56),
+            34 => (19, -37),
+            39 | 44 => (25, -46),
+            _ => (60, 0),
+        };
+        (
+            grid_x(column) + offset_x * POSITION_SCALE,
+            grid_y(row) + offset_y * POSITION_SCALE,
+        )
+    }
+
+    fn pult_aim(
+        &self,
+        plant_type: PlantType,
+        projectile_type: ProjectileType,
+        row: u8,
+        column: u8,
+    ) -> (i64, i64, Option<PultAim>) {
+        let (origin_x, origin_y) = Self::pult_origin(plant_type, projectile_type, row, column);
+        let aim = self.find_pult_target(row, column).map(|zombie| {
+            let mut range_x_adjustment = 0;
+            if zombie.zombie_type == ZombieType::DolphinRider
+                && zombie.dolphin_phase == DOLPHIN_RIDING_PHASE
+            {
+                range_x_adjustment -= 60 * POSITION_SCALE;
+            }
+            if zombie.zombie_type == ZombieType::Pogo && zombie.special_phase == 0 {
+                range_x_adjustment -= 60 * POSITION_SCALE;
+            }
+            if zombie.zombie_type == ZombieType::Snorkel
+                && zombie.snorkel_phase == SNORKEL_WALKING_IN_POOL_PHASE
+            {
+                range_x_adjustment -= 40 * POSITION_SCALE;
+            }
+            PultAim {
+                target_x: zombie_target_lead_x(zombie, 50),
+                target_y: if zombie.zombie_type == ZombieType::Boss {
+                    grid_y(row)
+                } else {
+                    zombie_pult_target_y(zombie)
+                },
+                range_x_adjustment,
+            }
+        });
+        (origin_x, origin_y, aim)
+    }
+
+    fn fire_pult_projectile(
+        &mut self,
+        source: EntityId,
+        plant_type: PlantType,
+        projectile_type: ProjectileType,
+        row: u8,
+        column: u8,
+        events: &mut Vec<GameEvent>,
+    ) {
+        let (origin_x, origin_y, aim) = self.pult_aim(plant_type, projectile_type, row, column);
+        let (range_x, range_y) = if let Some(aim) = aim {
+            (
+                (aim.target_x - origin_x - 30 * POSITION_SCALE + aim.range_x_adjustment)
+                    .max(40 * POSITION_SCALE),
+                aim.target_y - origin_y,
+            )
+        } else {
+            (
+                (700 * POSITION_SCALE - origin_x).max(40 * POSITION_SCALE),
+                0,
+            )
+        };
+        let id = self.state.board.allocate_entity();
+        self.state.board.projectiles.push(ProjectileState {
+            id,
+            projectile_type,
+            motion: ProjectileMotion::Lobbed,
+            row,
+            position_x: origin_x,
+            position_y: origin_y,
+            velocity_x: range_x / 120,
+            velocity_y: 0,
+            damage: projectile_type.damage(),
+            age: 0,
+            target_x: aim.map(|aim| aim.target_x),
+            target_row: aim.map(|_| row),
+            lob_height: 0,
+            lob_velocity: ((range_y * PULT_LOB_SCALE) / (120 * POSITION_SCALE) - 7 * PULT_LOB_SCALE)
+                as i32,
+        });
+        events.push(GameEvent::ProjectileFired {
+            entity: id,
+            source,
+            projectile_type,
+            row,
+        });
+    }
+
     fn fire_catapult_projectile(
         &mut self,
         source: EntityId,
@@ -11058,23 +11262,36 @@ impl Game {
             }
             _ => {
                 self.emit_plant_fired(source, plant_type, events);
-                self.fire_projectile(
-                    source,
-                    projectile_type,
-                    row,
-                    ProjectileTrajectory {
-                        motion: plant_type.projectile_motion(),
-                        position_x,
-                        position_y,
-                        velocity_x: if plant_type.is_fume_shroom() || plant_type.is_gloom_shroom() {
-                            0
-                        } else {
-                            3_330_000
+                if plant_type.is_pult() {
+                    self.fire_pult_projectile(
+                        source,
+                        plant_type,
+                        projectile_type,
+                        row,
+                        column,
+                        events,
+                    );
+                } else {
+                    self.fire_projectile(
+                        source,
+                        projectile_type,
+                        row,
+                        ProjectileTrajectory {
+                            motion: plant_type.projectile_motion(),
+                            position_x,
+                            position_y,
+                            velocity_x: if plant_type.is_fume_shroom()
+                                || plant_type.is_gloom_shroom()
+                            {
+                                0
+                            } else {
+                                3_330_000
+                            },
+                            velocity_y: 0,
                         },
-                        velocity_y: 0,
-                    },
-                    events,
-                );
+                        events,
+                    );
+                }
             }
         }
     }
@@ -12762,6 +12979,28 @@ fn zombie_horizontal_rect(zombie: &ZombieState) -> (i64, i64) {
     (left, left + width * POSITION_SCALE)
 }
 
+fn zombie_pult_target_y(zombie: &ZombieState) -> i64 {
+    grid_y(zombie.row) - 30 * POSITION_SCALE
+}
+
+fn zombie_target_lead_x(zombie: &ZombieState, lead_ticks: i64) -> i64 {
+    let mut speed = if zombie.eating || zombie.frozen_counter > 0 {
+        0
+    } else if zombie.chilled_counter > 0 {
+        zombie.speed * 2 / 5
+    } else {
+        zombie.speed
+    };
+    if zombie.hypnotized {
+        speed = -speed;
+    }
+    if matches!(zombie.zombie_type, ZombieType::Boss | ZombieType::Bungee) {
+        speed = 0;
+    }
+    let (left, right) = zombie_horizontal_rect(zombie);
+    (left + right) / 2 - speed * lead_ticks
+}
+
 fn squash_target_x(zombie: &ZombieState, lead_ticks: i64) -> i64 {
     let (left, right) = zombie_horizontal_rect(zombie);
     let speed = if zombie.eating || zombie.frozen_counter > 0 {
@@ -12837,11 +13076,16 @@ fn projectile_can_hit_zombie(zombie: &ZombieState, projectile_type: ProjectileTy
         && matches!(
             zombie.snorkel_phase,
             SNORKEL_INTO_POOL_PHASE
-                | SNORKEL_WALKING_IN_POOL_PHASE
                 | SNORKEL_UP_TO_EAT_PHASE
                 | SNORKEL_DOWN_FROM_EAT_PHASE
                 | SNORKEL_OUT_OF_POOL_PHASE
         )
+    {
+        return false;
+    }
+    if zombie.zombie_type == ZombieType::Snorkel
+        && zombie.snorkel_phase == SNORKEL_WALKING_IN_POOL_PHASE
+        && !projectile_type.is_pult()
     {
         return false;
     }
@@ -14365,6 +14609,252 @@ mod tests {
         )));
         assert_eq!(game.state.board.plants[0].kernel_pult_projectile, None);
         assert_eq!(game.rng.snapshot(), expected_after_fire.snapshot());
+    }
+
+    #[test]
+    fn pult_lob_height_follows_source_gravity() {
+        let mut game = Game::new(7, SceneKind::Day);
+        let mut fire_events = Vec::new();
+        game.fire_projectiles(
+            1,
+            PlantType::Other(32),
+            ProjectileType::Cabbage,
+            2,
+            0,
+            &mut fire_events,
+        );
+
+        let mut height_at_20 = None;
+        let mut height_at_60 = None;
+        let mut height_at_120 = None;
+        for _ in 0..120 {
+            let mut events = Vec::new();
+            game.update_projectiles(&mut events);
+            let projectile = &game.state.board.projectiles[0];
+            match projectile.age {
+                20 => height_at_20 = Some((projectile.lob_height, projectile.lob_velocity)),
+                60 => height_at_60 = Some(projectile.lob_height),
+                120 => height_at_120 = Some((projectile.lob_height, projectile.lob_velocity)),
+                _ => {}
+            }
+        }
+
+        let (height_20, velocity_20) = height_at_20.unwrap();
+        let height_60 = height_at_60.unwrap();
+        let (height_120, velocity_120) = height_at_120.unwrap();
+        assert!(height_20 < 0 && velocity_20 < 0);
+        assert!(height_60 < height_20);
+        assert!(height_120 > height_60 && velocity_120 > 0);
+        assert_eq!(
+            velocity_120,
+            -7 * PULT_LOB_SCALE as i32 + PULT_LOB_GRAVITY * 120
+        );
+        assert_eq!(
+            height_120,
+            (1..=120)
+                .map(|age| -7 * PULT_LOB_SCALE as i32 + PULT_LOB_GRAVITY * age)
+                .sum::<i32>()
+        );
+    }
+
+    #[test]
+    fn pult_lob_rejects_rising_collision_after_age_twenty() {
+        let mut game = Game::new(7, SceneKind::Day);
+        let mut setup_events = Vec::new();
+        let zombie = game.spawn_normal_zombie(2, 0, Some(500 * POSITION_SCALE), &mut setup_events);
+        game.state.board.zombies[0].speed = 0;
+        let mut fire_events = Vec::new();
+        game.fire_projectiles(
+            1,
+            PlantType::Other(32),
+            ProjectileType::Cabbage,
+            2,
+            0,
+            &mut fire_events,
+        );
+        {
+            let projectile = &mut game.state.board.projectiles[0];
+            projectile.position_x = game.state.board.zombies[0].position_x - 200 * POSITION_SCALE;
+            projectile.velocity_x = 0;
+        }
+
+        let mut events = Vec::new();
+        for _ in 0..20 {
+            game.update_projectiles(&mut events);
+        }
+        assert!(events.is_empty());
+        assert_eq!(game.state.board.projectiles[0].age, 20);
+
+        game.state.board.projectiles[0].position_x = game.state.board.zombies[0].position_x;
+        game.update_projectiles(&mut events);
+        assert_eq!(game.state.board.projectiles[0].age, 21);
+        assert!(!events.iter().any(|event| matches!(
+            event,
+            GameEvent::ProjectileHit { zombie: hit_zombie, .. } if *hit_zombie == zombie
+        )));
+
+        let projectile = &mut game.state.board.projectiles[0];
+        projectile.lob_height = 0;
+        projectile.lob_velocity = -PULT_LOB_GRAVITY;
+        game.update_projectiles(&mut events);
+        assert!(events.iter().any(|event| matches!(
+            event,
+            GameEvent::ProjectileHit { zombie: hit_zombie, damage: 40, .. }
+                if *hit_zombie == zombie
+        )));
+    }
+
+    #[test]
+    fn pult_aim_leads_the_selected_target_with_a_competing_zombie() {
+        let mut game = Game::new(7, SceneKind::Day);
+        let mut setup_events = Vec::new();
+        let target = game.spawn_normal_zombie(2, 0, Some(500 * POSITION_SCALE), &mut setup_events);
+        let competitor =
+            game.spawn_normal_zombie(2, 0, Some(650 * POSITION_SCALE), &mut setup_events);
+        game.state.board.zombies[0].speed = 300_000;
+        game.state.board.zombies[1].speed = 0;
+
+        let expected_target_x = zombie_target_lead_x(&game.state.board.zombies[0], 50);
+        let stationary_target_x = zombie_target_lead_x(&game.state.board.zombies[1], 50);
+        assert!(expected_target_x < stationary_target_x);
+        let (_, _, aim) = game.pult_aim(PlantType::Other(32), ProjectileType::Cabbage, 2, 0);
+        assert_eq!(aim.unwrap().target_x, expected_target_x);
+
+        let mut fire_events = Vec::new();
+        game.fire_projectiles(
+            1,
+            PlantType::Other(32),
+            ProjectileType::Cabbage,
+            2,
+            0,
+            &mut fire_events,
+        );
+        assert_eq!(
+            game.state.board.projectiles[0].target_x,
+            Some(expected_target_x)
+        );
+
+        let mut hit_target = false;
+        let mut hit_competitor = false;
+        for _ in 0..200 {
+            let mut events = Vec::new();
+            game.update_projectiles(&mut events);
+            hit_target |= events.iter().any(|event| {
+                matches!(
+                    event,
+                    GameEvent::ProjectileHit { zombie, .. } if *zombie == target
+                )
+            });
+            hit_competitor |= events.iter().any(|event| {
+                matches!(
+                    event,
+                    GameEvent::ProjectileHit { zombie, .. } if *zombie == competitor
+                )
+            });
+            if hit_target {
+                break;
+            }
+        }
+
+        assert!(hit_target);
+        assert!(!hit_competitor);
+        assert_eq!(
+            game.state
+                .board
+                .zombies
+                .iter()
+                .find(|candidate| candidate.id == competitor)
+                .unwrap()
+                .health,
+            270
+        );
+    }
+
+    #[test]
+    fn pult_aim_applies_source_phase_offsets_and_boss_row() {
+        let mut game = Game::new(7, SceneKind::Day);
+        let mut setup_events = Vec::new();
+        game.spawn_normal_zombie(2, 0, Some(500 * POSITION_SCALE), &mut setup_events);
+        let normal = game
+            .pult_aim(PlantType::Other(32), ProjectileType::Cabbage, 2, 0)
+            .2
+            .unwrap();
+        assert_eq!(normal.range_x_adjustment, 0);
+        assert_eq!(normal.target_y, grid_y(2) - 30 * POSITION_SCALE);
+
+        game.state.board.zombies.clear();
+        game.spawn_dolphin_rider_zombie(2, 0, Some(500 * POSITION_SCALE), &mut setup_events);
+        game.state.board.zombies[0].dolphin_phase = DOLPHIN_RIDING_PHASE;
+        let dolphin = game
+            .pult_aim(PlantType::Other(32), ProjectileType::Cabbage, 2, 0)
+            .2
+            .unwrap();
+        assert_eq!(dolphin.range_x_adjustment, -60 * POSITION_SCALE);
+
+        game.state.board.zombies.clear();
+        game.spawn_pogo_zombie(2, 0, Some(500 * POSITION_SCALE), &mut setup_events);
+        let pogo = game
+            .pult_aim(PlantType::Other(32), ProjectileType::Cabbage, 2, 0)
+            .2
+            .unwrap();
+        assert_eq!(pogo.range_x_adjustment, -60 * POSITION_SCALE);
+
+        game.state.board.zombies.clear();
+        game.spawn_snorkel_zombie(2, 0, Some(500 * POSITION_SCALE), &mut setup_events);
+        game.state.board.zombies[0].snorkel_phase = SNORKEL_WALKING_IN_POOL_PHASE;
+        let snorkel = game
+            .pult_aim(PlantType::Other(32), ProjectileType::Cabbage, 2, 0)
+            .2
+            .unwrap();
+        assert_eq!(snorkel.range_x_adjustment, -40 * POSITION_SCALE);
+
+        game.state.board.zombies.clear();
+        game.spawn_boss_zombie(0, 0, Some(500 * POSITION_SCALE), &mut setup_events);
+        let boss = game
+            .pult_aim(PlantType::Other(32), ProjectileType::Cabbage, 2, 0)
+            .2
+            .unwrap();
+        assert_eq!(boss.range_x_adjustment, 0);
+        assert_eq!(boss.target_y, grid_y(2));
+    }
+
+    #[test]
+    fn pult_pool_collision_waits_for_the_source_height_threshold() {
+        let mut hit_ticks = Vec::new();
+        for scene in [SceneKind::Day, SceneKind::Pool] {
+            let mut game = Game::new(7, scene);
+            let mut setup_events = Vec::new();
+            let zombie =
+                game.spawn_normal_zombie(2, 0, Some(500 * POSITION_SCALE), &mut setup_events);
+            game.state.board.zombies[0].speed = 0;
+            let mut fire_events = Vec::new();
+            game.fire_projectiles(
+                1,
+                PlantType::Other(32),
+                ProjectileType::Cabbage,
+                2,
+                0,
+                &mut fire_events,
+            );
+
+            let mut hit_tick = None;
+            for tick in 1..=150 {
+                let mut events = Vec::new();
+                game.update_projectiles(&mut events);
+                if events.iter().any(|event| {
+                    matches!(
+                        event,
+                        GameEvent::ProjectileHit { zombie: hit_zombie, .. } if *hit_zombie == zombie
+                    )
+                }) {
+                    hit_tick = Some(tick);
+                    break;
+                }
+            }
+            hit_ticks.push(hit_tick.unwrap());
+        }
+
+        assert_eq!(hit_ticks, vec![119, 125]);
     }
 
     #[test]
