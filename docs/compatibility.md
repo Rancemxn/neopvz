@@ -82,7 +82,8 @@ Kernel, Butter, Melon, WinterMelon, Fireball, Star, Spike, Cob, ZombiePea, and G
 
 The aquatic-placement units in `ENT-PLANT` and `SIM-SYSTEM` were re-evaluated
 for Issue `#192`: the earlier scene-wide acceptance is superseded by the
-per-row Pool/Fog check in ignored `artifacts/aquatic-placement/verification.md`.
+per-row Pool/Fog check in ignored `artifacts/aquatic-placement/verification.md`,
+with PR `#195` exact-head gates `30453887198`/`30453886891`.
 
 ## Player-Accessible Modes
 
