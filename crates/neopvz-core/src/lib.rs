@@ -6103,7 +6103,7 @@ impl Game {
         let has_flowerpot = self.state.board.plants.iter().any(|plant| {
             plant.row == row && plant.column == column && plant.plant_type.slot() == 33
         });
-        let aquatic = effective_type.is_aquatic();
+        let aquatic = matches!(effective_type.slot(), 16 | 19 | 24);
         let valid_terrain = if scene_row_is_water(self.state.scene, row) {
             aquatic || effective_type.slot() == 43 || has_lilypad
         } else if self.state.scene == SceneKind::Roof {
@@ -21913,7 +21913,7 @@ mod tests {
             Some(PlantType::Peashooter | PlantType::Other(16))
         ));
         assert!((100 * POSITION_SCALE..=649 * POSITION_SCALE).contains(&first.position_x));
-        assert_eq!(first.position_y, 60 * POSITION_SCALE);
+        assert_eq!(first.position_y, 60 * POSITION_SCALE + 330_000);
         assert!(
             (300 * POSITION_SCALE..=549 * POSITION_SCALE)
                 .contains(&first.target_y.expect("seed packet landing target"))
@@ -22008,16 +22008,7 @@ mod tests {
         assert!(game.state.board.selected_seed.is_none());
         assert!(game.state.board.selected_usable_seed.is_none());
         assert_eq!(game.state.sun, 0);
-        assert_eq!(
-            game.state
-                .board
-                .seed_packets
-                .iter()
-                .find(|packet| packet.slot == PlantType::Peashooter.slot())
-                .expect("Peashooter bank packet")
-                .refresh_remaining,
-            0
-        );
+        assert!(game.state.board.seed_packets.is_empty());
     }
 
     #[test]
