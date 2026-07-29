@@ -98,6 +98,7 @@ enum Checkpoint {
     GardenWater,
     GardenFertilize,
     GardenFulfill,
+    GardenTreeGrow,
     HugeWaveSound,
     DancerRumble,
     FirstWaveSound,
@@ -161,9 +162,10 @@ impl From<Checkpoint> for SceneKind {
             Checkpoint::SunProduction => Self::Day,
             Checkpoint::PlantFiring => Self::Night,
             Checkpoint::Torchwood => Self::Day,
-            Checkpoint::GardenWater | Checkpoint::GardenFertilize | Checkpoint::GardenFulfill => {
-                Self::Garden
-            }
+            Checkpoint::GardenWater
+            | Checkpoint::GardenFertilize
+            | Checkpoint::GardenFulfill
+            | Checkpoint::GardenTreeGrow => Self::Garden,
             Checkpoint::HugeWaveSound => Self::Day,
             Checkpoint::DancerRumble => Self::Day,
             Checkpoint::FirstWaveSound => Self::Day,
@@ -1334,6 +1336,7 @@ impl App {
             Some(
                 Checkpoint::GardenWater | Checkpoint::GardenFertilize | Checkpoint::GardenFulfill,
             ) => Game::new_mode(0, ModeKind::ZenGarden, 0),
+            Some(Checkpoint::GardenTreeGrow) => Game::new_mode(7, ModeKind::ZenGarden, 3),
             Some(Checkpoint::HugeWaveSound) => Game::new_mode(7, ModeKind::Adventure, 6),
             Some(Checkpoint::DancerRumble) => Game::new(0, SceneKind::Day),
             Some(Checkpoint::FirstWaveSound) => Game::new_mode(7, ModeKind::Adventure, 1),
@@ -1422,6 +1425,9 @@ impl App {
             }
             Some(Checkpoint::GardenFulfill) => {
                 startup_events = game.debug_prepare_garden_fulfill();
+            }
+            Some(Checkpoint::GardenTreeGrow) => {
+                startup_events = game.debug_prepare_garden_tree_grow();
             }
             Some(Checkpoint::HugeWaveSound) => game.debug_prepare_huge_wave_sound(),
             Some(Checkpoint::DancerRumble) => startup_events = game.debug_prepare_dancer_rumble(),
@@ -2669,6 +2675,7 @@ fn audio_for_event(event: &GameEvent) -> Option<(AudioKind, &'static str)> {
         GameEvent::GardenWatered { .. } => Some((AudioKind::Effect, "sounds/watering.ogg")),
         GameEvent::GardenFertilized { .. } => Some((AudioKind::Effect, "sounds/fertilizer.ogg")),
         GameEvent::GardenBecameHappy { .. } => Some((AudioKind::Effect, "sounds/prize.ogg")),
+        GameEvent::GardenTreeGrew { .. } => Some((AudioKind::Effect, "sounds/plantgrow.ogg")),
         GameEvent::WaveStarted { wave: 0 } => Some((AudioKind::Effect, "sounds/awooga.ogg")),
         GameEvent::FlagWaveSound { .. } => Some((AudioKind::Effect, "sounds/siren.ogg")),
         GameEvent::HugeWaveSound { .. } => Some((AudioKind::Effect, "sounds/hugewave.ogg")),
@@ -3201,6 +3208,10 @@ mod tests {
                 aquatic: false,
             }),
             Some((AudioKind::Effect, "sounds/prize.ogg"))
+        );
+        assert_eq!(
+            audio_for_event(&GameEvent::GardenTreeGrew { height: 2 }),
+            Some((AudioKind::Effect, "sounds/plantgrow.ogg"))
         );
         assert_eq!(
             audio_for_event(&GameEvent::WaveStarted { wave: 0 }),

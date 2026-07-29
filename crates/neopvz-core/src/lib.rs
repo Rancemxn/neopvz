@@ -3663,6 +3663,16 @@ impl Game {
     }
 
     #[doc(hidden)]
+    pub fn debug_prepare_garden_tree_grow(&mut self) -> Vec<GameEvent> {
+        self.state.level_scene = SceneKind::Garden;
+        self.state.scene = SceneKind::Garden;
+        self.state.garden_service = Some(GardenServiceKind::TreeOfWisdom);
+        let mut events = Vec::new();
+        self.garden_feed_tree(&mut events);
+        events
+    }
+
+    #[doc(hidden)]
     pub fn debug_prepare_huge_wave_sound(&mut self) {
         self.state.level_scene = SceneKind::Day;
         self.state.scene = SceneKind::Day;
@@ -20877,6 +20887,22 @@ mod tests {
                     .any(|event| matches!(event, GameEvent::GardenLeft))
             );
         }
+    }
+
+    #[test]
+    fn debug_garden_tree_checkpoint_emits_growth_event() {
+        let mut game = Game::new_mode(7, ModeKind::ZenGarden, 3);
+        let events = game.debug_prepare_garden_tree_grow();
+        assert!(
+            events
+                .iter()
+                .any(|event| matches!(event, GameEvent::GardenTreeGrew { height: 2 }))
+        );
+        assert_eq!(game.state.tree_height, 2);
+        assert_eq!(
+            game.state.garden_service,
+            Some(GardenServiceKind::TreeOfWisdom)
+        );
     }
 
     #[test]
