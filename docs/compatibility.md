@@ -107,6 +107,13 @@ heights and roof slope, stack priority, and target replacement; evidence is in
 ignored `artifacts/pult-trajectories/verification.md`. Issue `#217`, PR `#261`,
 Actions `30490198714`/`30490198670`.
 
+Catapult launch targeting now shares the source grounded-plant boundary:
+Squash rising/falling/done-falling states and health-zero terminal plants are
+excluded before the leftmost-column search, while the source Catapult
+top-plant order remains intact. Focused launch checks and same-version source
+evidence are recorded in ignored `artifacts/catapult-zombie/verification.md`;
+Issue `#218`, PR `#263`, Actions `30491696677`/`30491697034`.
+
 ## Player-Accessible Modes
 
 | Obligation | Mode domain | Accepted | Total | Status | Evidence / owner |
