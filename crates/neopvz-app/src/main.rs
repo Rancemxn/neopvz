@@ -3669,7 +3669,6 @@ mod tests {
             }),
             None
         );
-        assert_eq!(audio_for_event(&GameEvent::ZombieDied { entity: 2 }), None);
         assert_eq!(
             audio_for_event(&GameEvent::BossAttackWindup {
                 entity: 1,
@@ -3688,6 +3687,14 @@ mod tests {
         );
         assert_eq!(audio_for_event(&GameEvent::Resumed), None);
         assert_eq!(audio_for_event(&GameEvent::StateChanged), None);
+    }
+
+    #[test]
+    fn zombie_died_has_no_direct_audio_mapping() {
+        assert_eq!(
+            audio_for_event(&GameEvent::ZombieDied { entity: 2 }),
+            None
+        );
     }
 
     #[test]
