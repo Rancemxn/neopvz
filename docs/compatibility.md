@@ -121,6 +121,13 @@ checks plus same-version source evidence are recorded in ignored
 `artifacts/threepeater/verification.md`; Issue `#228`, PR `#264`, Actions
 `30493122168`/`30493122181`.
 
+Projectile impact now preserves the source shield damage flags: lobbed and
+backwards shots, plus negative-X Starfruit shots, bypass shields; forward and
+rightward shots consume them; splash projectiles damage shield and body. The
+focused motion matrix and same-version source evidence are recorded in ignored
+`artifacts/projectile-shield-flags/verification.md`; Issue `#234`, PR `#266`,
+Actions `30494404599`/`30494404244`.
+
 ## Player-Accessible Modes
 
 | Obligation | Mode domain | Accepted | Total | Status | Evidence / owner |
