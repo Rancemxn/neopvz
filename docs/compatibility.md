@@ -144,6 +144,15 @@ same-version source evidence are recorded in ignored
 `artifacts/starfruit-trajectory/verification.md`; Issue `#236`, PR `#270`,
 Actions `30498120123`/`30498120119` at exact implementation head `eb82512`.
 
+Starfruit launch eligibility now follows the source five-ray search instead of
+the shared two-row shortcut: same-row leftward bodies, the off-row center ray,
+row-specific diagonal angle bands, moving-target lead, damage eligibility, the
+Digger offset, the high-column Boss case, and the 50-tick recently-eaten
+override are preserved. The source 40-tick Starfruit firing counter and focused
+positive, negative, movement, eligibility, Boss, bite, and first-fire checks
+are recorded in ignored `artifacts/starfruit-target-search/verification.md`;
+Issue `#230`.
+
 ## Player-Accessible Modes
 
 | Obligation | Mode domain | Accepted | Total | Status | Evidence / owner |

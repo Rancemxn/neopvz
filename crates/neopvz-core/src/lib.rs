@@ -70,6 +70,7 @@ const DOOM_SHROOM_ROW_RADIUS: u8 = 3;
 const DOOM_CRATER_TICKS: u32 = 18_000;
 // Zombie_EatPlant in the target build subtracts four health per ordinary bite.
 const ZOMBIE_BITE_DAMAGE: i32 = 4;
+const RECENTLY_EATEN_TICKS: u32 = 50;
 const CHOMPER_BITE_WINDUP_TICKS: u32 = 70;
 const CHOMPER_CHEW_TICKS: u32 = 4_000;
 // Zombie_UpdateAteGarlic in 1.0.0.1051 consumes Garlic at 70, changes row at
@@ -2232,6 +2233,8 @@ pub struct PlantState {
     pub launch_counter: u32,
     pub launch_rate: u32,
     pub shooting_counter: u32,
+    #[serde(default)]
+    pub recently_eaten_counter: u32,
     #[serde(default)]
     pub kernel_pult_projectile: Option<ProjectileType>,
     pub burst_remaining: u8,
@@ -5443,6 +5446,7 @@ impl Game {
             launch_counter: 0,
             launch_rate,
             shooting_counter: 0,
+            recently_eaten_counter: 0,
             kernel_pult_projectile: None,
             burst_remaining: 0,
             burst_delay: 0,
@@ -6369,6 +6373,7 @@ impl Game {
             launch_counter,
             launch_rate,
             shooting_counter: 0,
+            recently_eaten_counter: 0,
             kernel_pult_projectile: None,
             burst_remaining: 0,
             burst_delay: 0,
@@ -6658,7 +6663,7 @@ impl Game {
             if index >= self.state.board.plants.len() {
                 break;
             }
-            let asleep = {
+            let (asleep, recently_eaten) = {
                 let plant = &mut self.state.board.plants[index];
                 if plant.wake_up_counter > 0 {
                     plant.wake_up_counter -= 1;
@@ -6666,7 +6671,9 @@ impl Game {
                         plant.asleep = false;
                     }
                 }
-                plant.asleep
+                let recently_eaten = plant.recently_eaten_counter > 0;
+                plant.recently_eaten_counter = plant.recently_eaten_counter.saturating_sub(1);
+                (plant.asleep, recently_eaten)
             };
             if asleep {
                 continue;
@@ -6747,7 +6754,9 @@ impl Game {
                             && zombie_right > threepeater_attack_left
                             && zombie_left < threepeater_attack_right
                     }
-                    FiringPattern::Star => row_distance <= 2,
+                    FiringPattern::Star => {
+                        starfruit_can_target(self.state.scene, row, column, zombie)
+                    }
                     FiringPattern::Split => {
                         row_distance == 0
                             && (zombie.position_x > plant_attack_start(column)
@@ -6787,6 +6796,8 @@ impl Game {
                     }
                 }
             });
+            let has_target = has_target
+                || (plant_type.firing_pattern() == FiringPattern::Star && recently_eaten);
             let chomper_target = if plant_type.is_chomper() {
                 self.find_chomper_target(row, column)
             } else {
@@ -7064,7 +7075,12 @@ impl Game {
                                     ProjectileType::Kernel
                                 });
                             }
-                            plant.shooting_counter = 33;
+                            plant.shooting_counter =
+                                if plant_type.firing_pattern() == FiringPattern::Star {
+                                    40
+                                } else {
+                                    33
+                                };
                         }
                     }
                 } else if plant.launch_counter > 0 {
@@ -9565,6 +9581,8 @@ impl Game {
                         } else {
                             let plant_type = self.state.board.plants[plant_index].plant_type;
                             self.state.board.plants[plant_index].health -= ZOMBIE_BITE_DAMAGE;
+                            self.state.board.plants[plant_index].recently_eaten_counter =
+                                RECENTLY_EATEN_TICKS;
                             let health_remaining = self.state.board.plants[plant_index].health;
                             events.push(GameEvent::PlantDamaged {
                                 entity: plant_id,
@@ -13383,6 +13401,83 @@ fn zombie_horizontal_rect(zombie: &ZombieState) -> (i64, i64) {
     (left, left + width * POSITION_SCALE)
 }
 
+// Plant::FindStarFruitTarget (Plant.cpp:843-894).
+fn starfruit_can_target(
+    scene: SceneKind,
+    plant_row: u8,
+    plant_column: u8,
+    zombie: &ZombieState,
+) -> bool {
+    if !plant_damage_can_hit_zombie(zombie) || zombie_rejects_ground_damage(zombie) {
+        return false;
+    }
+    let center_x = grid_x(plant_column) + 40 * POSITION_SCALE;
+    let center_y = scene_plant_y(scene, plant_row, plant_column) + 40 * POSITION_SCALE;
+    if zombie.zombie_type == ZombieType::Boss && plant_column >= 5 {
+        return true;
+    }
+
+    let (left, right) = zombie_horizontal_rect(zombie);
+    if zombie.row == plant_row {
+        return right < center_x;
+    }
+    let width = right - left;
+    let (top_offset, height) = match zombie.zombie_type {
+        ZombieType::Bungee => (22, 94),
+        ZombieType::Gargantuar | ZombieType::Gigagargantuar => (-38, 154),
+        ZombieType::Zamboni | ZombieType::Catapult => (-13, 140),
+        ZombieType::Balloon => (30, 115),
+        ZombieType::Boss => (80, 430),
+        _ => (0, 115),
+    };
+    let base_y = if zombie.zombie_type == ZombieType::Boss {
+        0
+    } else {
+        scene_row_y(scene, zombie.row, zombie.position_x)
+    };
+    let zombie_center_x = (left + right) as f32 / 2.0;
+    let distance_center_x = zombie_center_x
+        + if zombie.zombie_type == ZombieType::Digger {
+            10 * POSITION_SCALE
+        } else {
+            0
+        } as f32;
+    let zombie_center_y = base_y as f32
+        + top_offset as f32 * POSITION_SCALE as f32
+        + height as f32 * POSITION_SCALE as f32 / 2.0;
+    let distance = ((distance_center_x - center_x as f32).powi(2)
+        + (zombie_center_y - center_y as f32).powi(2))
+    .sqrt();
+    let lead_ticks = distance / (3.33_f32 * POSITION_SCALE as f32);
+    let mut speed = if zombie.eating || zombie.frozen_counter > 0 {
+        0
+    } else if zombie.chilled_counter > 0 {
+        zombie.speed * 2 / 5
+    } else {
+        zombie.speed
+    };
+    if zombie.hypnotized {
+        speed = -speed;
+    }
+    if matches!(zombie.zombie_type, ZombieType::Boss | ZombieType::Bungee) {
+        speed = 0;
+    }
+    let hit_center_x = zombie_center_x - speed as f32 * lead_ticks;
+    let hit_left = hit_center_x - width as f32 / 2.0;
+    if hit_left + width as f32 > center_x as f32 && hit_left < center_x as f32 {
+        return true;
+    }
+
+    let angle = (zombie_center_y - center_y as f32)
+        .atan2(hit_center_x - center_x as f32)
+        .to_degrees();
+    if zombie.row.abs_diff(plant_row) < 2 {
+        (20.0 < angle && angle < 40.0) || (-45.0 < angle && angle < -25.0)
+    } else {
+        (25.0 < angle && angle < 35.0) || (-38.0 < angle && angle < -28.0)
+    }
+}
+
 fn zombie_pult_target_y(zombie: &ZombieState) -> i64 {
     grid_y(zombie.row) - 30 * POSITION_SCALE
 }
@@ -13625,6 +13720,7 @@ mod tests {
             launch_counter: 0,
             launch_rate: plant_type.launch_rate(),
             shooting_counter: 0,
+            recently_eaten_counter: 0,
             kernel_pult_projectile: None,
             burst_remaining: 0,
             burst_delay: 0,
@@ -14859,12 +14955,13 @@ mod tests {
         game.advance(InputFrame {
             actions: vec![
                 InputAction::SelectSeed { slot: 29 },
-                InputAction::Plant { row: 2, column: 0 },
+                InputAction::Plant { row: 2, column: 2 },
             ],
         });
         game.state.board.plants[0].launch_counter = 1;
         let mut setup_events = Vec::new();
-        game.spawn_normal_zombie(2, 0, Some(500 * POSITION_SCALE), &mut setup_events);
+        game.spawn_normal_zombie(2, 0, Some(120 * POSITION_SCALE), &mut setup_events);
+        game.state.board.zombies[0].speed = 0;
 
         let events = (0..40)
             .flat_map(|_| game.advance(InputFrame::default()))
@@ -14884,6 +14981,88 @@ mod tests {
                 .projectiles
                 .iter()
                 .any(|projectile| projectile.velocity_y != 0)
+        );
+    }
+
+    #[test]
+    fn starfruit_target_search_uses_source_rays_and_movement_lead() {
+        let zombie_at = |row, position_x, speed| {
+            let mut game = Game::new(7, SceneKind::Day);
+            let mut events = Vec::new();
+            game.spawn_normal_zombie(row, 0, Some(position_x), &mut events);
+            game.state.board.zombies[0].speed = speed;
+            game.state.board.zombies.remove(0)
+        };
+        let targets = |zombie: &ZombieState| starfruit_can_target(SceneKind::Day, 2, 2, zombie);
+
+        assert!(targets(&zombie_at(2, 100 * POSITION_SCALE, 0)));
+        assert!(!targets(&zombie_at(2, 500 * POSITION_SCALE, 0)));
+        assert!(targets(&zombie_at(3, 190 * POSITION_SCALE, 0)));
+        assert!(targets(&zombie_at(3, 387 * POSITION_SCALE, 0)));
+        assert!(targets(&zombie_at(4, 560 * POSITION_SCALE, 0)));
+        assert!(!targets(&zombie_at(3, 700 * POSITION_SCALE, 0)));
+        assert!(targets(&zombie_at(
+            3,
+            700 * POSITION_SCALE,
+            2 * POSITION_SCALE,
+        )));
+
+        let mut immune = zombie_at(3, 387 * POSITION_SCALE, 0);
+        immune.hypnotized = true;
+        assert!(!targets(&immune));
+        let mut boss = zombie_at(0, 0, 0);
+        boss.zombie_type = ZombieType::Boss;
+        assert!(starfruit_can_target(SceneKind::Boss, 2, 5, &boss));
+    }
+
+    #[test]
+    fn recently_eaten_starfruit_fires_on_the_source_counter() {
+        let mut game = Game::new(7, SceneKind::Day);
+        game.state
+            .board
+            .plants
+            .push(test_plant(1, PlantType::Other(29), 2, 2));
+        game.state.board.plants[0].launch_counter = 100;
+        let mut setup = Vec::new();
+        game.spawn_normal_zombie(2, 0, Some(grid_x(2) + 20 * POSITION_SCALE), &mut setup);
+        game.state.board.zombies[0].speed = 0;
+        game.state.board.zombies[0].age = 3;
+
+        game.advance(InputFrame::default());
+        assert_eq!(
+            game.state.board.plants[0].recently_eaten_counter,
+            RECENTLY_EATEN_TICKS
+        );
+        game.state.board.zombies.clear();
+        game.state.board.plants[0].launch_counter = 1;
+        assert!(
+            game.advance(InputFrame::default())
+                .iter()
+                .all(|event| !matches!(event, GameEvent::PlantFired { .. }))
+        );
+        assert_eq!(game.state.board.plants[0].shooting_counter, 40);
+
+        for _ in 0..38 {
+            assert!(
+                game.advance(InputFrame::default())
+                    .iter()
+                    .all(|event| !matches!(event, GameEvent::PlantFired { .. }))
+            );
+        }
+        let events = game.advance(InputFrame::default());
+        assert_eq!(
+            events
+                .iter()
+                .filter(|event| matches!(event, GameEvent::PlantFired { .. }))
+                .count(),
+            1
+        );
+        assert_eq!(
+            events
+                .iter()
+                .filter(|event| matches!(event, GameEvent::ProjectileFired { .. }))
+                .count(),
+            5
         );
     }
 
