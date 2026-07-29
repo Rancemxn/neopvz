@@ -12687,6 +12687,10 @@ fn projectile_can_hit_zombie(zombie: &ZombieState, projectile_type: ProjectileTy
     if zombie.bungee_held {
         return false;
     }
+    if zombie.zombie_type == ZombieType::Bobsled && zombie.bobsled_sliding && !zombie.bobsled_leader
+    {
+        return false;
+    }
     if zombie.zombie_type == ZombieType::Snorkel
         && matches!(
             zombie.snorkel_phase,
@@ -16146,6 +16150,18 @@ mod tests {
         assert_eq!(leader_state.health, BOBSLED_HEALTH);
         assert_eq!(leader_state.shield_health, BOBSLED_HELM_HEALTH);
         assert_eq!(leader_state.speed, BOBSLED_SPEED);
+        assert!(projectile_can_hit_zombie(leader_state, ProjectileType::Pea));
+        assert!(
+            game.state
+                .board
+                .zombies
+                .iter()
+                .filter(|zombie| !zombie.bobsled_leader)
+                .all(
+                    |zombie| !projectile_can_hit_zombie(zombie, ProjectileType::Pea)
+                        && !projectile_can_hit_zombie(zombie, ProjectileType::Fireball)
+                )
+        );
 
         let leader_index = game
             .state
@@ -16197,6 +16213,10 @@ mod tests {
                 .iter()
                 .all(|zombie| !zombie.bobsled_sliding)
         );
+        assert!(game.state.board.zombies.iter().all(|zombie| {
+            projectile_can_hit_zombie(zombie, ProjectileType::Pea)
+                && projectile_can_hit_zombie(zombie, ProjectileType::Fireball)
+        }));
         assert!(game.state.board.plants[0].health < 4_000);
     }
 
