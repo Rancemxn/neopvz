@@ -1257,6 +1257,10 @@ impl PlantType {
         self.slot() == 47
     }
 
+    fn is_kernel_pult(self) -> bool {
+        self.slot() == 34
+    }
+
     fn is_sunshroom(self) -> bool {
         self.slot() == 9
     }
@@ -2171,6 +2175,8 @@ pub struct PlantState {
     pub launch_counter: u32,
     pub launch_rate: u32,
     pub shooting_counter: u32,
+    #[serde(default)]
+    pub kernel_pult_projectile: Option<ProjectileType>,
     pub burst_remaining: u8,
     pub burst_delay: u32,
     pub production_age: u32,
@@ -5378,6 +5384,7 @@ impl Game {
             launch_counter: 0,
             launch_rate,
             shooting_counter: 0,
+            kernel_pult_projectile: None,
             burst_remaining: 0,
             burst_delay: 0,
             production_age: 0,
@@ -6303,6 +6310,7 @@ impl Game {
             launch_counter,
             launch_rate,
             shooting_counter: 0,
+            kernel_pult_projectile: None,
             burst_remaining: 0,
             burst_delay: 0,
             production_age: 0,
@@ -6368,6 +6376,7 @@ impl Game {
         plant.launch_counter = launch_counter;
         plant.launch_rate = launch_rate;
         plant.shooting_counter = 0;
+        plant.kernel_pult_projectile = None;
         plant.burst_remaining = 0;
         plant.burst_delay = 0;
         plant.production_age = 0;
@@ -6766,6 +6775,7 @@ impl Game {
             let mut gold_magnet_coin = None;
             let mut potato_armed_now = false;
             let mut squash_hum_started = false;
+            let mut firing_projectile = None;
             {
                 let plant = &mut self.state.board.plants[index];
                 if plant_type.is_cob_cannon() {
@@ -6926,6 +6936,7 @@ impl Game {
                     fire = plant.shooting_counter == 1;
                     if fire {
                         plant.shooting_counter = 0;
+                        firing_projectile = plant.kernel_pult_projectile.take();
                         plant.burst_remaining = plant_type.burst_count().saturating_sub(1);
                         plant.burst_delay = if plant.burst_remaining == 0 { 0 } else { 5 };
                     }
@@ -6951,6 +6962,13 @@ impl Game {
                     } else if plant_type.is_shooter() {
                         plant.launch_counter = plant.launch_rate - self.rng.range(15);
                         if has_target {
+                            if plant_type.is_kernel_pult() {
+                                plant.kernel_pult_projectile = Some(if self.rng.range(4) == 0 {
+                                    ProjectileType::Butter
+                                } else {
+                                    ProjectileType::Kernel
+                                });
+                            }
                             plant.shooting_counter = 33;
                         }
                     }
@@ -6966,7 +6984,14 @@ impl Game {
                 });
             }
             if fire {
-                self.fire_projectiles(id, plant_type, row, column, events);
+                self.fire_projectiles(
+                    id,
+                    plant_type,
+                    firing_projectile.unwrap_or_else(|| plant_type.projectile_type()),
+                    row,
+                    column,
+                    events,
+                );
             }
             if let Some(coin_id) = gold_magnet_coin {
                 self.collect_coin(coin_id, events);
@@ -10923,14 +10948,11 @@ impl Game {
         &mut self,
         source: EntityId,
         plant_type: PlantType,
+        projectile_type: ProjectileType,
         row: u8,
         column: u8,
         events: &mut Vec<GameEvent>,
     ) {
-        let projectile_type = match plant_type.projectile_type() {
-            ProjectileType::Kernel if self.rng.range(4) == 0 => ProjectileType::Butter,
-            projectile_type => projectile_type,
-        };
         let position_x = if plant_type.is_gloom_shroom() {
             grid_x(column) - 80 * POSITION_SCALE
         } else {
@@ -13849,7 +13871,14 @@ mod tests {
     fn leftpeater_fires_only_backward() {
         let mut game = Game::new(7, SceneKind::Day);
         let mut events = Vec::new();
-        game.fire_projectiles(1, PlantType::Other(52), 2, 2, &mut events);
+        game.fire_projectiles(
+            1,
+            PlantType::Other(52),
+            ProjectileType::Pea,
+            2,
+            2,
+            &mut events,
+        );
 
         assert!(matches!(
             events.as_slice(),
@@ -14250,8 +14279,19 @@ mod tests {
     fn kernelpult_fires_lobbed_kernel_or_butter_shots() {
         let mut game = Game::new(7, SceneKind::Day);
         let mut events = Vec::new();
-        for _ in 0..128 {
-            game.fire_projectiles(1, PlantType::Other(34), 2, 0, &mut events);
+        for index in 0..128 {
+            game.fire_projectiles(
+                1,
+                PlantType::Other(34),
+                if index % 4 == 0 {
+                    ProjectileType::Butter
+                } else {
+                    ProjectileType::Kernel
+                },
+                2,
+                0,
+                &mut events,
+            );
         }
 
         let fired = events
@@ -14273,6 +14313,58 @@ mod tests {
                 .iter()
                 .all(|projectile| projectile.motion == ProjectileMotion::Lobbed)
         );
+    }
+
+    #[test]
+    fn kernelpult_selects_weapon_at_attack_start() {
+        let mut game = Game::new(7, SceneKind::Day);
+        game.state.sun = 200;
+        game.advance(InputFrame {
+            actions: vec![
+                InputAction::SelectSeed { slot: 34 },
+                InputAction::Plant { row: 2, column: 0 },
+            ],
+        });
+        game.state.board.plants[0].launch_counter = 1;
+        let mut setup_events = Vec::new();
+        game.spawn_normal_zombie(2, 0, Some(500 * POSITION_SCALE), &mut setup_events);
+
+        let mut expected_rng = game.rng.clone();
+        expected_rng.range(15);
+        let expected_projectile = if expected_rng.range(4) == 0 {
+            ProjectileType::Butter
+        } else {
+            ProjectileType::Kernel
+        };
+        let arm_events = game.advance(InputFrame::default());
+
+        assert!(
+            !arm_events
+                .iter()
+                .any(|event| matches!(event, GameEvent::ProjectileFired { .. }))
+        );
+        assert_eq!(
+            game.state.board.plants[0].kernel_pult_projectile,
+            Some(expected_projectile)
+        );
+        game.state.board.zombies.clear();
+
+        let mut expected_after_fire = game.rng.clone();
+        expected_after_fire.range(4);
+        let mut fire_events = Vec::new();
+        for _ in 0..32 {
+            fire_events.extend(game.advance(InputFrame::default()));
+        }
+
+        assert!(fire_events.iter().any(|event| matches!(
+            event,
+            GameEvent::ProjectileFired {
+                projectile_type,
+                ..
+            } if *projectile_type == expected_projectile
+        )));
+        assert_eq!(game.state.board.plants[0].kernel_pult_projectile, None);
+        assert_eq!(game.rng.snapshot(), expected_after_fire.snapshot());
     }
 
     #[test]
@@ -20895,7 +20987,14 @@ mod tests {
         );
 
         let mut threepeater_events = Vec::new();
-        game.fire_projectiles(99, PlantType::Other(18), 2, 2, &mut threepeater_events);
+        game.fire_projectiles(
+            99,
+            PlantType::Other(18),
+            ProjectileType::Pea,
+            2,
+            2,
+            &mut threepeater_events,
+        );
         assert_eq!(
             threepeater_events
                 .iter()
