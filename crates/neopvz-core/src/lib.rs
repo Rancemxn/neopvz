@@ -9753,7 +9753,7 @@ impl Game {
                         scene_row_y(self.state.scene, projectile.row, projectile.position_x)
                             - scene_row_y(self.state.scene, projectile.row, previous_x);
                     projectile.position_y += slope_delta;
-                    projectile.lob_height -= slope_delta as i32;
+                    projectile.lob_height -= (slope_delta * PULT_LOB_SCALE / POSITION_SCALE) as i32;
                 }
                 if projectile.motion == ProjectileMotion::Lobbed
                     && projectile.projectile_type.uses_lob_trajectory()
@@ -23692,13 +23692,29 @@ mod tests {
             lob_height: 61 * PULT_LOB_SCALE as i32,
             lob_velocity: 1,
         };
-        assert_eq!(game.find_catapult_collision_target(&projectile), Some(4));
+        assert_eq!(
+            game.find_catapult_collision_target(&projectile)
+                .map(|index| game.state.board.plants[index].id),
+            Some(4)
+        );
         game.state.board.plants.retain(|plant| plant.id != 4);
-        assert_eq!(game.find_catapult_collision_target(&projectile), Some(3));
+        assert_eq!(
+            game.find_catapult_collision_target(&projectile)
+                .map(|index| game.state.board.plants[index].id),
+            Some(3)
+        );
         game.state.board.plants.retain(|plant| plant.id != 3);
-        assert_eq!(game.find_catapult_collision_target(&projectile), Some(2));
+        assert_eq!(
+            game.find_catapult_collision_target(&projectile)
+                .map(|index| game.state.board.plants[index].id),
+            Some(2)
+        );
         game.state.board.plants.retain(|plant| plant.id != 2);
-        assert_eq!(game.find_catapult_collision_target(&projectile), Some(1));
+        assert_eq!(
+            game.find_catapult_collision_target(&projectile)
+                .map(|index| game.state.board.plants[index].id),
+            Some(1)
+        );
     }
 
     #[test]
@@ -23732,7 +23748,7 @@ mod tests {
             GameEvent::PlantDamaged {
                 entity: 2,
                 damage: 75,
-                health_remaining: 280,
+                health_remaining: 225,
             }
         )));
         assert!(game.state.board.projectiles.is_empty());
