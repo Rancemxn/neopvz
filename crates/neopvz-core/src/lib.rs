@@ -1286,7 +1286,7 @@ impl PlantType {
     }
 
     fn is_upgrade(self) -> bool {
-        matches!(self.slot(), 40 | 41 | 42 | 43 | 44 | 45 | 46 | 47)
+        matches!(self.slot(), 40..=47)
     }
 
     fn is_gravebuster(self) -> bool {
