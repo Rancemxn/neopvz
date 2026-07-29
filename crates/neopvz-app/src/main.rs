@@ -99,6 +99,7 @@ enum Checkpoint {
     GardenFertilize,
     GardenFulfill,
     HugeWaveSound,
+    DancerRumble,
     IceShroom,
     PotatoMine,
     ExplosionPlants,
@@ -161,6 +162,7 @@ impl From<Checkpoint> for SceneKind {
                 Self::Garden
             }
             Checkpoint::HugeWaveSound => Self::Day,
+            Checkpoint::DancerRumble => Self::Day,
             Checkpoint::IceShroom => Self::Night,
             Checkpoint::PotatoMine => Self::Day,
             Checkpoint::ExplosionPlants => Self::Night,
@@ -1327,6 +1329,7 @@ impl App {
                 Checkpoint::GardenWater | Checkpoint::GardenFertilize | Checkpoint::GardenFulfill,
             ) => Game::new_mode(0, ModeKind::ZenGarden, 0),
             Some(Checkpoint::HugeWaveSound) => Game::new_mode(7, ModeKind::Adventure, 6),
+            Some(Checkpoint::DancerRumble) => Game::new(0, SceneKind::Day),
             Some(Checkpoint::Butter) => Game::new(0, SceneKind::Day),
             Some(Checkpoint::ProjectileImpacts) => Game::new(0, SceneKind::Day),
             Some(Checkpoint::PrizeChime) => Game::new(0, SceneKind::Day),
@@ -1412,6 +1415,7 @@ impl App {
                 startup_events = game.debug_prepare_garden_fulfill();
             }
             Some(Checkpoint::HugeWaveSound) => game.debug_prepare_huge_wave_sound(),
+            Some(Checkpoint::DancerRumble) => startup_events = game.debug_prepare_dancer_rumble(),
             Some(Checkpoint::IceShroom) => game.debug_prepare_ice_shroom(),
             Some(Checkpoint::PotatoMine) => game.debug_prepare_potato_mine(),
             Some(Checkpoint::ExplosionPlants) => {
@@ -2745,6 +2749,10 @@ fn audio_for_event(event: &GameEvent) -> Option<(AudioKind, &'static str)> {
             zombie_type: neopvz_core::ZombieType::Balloon,
             ..
         } => Some((AudioKind::Effect, "sounds/ballooninflate.ogg")),
+        GameEvent::ZombieSpawned {
+            zombie_type: neopvz_core::ZombieType::BackupDancer,
+            ..
+        } => Some((AudioKind::Effect, "sounds/gravestone_rumble.ogg")),
         GameEvent::ZombieShieldHit { variant, .. } => Some((
             AudioKind::Effect,
             if *variant == 0 {
@@ -3426,6 +3434,15 @@ mod tests {
                 wave: 0,
             }),
             Some((AudioKind::Effect, "sounds/ballooninflate.ogg"))
+        );
+        assert_eq!(
+            audio_for_event(&GameEvent::ZombieSpawned {
+                entity: 1,
+                zombie_type: neopvz_core::ZombieType::BackupDancer,
+                row: 2,
+                wave: 0,
+            }),
+            Some((AudioKind::Effect, "sounds/gravestone_rumble.ogg"))
         );
         assert_eq!(
             audio_for_event(&GameEvent::ZombieShieldHit {

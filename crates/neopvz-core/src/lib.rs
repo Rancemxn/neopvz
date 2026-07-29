@@ -3672,6 +3672,26 @@ impl Game {
     }
 
     #[doc(hidden)]
+    pub fn debug_prepare_dancer_rumble(&mut self) -> Vec<GameEvent> {
+        self.state.level_scene = SceneKind::Day;
+        self.state.scene = SceneKind::Day;
+        self.state.board.zombies.clear();
+        let mut setup_events = Vec::new();
+        let dancer = self.spawn_dancer_zombie(2, 0, Some(grid_x(2)), &mut setup_events);
+        let leader = self
+            .state
+            .board
+            .zombies
+            .iter_mut()
+            .find(|zombie| zombie.id == dancer)
+            .expect("dancer rumble checkpoint leader");
+        leader.speed = 0;
+        leader.dancer_phase = DANCER_SNAP_PHASE;
+        leader.dancer_counter = 1;
+        self.advance(InputFrame::default())
+    }
+
+    #[doc(hidden)]
     pub fn debug_prepare_plant_firing_audio(&mut self) -> Vec<GameEvent> {
         self.state.level_scene = SceneKind::Night;
         self.state.scene = SceneKind::Night;
