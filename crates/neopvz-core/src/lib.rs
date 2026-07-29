@@ -6685,6 +6685,28 @@ impl Game {
                 }
                 continue;
             }
+            let threepeater_target_rows = if plant_type.firing_pattern() == FiringPattern::ThreeRow
+            {
+                [
+                    row.checked_sub(1),
+                    Some(row),
+                    row.checked_add(1)
+                        .filter(|target_row| *target_row < self.state.board.rows),
+                ]
+                .into_iter()
+                .flatten()
+                .filter(|target_row| {
+                    *target_row < self.state.board.rows
+                        && (self.state.mode != ModeKind::Adventure
+                            || adventure_row_is_sodded(self.state.level, *target_row))
+                })
+                .collect::<Vec<_>>()
+            } else {
+                Vec::new()
+            };
+            let threepeater_attack_left = plant_attack_start(column);
+            let threepeater_attack_right =
+                threepeater_attack_left + i64::from(LOGICAL_WIDTH) * POSITION_SCALE;
             let has_target = self.state.board.zombies.iter().any(|zombie| {
                 if !plant_damage_can_hit_zombie(zombie) || zombie_rejects_ground_damage(zombie) {
                     return false;
@@ -6699,8 +6721,19 @@ impl Game {
                     return false;
                 }
                 let row_distance = zombie.row.abs_diff(row);
+                let target_row = if zombie.zombie_type == ZombieType::Boss {
+                    row
+                } else {
+                    zombie.row
+                };
+                let (zombie_left, zombie_right) = zombie_horizontal_rect(zombie);
                 match plant_type.firing_pattern() {
-                    FiringPattern::ThreeRow | FiringPattern::Star => row_distance <= 2,
+                    FiringPattern::ThreeRow => {
+                        threepeater_target_rows.contains(&target_row)
+                            && zombie_right > threepeater_attack_left
+                            && zombie_left < threepeater_attack_right
+                    }
+                    FiringPattern::Star => row_distance <= 2,
                     FiringPattern::Split => {
                         row_distance == 0
                             && (zombie.position_x > plant_attack_start(column)
@@ -14246,6 +14279,59 @@ mod tests {
             .collect::<Vec<_>>();
 
         assert_eq!(fired_rows, vec![1, 2, 3]);
+    }
+
+    #[test]
+    fn threepeater_does_not_arm_for_invalid_rows_or_attack_range() {
+        let mut distant = Game::new(7, SceneKind::Day);
+        distant.state.board.plants = vec![test_plant(1, PlantType::Other(18), 2, 0)];
+        distant.state.board.plants[0].launch_counter = 1;
+        let mut setup_events = Vec::new();
+        distant.spawn_normal_zombie(0, 0, Some(500 * POSITION_SCALE), &mut setup_events);
+        distant.state.board.zombies[0].speed = 0;
+        let distant_fired = (0..40)
+            .flat_map(|_| distant.advance(InputFrame::default()))
+            .filter(|event| matches!(event, GameEvent::ProjectileFired { .. }))
+            .count();
+        assert_eq!(
+            distant_fired, 0,
+            "a zombie two rows away cannot arm Threepeater"
+        );
+
+        let mut out_of_range = Game::new(7, SceneKind::Day);
+        out_of_range.state.board.plants = vec![test_plant(1, PlantType::Other(18), 2, 0)];
+        out_of_range.state.board.plants[0].launch_counter = 1;
+        let mut setup_events = Vec::new();
+        out_of_range.spawn_normal_zombie(
+            2,
+            0,
+            Some(plant_attack_start(0) - 100 * POSITION_SCALE),
+            &mut setup_events,
+        );
+        out_of_range.state.board.zombies[0].speed = 0;
+        let out_of_range_fired = (0..40)
+            .flat_map(|_| out_of_range.advance(InputFrame::default()))
+            .filter(|event| matches!(event, GameEvent::ProjectileFired { .. }))
+            .count();
+        assert_eq!(
+            out_of_range_fired, 0,
+            "a zombie outside the Threepeater attack rectangle cannot arm it"
+        );
+
+        let mut unsodded = Game::new_mode(7, ModeKind::Adventure, 1);
+        unsodded.state.board.plants = vec![test_plant(1, PlantType::Other(18), 2, 0)];
+        unsodded.state.board.plants[0].launch_counter = 1;
+        let mut setup_events = Vec::new();
+        unsodded.spawn_normal_zombie(1, 0, Some(500 * POSITION_SCALE), &mut setup_events);
+        unsodded.state.board.zombies[0].speed = 0;
+        let unsodded_fired = (0..40)
+            .flat_map(|_| unsodded.advance(InputFrame::default()))
+            .filter(|event| matches!(event, GameEvent::ProjectileFired { .. }))
+            .count();
+        assert_eq!(
+            unsodded_fired, 0,
+            "an unsodded adjacent row cannot arm Threepeater"
+        );
     }
 
     #[test]
