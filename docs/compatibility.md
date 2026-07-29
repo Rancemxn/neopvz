@@ -13,7 +13,7 @@ evidence; a reviewer assertion alone is never sufficient.
 Status is `verified`, `partial`, or `missing`. The progress quantity is the sum
 of `total - accepted` across all rows.
 
-Current baseline: **1345 accepted / 1809 total; 464 unresolved**.
+Current baseline: **1346 accepted / 1809 total; 463 unresolved**.
 
 ## Foundation and Boundaries
 
