@@ -102,6 +102,7 @@ enum Checkpoint {
     DancerRumble,
     FirstWaveSound,
     FlagWaveSound,
+    BossAttack,
     IceShroom,
     PotatoMine,
     ExplosionPlants,
@@ -167,6 +168,7 @@ impl From<Checkpoint> for SceneKind {
             Checkpoint::DancerRumble => Self::Day,
             Checkpoint::FirstWaveSound => Self::Day,
             Checkpoint::FlagWaveSound => Self::Day,
+            Checkpoint::BossAttack => Self::Boss,
             Checkpoint::IceShroom => Self::Night,
             Checkpoint::PotatoMine => Self::Day,
             Checkpoint::ExplosionPlants => Self::Night,
@@ -1336,6 +1338,7 @@ impl App {
             Some(Checkpoint::DancerRumble) => Game::new(0, SceneKind::Day),
             Some(Checkpoint::FirstWaveSound) => Game::new_mode(7, ModeKind::Adventure, 1),
             Some(Checkpoint::FlagWaveSound) => Game::new_mode(7, ModeKind::Adventure, 6),
+            Some(Checkpoint::BossAttack) => Game::new_mode(3, ModeKind::MiniGame, 19),
             Some(Checkpoint::Butter) => Game::new(0, SceneKind::Day),
             Some(Checkpoint::ProjectileImpacts) => Game::new(0, SceneKind::Day),
             Some(Checkpoint::PrizeChime) => Game::new(0, SceneKind::Day),
@@ -1428,6 +1431,7 @@ impl App {
             Some(Checkpoint::FlagWaveSound) => {
                 startup_events = game.debug_prepare_flag_wave_sound()
             }
+            Some(Checkpoint::BossAttack) => startup_events = game.debug_prepare_boss_attack(),
             Some(Checkpoint::IceShroom) => game.debug_prepare_ice_shroom(),
             Some(Checkpoint::PotatoMine) => game.debug_prepare_potato_mine(),
             Some(Checkpoint::ExplosionPlants) => {
@@ -2668,6 +2672,9 @@ fn audio_for_event(event: &GameEvent) -> Option<(AudioKind, &'static str)> {
         GameEvent::WaveStarted { wave: 0 } => Some((AudioKind::Effect, "sounds/awooga.ogg")),
         GameEvent::FlagWaveSound { .. } => Some((AudioKind::Effect, "sounds/siren.ogg")),
         GameEvent::HugeWaveSound { .. } => Some((AudioKind::Effect, "sounds/hugewave.ogg")),
+        GameEvent::BossAttackWindup { .. } => {
+            Some((AudioKind::Effect, "sounds/bossboulderattack.ogg"))
+        }
         GameEvent::PlantSpecialTriggered {
             plant_type: neopvz_core::PlantType::Other(14),
             ..
@@ -3612,6 +3619,14 @@ mod tests {
             None
         );
         assert_eq!(audio_for_event(&GameEvent::ZombieDied { entity: 2 }), None);
+        assert_eq!(
+            audio_for_event(&GameEvent::BossAttackWindup {
+                entity: 1,
+                row: 2,
+                fire: true,
+            }),
+            Some((AudioKind::Effect, "sounds/bossboulderattack.ogg"))
+        );
         assert_eq!(
             audio_for_event(&GameEvent::PortalOpened {
                 row: 2,

@@ -3721,6 +3721,22 @@ impl Game {
     }
 
     #[doc(hidden)]
+    pub fn debug_prepare_boss_attack(&mut self) -> Vec<GameEvent> {
+        self.state.level_scene = SceneKind::Boss;
+        self.state.scene = SceneKind::Boss;
+        self.state.mode = ModeKind::MiniGame;
+        self.state.level = 19;
+        self.state
+            .board
+            .zombies
+            .iter_mut()
+            .find(|zombie| zombie.zombie_type == ZombieType::Boss)
+            .expect("boss attack checkpoint boss")
+            .boss_head_counter = 1;
+        self.advance(InputFrame::default())
+    }
+
+    #[doc(hidden)]
     pub fn debug_prepare_plant_firing_audio(&mut self) -> Vec<GameEvent> {
         self.state.level_scene = SceneKind::Night;
         self.state.scene = SceneKind::Night;
@@ -20525,6 +20541,22 @@ mod tests {
                 GameEvent::ProjectileImpact { kind: actual, .. } if *actual == kind
             )));
         }
+    }
+
+    #[test]
+    fn debug_boss_attack_checkpoint_emits_windup_event() {
+        let mut game = Game::new_mode(3, ModeKind::MiniGame, 19);
+        let events = game.debug_prepare_boss_attack();
+        assert!(
+            events
+                .iter()
+                .any(|event| matches!(event, GameEvent::BossAttackWindup { .. }))
+        );
+        assert!(
+            game.state.board.zombies.iter().any(|zombie| {
+                zombie.zombie_type == ZombieType::Boss && zombie.boss_ball_active
+            })
+        );
     }
 
     #[test]
