@@ -184,7 +184,16 @@ const BUNGEE_DROP_DIVE_ALTITUDE: i64 = 3_000;
 const BUNGEE_DROP_SPEED: i64 = 8;
 const BUNGEE_RISE_DEPART_TICKS: u32 = 75;
 const SKY_DROP_DELAY_TICKS: u32 = 210;
-const DANCER_SUMMON_TICKS: u32 = 300;
+const DANCER_ENTRANCE_TICKS: u32 = 300;
+const DANCER_SNAP_TICKS: u32 = 50;
+const DANCER_HOLD_TICKS: u32 = 200;
+const DANCER_RISE_TICKS: u32 = 150;
+const DANCER_RESUMMON_TICKS: u32 = 100;
+const DANCER_ENTRANCE_PHASE: u8 = 1;
+const DANCER_SNAP_PHASE: u8 = 2;
+const DANCER_HOLD_PHASE: u8 = 3;
+const DANCER_RISE_PHASE: u8 = 4;
+const DANCER_DANCE_PHASE: u8 = 5;
 const BACKUP_DANCER_COUNT: usize = 4;
 const DIGGER_RISE_TICKS: u32 = 130;
 const BUNGEE_STEAL_TICKS: u32 = 300;
@@ -2222,6 +2231,12 @@ pub struct ZombieState {
     pub pogo_velocity_x: i64,
     #[serde(default)]
     pub dancer_counter: u32,
+    #[serde(default)]
+    pub dancer_phase: u8,
+    #[serde(default)]
+    pub dancer_leader: Option<EntityId>,
+    #[serde(default)]
+    pub dancer_slot: u8,
     #[serde(default)]
     pub dancer_summoned: bool,
     #[serde(default)]
@@ -8258,6 +8273,167 @@ impl Game {
         zombie.position_x += movement;
     }
 
+    fn dancer_group_blocked(&self, zombie_index: usize) -> bool {
+        let zombie = &self.state.board.zombies[zombie_index];
+        let leader_id = match zombie.zombie_type {
+            ZombieType::Dancer => Some(zombie.id),
+            ZombieType::BackupDancer => zombie.dancer_leader,
+            _ => return false,
+        };
+        let Some(leader_id) = leader_id else {
+            return false;
+        };
+        self.state.board.zombies.iter().any(|member| {
+            (member.id == leader_id || member.dancer_leader == Some(leader_id))
+                && (member.frozen_counter > 0 || member.eating)
+        })
+    }
+
+    fn dancer_has_follower(&self, leader: EntityId, slot: u8) -> bool {
+        self.state.board.zombies.iter().any(|zombie| {
+            zombie.zombie_type == ZombieType::BackupDancer
+                && zombie.health > 0
+                && !zombie.departed
+                && zombie.dancer_leader == Some(leader)
+                && zombie.dancer_slot == slot
+        })
+    }
+
+    fn dancer_slot_position(&self, row: u8, position_x: i64, slot: u8) -> Option<(u8, i64)> {
+        let target_row = match slot {
+            0 => row.checked_sub(1),
+            1 => row.checked_add(1),
+            2 | 3 => Some(row),
+            _ => return None,
+        }?;
+        let target_x = match slot {
+            0 | 1 => position_x,
+            2 => position_x - 100 * POSITION_SCALE,
+            3 => position_x + 100 * POSITION_SCALE,
+            _ => return None,
+        };
+        (target_row < self.state.board.rows).then_some((target_row, target_x))
+    }
+
+    fn dancer_needs_follower(&self, zombie_index: usize) -> bool {
+        let zombie = &self.state.board.zombies[zombie_index];
+        (0..BACKUP_DANCER_COUNT as u8).any(|slot| {
+            self.dancer_slot_position(zombie.row, zombie.position_x, slot)
+                .is_some()
+                && !self.dancer_has_follower(zombie.id, slot)
+        })
+    }
+
+    fn summon_missing_dancers(&mut self, zombie_index: usize, events: &mut Vec<GameEvent>) {
+        let (leader, row, position_x, wave, hypnotized) = {
+            let zombie = &self.state.board.zombies[zombie_index];
+            (
+                zombie.id,
+                zombie.row,
+                zombie.position_x,
+                zombie.from_wave,
+                zombie.hypnotized,
+            )
+        };
+        for slot in 0..BACKUP_DANCER_COUNT as u8 {
+            if self.dancer_has_follower(leader, slot) {
+                continue;
+            }
+            let Some((target_row, target_x)) = self.dancer_slot_position(row, position_x, slot)
+            else {
+                continue;
+            };
+            let backup = self.spawn_backup_dancer(target_row, wave, Some(target_x), events);
+            if let Some(zombie) = self.state.board.zombies.iter_mut().find(|z| z.id == backup) {
+                zombie.dancer_leader = Some(leader);
+                zombie.dancer_slot = slot;
+                zombie.dancer_phase = DANCER_RISE_PHASE;
+                zombie.dancer_counter = DANCER_RISE_TICKS;
+                zombie.hypnotized = hypnotized;
+            }
+        }
+    }
+
+    fn update_dancer_state(&mut self, zombie_index: usize, events: &mut Vec<GameEvent>) {
+        let (zombie_type, phase, counter, frozen, eating) = {
+            let zombie = &self.state.board.zombies[zombie_index];
+            (
+                zombie.zombie_type,
+                zombie.dancer_phase,
+                zombie.dancer_counter,
+                zombie.frozen_counter != 0,
+                zombie.eating,
+            )
+        };
+        match zombie_type {
+            ZombieType::Dancer => {
+                if frozen {
+                    return;
+                }
+                match phase {
+                    DANCER_ENTRANCE_PHASE => {
+                        let next = counter.saturating_sub(1);
+                        let zombie = &mut self.state.board.zombies[zombie_index];
+                        zombie.dancer_counter = next;
+                        if next == 0 {
+                            zombie.dancer_phase = DANCER_SNAP_PHASE;
+                            zombie.dancer_counter = DANCER_SNAP_TICKS;
+                        }
+                    }
+                    DANCER_SNAP_PHASE => {
+                        let next = counter.saturating_sub(1);
+                        if next == 0 {
+                            self.summon_missing_dancers(zombie_index, events);
+                            let zombie = &mut self.state.board.zombies[zombie_index];
+                            zombie.dancer_summoned = true;
+                            zombie.dancer_phase = DANCER_HOLD_PHASE;
+                            zombie.dancer_counter = DANCER_HOLD_TICKS;
+                        } else {
+                            self.state.board.zombies[zombie_index].dancer_counter = next;
+                        }
+                    }
+                    DANCER_HOLD_PHASE => {
+                        let next = counter.saturating_sub(1);
+                        let zombie = &mut self.state.board.zombies[zombie_index];
+                        zombie.dancer_counter = next;
+                        if next == 0 {
+                            zombie.dancer_phase = DANCER_DANCE_PHASE;
+                            zombie.speed = 450_000;
+                        }
+                    }
+                    DANCER_DANCE_PHASE => {
+                        if counter > 0 {
+                            let next = counter - 1;
+                            self.state.board.zombies[zombie_index].dancer_counter = next;
+                            if next == 0 {
+                                self.summon_missing_dancers(zombie_index, events);
+                            }
+                        } else {
+                            if self.dancer_needs_follower(zombie_index) {
+                                self.state.board.zombies[zombie_index].dancer_counter =
+                                    DANCER_RESUMMON_TICKS;
+                            }
+                        }
+                    }
+                    _ => {
+                        let zombie = &mut self.state.board.zombies[zombie_index];
+                        zombie.dancer_phase = DANCER_ENTRANCE_PHASE;
+                        zombie.dancer_counter = DANCER_ENTRANCE_TICKS;
+                    }
+                }
+            }
+            ZombieType::BackupDancer if phase == DANCER_RISE_PHASE && !frozen && !eating => {
+                let next = counter.saturating_sub(1);
+                let zombie = &mut self.state.board.zombies[zombie_index];
+                zombie.dancer_counter = next;
+                if next == 0 {
+                    zombie.dancer_phase = DANCER_DANCE_PHASE;
+                }
+            }
+            _ => {}
+        }
+    }
+
     fn update_zombies(&mut self, events: &mut Vec<GameEvent>) {
         let zombie_count = self.state.board.zombies.len() as u32;
         for zombie_index in 0..self.state.board.zombies.len() {
@@ -8467,46 +8643,8 @@ impl Game {
                     }
                 }
             }
-            let summon_dancer = {
-                let zombie = &mut self.state.board.zombies[zombie_index];
-                if zombie.zombie_type == ZombieType::Dancer && !zombie.dancer_summoned {
-                    zombie.dancer_counter = zombie.dancer_counter.saturating_sub(1);
-                    if zombie.dancer_counter == 0 {
-                        zombie.dancer_summoned = true;
-                        // Zombie_ResetSpeed re-picks the fixed 0.45 dance walk
-                        // once the entrance finishes.
-                        zombie.speed = 450_000;
-                        true
-                    } else {
-                        false
-                    }
-                } else {
-                    false
-                }
-            };
-            if summon_dancer {
-                let (row, position_x, wave) = {
-                    let zombie = &self.state.board.zombies[zombie_index];
-                    (zombie.row, zombie.position_x, zombie.from_wave)
-                };
-                let positions = [
-                    (row.checked_sub(1), position_x),
-                    (row.checked_add(1), position_x),
-                    (Some(row), position_x - 100 * POSITION_SCALE),
-                    (Some(row), position_x + 100 * POSITION_SCALE),
-                ];
-                for (target_row, target_x) in positions
-                    .into_iter()
-                    .filter_map(|(target_row, target_x)| {
-                        target_row.map(|target_row| (target_row, target_x))
-                    })
-                    .take(BACKUP_DANCER_COUNT)
-                {
-                    if target_row < self.state.board.rows {
-                        self.spawn_backup_dancer(target_row, wave, Some(target_x), events);
-                    }
-                }
-            }
+            self.update_dancer_state(zombie_index, events);
+            let dancer_group_blocked = self.dancer_group_blocked(zombie_index);
             {
                 let mode = self.state.mode;
                 let zombie = &mut self.state.board.zombies[zombie_index];
@@ -8631,7 +8769,14 @@ impl Game {
                     || garlic_active
                     || (zombie.zombie_type == ZombieType::Catapult && zombie.catapult_armed)
                     || (zombie.zombie_type == ZombieType::Pogo && zombie.pogo_counter > 0)
-                    || (zombie.zombie_type == ZombieType::Dancer && zombie.dancer_counter > 0)
+                    || dancer_group_blocked
+                    || ((zombie.zombie_type == ZombieType::Dancer
+                        && !matches!(
+                            zombie.dancer_phase,
+                            DANCER_ENTRANCE_PHASE | DANCER_DANCE_PHASE
+                        ))
+                        || (zombie.zombie_type == ZombieType::BackupDancer
+                            && zombie.dancer_phase != DANCER_DANCE_PHASE))
                     || (zombie.zombie_type == ZombieType::Digger
                         && (zombie.digger_underground || zombie.digger_counter > 0))
                     || snorkel_blocks_movement(zombie)
@@ -8658,7 +8803,11 @@ impl Game {
                     } else {
                         base_speed * 2 / 5
                     };
-                    if zombie.hypnotized || zombie.yeti_running {
+                    if zombie.hypnotized
+                        || zombie.yeti_running
+                        || (zombie.zombie_type == ZombieType::Dancer
+                            && zombie.dancer_phase == DANCER_ENTRANCE_PHASE)
+                    {
                         zombie.position_x = zombie.position_x.saturating_add(speed);
                     } else {
                         zombie.position_x = zombie.position_x.saturating_sub(speed);
@@ -8671,7 +8820,9 @@ impl Game {
                     zombie.age,
                     zombie.eating,
                     frozen,
-                    zombie.zombie_type == ZombieType::Dancer && zombie.dancer_counter > 0,
+                    (zombie.zombie_type == ZombieType::Dancer
+                        || zombie.zombie_type == ZombieType::BackupDancer)
+                        && zombie.dancer_phase != DANCER_DANCE_PHASE,
                     zombie.zombie_type == ZombieType::Digger
                         && (zombie.digger_underground || zombie.digger_counter > 0),
                     balloon_is_airborne(zombie),
@@ -11853,10 +12004,21 @@ impl Game {
             pogo_target_x: None,
             pogo_velocity_x: 0,
             dancer_counter: if zombie_type == ZombieType::Dancer {
-                DANCER_SUMMON_TICKS
+                DANCER_ENTRANCE_TICKS + self.rng.range(12)
+            } else if zombie_type == ZombieType::BackupDancer {
+                DANCER_RISE_TICKS
             } else {
                 0
             },
+            dancer_phase: if zombie_type == ZombieType::Dancer {
+                DANCER_ENTRANCE_PHASE
+            } else if zombie_type == ZombieType::BackupDancer {
+                DANCER_RISE_PHASE
+            } else {
+                0
+            },
+            dancer_leader: None,
+            dancer_slot: u8::MAX,
             dancer_summoned: false,
             digger_counter: 0,
             digger_underground: zombie_type == ZombieType::Digger,
@@ -21565,7 +21727,7 @@ mod tests {
     }
 
     #[test]
-    fn dancer_summons_four_backup_dancers_after_entrance() {
+    fn dancer_summons_four_backup_dancers_after_snap_and_links_them() {
         let mut game = Game::new(7, SceneKind::Day);
         let mut setup_events = Vec::new();
         let dancer = game.spawn_dancer_zombie(2, 0, Some(grid_x(2)), &mut setup_events);
@@ -21577,6 +21739,8 @@ mod tests {
             .find(|candidate| candidate.id == dancer)
             .unwrap();
         leader.speed = 0;
+        leader.hypnotized = true;
+        leader.dancer_phase = DANCER_SNAP_PHASE;
         leader.dancer_counter = 1;
         let events = game.advance(InputFrame::default());
         let backups = game
@@ -21604,6 +21768,13 @@ mod tests {
         assert_eq!(backups[1].row, 3);
         assert_eq!(backups[2].position_x, grid_x(2) - 100 * POSITION_SCALE);
         assert_eq!(backups[3].position_x, grid_x(2) + 100 * POSITION_SCALE);
+        for (slot, backup) in backups.iter().enumerate() {
+            assert_eq!(backup.dancer_leader, Some(dancer));
+            assert_eq!(backup.dancer_slot, slot as u8);
+            assert_eq!(backup.dancer_phase, DANCER_RISE_PHASE);
+            assert_eq!(backup.dancer_counter, DANCER_RISE_TICKS);
+            assert!(backup.hypnotized);
+        }
         assert_eq!(
             game.state
                 .board
@@ -21614,6 +21785,227 @@ mod tests {
                 .health,
             500
         );
+    }
+
+    #[test]
+    fn dancer_entrance_moves_right_and_pauses_until_thaw() {
+        let mut game = Game::new(7, SceneKind::Day);
+        let mut setup_events = Vec::new();
+        let dancer = game.spawn_dancer_zombie(2, 0, Some(grid_x(5)), &mut setup_events);
+        let leader = game
+            .state
+            .board
+            .zombies
+            .iter_mut()
+            .find(|candidate| candidate.id == dancer)
+            .unwrap();
+        assert!(
+            (DANCER_ENTRANCE_TICKS..DANCER_ENTRANCE_TICKS + 12).contains(&leader.dancer_counter)
+        );
+        assert_eq!(leader.dancer_phase, DANCER_ENTRANCE_PHASE);
+        leader.dancer_counter = 2;
+        leader.speed = 500_000;
+        leader.frozen_counter = 2;
+        let start = leader.position_x;
+
+        game.advance(InputFrame::default());
+        let leader = game
+            .state
+            .board
+            .zombies
+            .iter()
+            .find(|candidate| candidate.id == dancer)
+            .unwrap();
+        assert_eq!(leader.dancer_counter, 2);
+        assert_eq!(leader.position_x, start);
+
+        let thaw_events = game.advance(InputFrame::default());
+        let leader = game
+            .state
+            .board
+            .zombies
+            .iter()
+            .find(|candidate| candidate.id == dancer)
+            .unwrap();
+        assert_eq!(leader.dancer_counter, 2);
+        assert_eq!(leader.position_x, start);
+        assert!(
+            thaw_events.iter().any(
+                |event| matches!(event, GameEvent::ZombieThawed { entity } if *entity == dancer)
+            )
+        );
+
+        game.advance(InputFrame::default());
+        let leader = game
+            .state
+            .board
+            .zombies
+            .iter()
+            .find(|candidate| candidate.id == dancer)
+            .unwrap();
+        assert_eq!(leader.dancer_counter, 1);
+        assert_eq!(leader.position_x, start + 500_000);
+
+        game.advance(InputFrame::default());
+        let leader = game
+            .state
+            .board
+            .zombies
+            .iter()
+            .find(|candidate| candidate.id == dancer)
+            .unwrap();
+        assert_eq!(leader.dancer_phase, DANCER_SNAP_PHASE);
+        assert_eq!(leader.dancer_counter, DANCER_SNAP_TICKS);
+        assert_eq!(leader.position_x, start + 500_000);
+    }
+
+    #[test]
+    fn dancer_hold_and_backup_rise_finish_before_group_dance() {
+        let mut game = Game::new(7, SceneKind::Day);
+        let mut setup_events = Vec::new();
+        let dancer = game.spawn_dancer_zombie(2, 0, Some(grid_x(2)), &mut setup_events);
+        let leader = game
+            .state
+            .board
+            .zombies
+            .iter_mut()
+            .find(|candidate| candidate.id == dancer)
+            .unwrap();
+        leader.speed = 0;
+        leader.dancer_phase = DANCER_SNAP_PHASE;
+        leader.dancer_counter = 1;
+        game.advance(InputFrame::default());
+
+        for _ in 0..DANCER_RISE_TICKS {
+            game.advance(InputFrame::default());
+        }
+        let leader = game
+            .state
+            .board
+            .zombies
+            .iter()
+            .find(|candidate| candidate.id == dancer)
+            .unwrap();
+        assert_eq!(leader.dancer_phase, DANCER_HOLD_PHASE);
+        assert_eq!(leader.dancer_counter, DANCER_HOLD_TICKS - DANCER_RISE_TICKS);
+        assert!(
+            game.state
+                .board
+                .zombies
+                .iter()
+                .filter(|candidate| candidate.zombie_type == ZombieType::BackupDancer)
+                .all(|backup| {
+                    backup.dancer_phase == DANCER_DANCE_PHASE && backup.dancer_counter == 0
+                })
+        );
+
+        for _ in 0..(DANCER_HOLD_TICKS - DANCER_RISE_TICKS) {
+            game.advance(InputFrame::default());
+        }
+        assert_eq!(
+            game.state
+                .board
+                .zombies
+                .iter()
+                .find(|candidate| candidate.id == dancer)
+                .unwrap()
+                .dancer_phase,
+            DANCER_DANCE_PHASE
+        );
+    }
+
+    #[test]
+    fn dancer_group_stops_for_a_frozen_member_and_resummons_its_slot() {
+        let mut game = Game::new(7, SceneKind::Day);
+        let mut setup_events = Vec::new();
+        let dancer = game.spawn_dancer_zombie(2, 0, Some(grid_x(2)), &mut setup_events);
+        let leader = game
+            .state
+            .board
+            .zombies
+            .iter_mut()
+            .find(|candidate| candidate.id == dancer)
+            .unwrap();
+        leader.speed = 450_000;
+        leader.dancer_phase = DANCER_SNAP_PHASE;
+        leader.dancer_counter = 1;
+        game.advance(InputFrame::default());
+        for _ in 0..DANCER_HOLD_TICKS {
+            game.advance(InputFrame::default());
+        }
+        let frozen_id = game
+            .state
+            .board
+            .zombies
+            .iter()
+            .find(|candidate| candidate.zombie_type == ZombieType::BackupDancer)
+            .unwrap()
+            .id;
+        let positions = game
+            .state
+            .board
+            .zombies
+            .iter()
+            .filter(|candidate| candidate.id == dancer || candidate.dancer_leader == Some(dancer))
+            .map(|candidate| (candidate.id, candidate.position_x))
+            .collect::<Vec<_>>();
+        game.state
+            .board
+            .zombies
+            .iter_mut()
+            .find(|candidate| candidate.id == frozen_id)
+            .unwrap()
+            .frozen_counter = 2;
+        game.advance(InputFrame::default());
+        for (entity, position_x) in positions {
+            assert_eq!(
+                game.state
+                    .board
+                    .zombies
+                    .iter()
+                    .find(|candidate| candidate.id == entity)
+                    .unwrap()
+                    .position_x,
+                position_x
+            );
+        }
+
+        game.state
+            .board
+            .zombies
+            .iter_mut()
+            .find(|candidate| candidate.id == frozen_id)
+            .unwrap()
+            .health = 0;
+        let slot = game
+            .state
+            .board
+            .zombies
+            .iter()
+            .find(|candidate| candidate.id == frozen_id)
+            .unwrap()
+            .dancer_slot;
+        game.advance(InputFrame::default());
+        assert_eq!(
+            game.state
+                .board
+                .zombies
+                .iter()
+                .find(|candidate| candidate.id == dancer)
+                .unwrap()
+                .dancer_counter,
+            DANCER_RESUMMON_TICKS
+        );
+        for _ in 0..DANCER_RESUMMON_TICKS {
+            game.advance(InputFrame::default());
+        }
+        assert!(game.state.board.zombies.iter().any(|candidate| {
+            candidate.zombie_type == ZombieType::BackupDancer
+                && candidate.health > 0
+                && candidate.dancer_leader == Some(dancer)
+                && candidate.dancer_slot == slot
+                && candidate.dancer_phase == DANCER_RISE_PHASE
+        }));
     }
 
     #[test]
