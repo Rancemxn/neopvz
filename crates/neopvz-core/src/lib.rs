@@ -23663,7 +23663,7 @@ mod tests {
         roof.update_projectiles(&mut events);
         assert!(events.is_empty());
         let projectile = &roof.state.board.projectiles[0];
-        assert_eq!(projectile.position_y, base_y + 2_500);
+        assert_eq!(projectile.position_y, base_y + 2_500 * POSITION_SCALE);
         assert_eq!(projectile.lob_height, -2_385);
     }
 
