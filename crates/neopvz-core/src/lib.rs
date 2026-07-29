@@ -10840,14 +10840,7 @@ impl Game {
             .enumerate()
             .filter(|(_, plant)| plant.row == row && plant.health > 0)
             .filter(|(_, plant)| !plant.plant_type.is_tangle_kelp())
-            .filter(|(_, plant)| {
-                !plant.plant_type.is_squash()
-                    || (!plant.special_armed
-                        && (plant.special_target.is_some() || plant.special_counter == 0))
-                    || (plant.special_armed
-                        && plant.special_target.is_some()
-                        && plant.special_counter > SQUASH_OFF_GROUND_TICKS)
-            })
+            .filter(|(_, plant)| plant_is_on_ground(plant))
             // Spikeweed is walked over; zombies do not bite it.
             .filter(|(_, plant)| is_gargantuar(zombie_type) || !plant.plant_type.is_spikeweed())
             .filter(|(_, plant)| {
@@ -10927,6 +10920,7 @@ impl Game {
                 plant.health > 0
                     && plant.row == row
                     && !catapult_plant_type(plant).is_spikeweed()
+                    && plant_is_on_ground(plant)
                     && zombie_x >= grid_x(plant.column) + 100 * POSITION_SCALE
             })
             .map(|plant| plant.column)
@@ -13022,6 +13016,14 @@ fn catapult_plant_type(plant: &PlantState) -> PlantType {
     } else {
         plant.plant_type
     }
+}
+
+fn plant_is_on_ground(plant: &PlantState) -> bool {
+    !plant.plant_type.is_squash()
+        || (!plant.special_armed && (plant.special_target.is_some() || plant.special_counter == 0))
+        || (plant.special_armed
+            && plant.special_target.is_some()
+            && plant.special_counter > SQUASH_OFF_GROUND_TICKS)
 }
 
 fn catapult_projectile_hits_plant(
@@ -23569,6 +23571,60 @@ mod tests {
                 .unwrap()
                 .health,
             300
+        );
+    }
+
+    #[test]
+    fn catapult_launch_target_requires_a_grounded_plant() {
+        for (state, armed, target, counter) in [
+            ("rising", true, Some(99), SQUASH_OFF_GROUND_TICKS),
+            ("falling", true, None, SQUASH_LANDING_HIT_TICKS),
+            ("done falling", false, None, SQUASH_DONE_FALLING_TICKS),
+        ] {
+            let mut game = Game::new(7, SceneKind::Day);
+            let mut squash = test_plant(1, PlantType::Other(17), 2, 1);
+            squash.special_armed = armed;
+            squash.special_target = target;
+            squash.special_counter = counter;
+            game.state.board.plants = vec![squash, test_plant(2, PlantType::Peashooter, 2, 2)];
+
+            assert_eq!(
+                game.find_catapult_target(2, grid_x(4))
+                    .map(|index| game.state.board.plants[index].id),
+                Some(2),
+                "a Squash in {state} must not arm a Catapult shot"
+            );
+        }
+
+        for state in ["squished", "bungee-rising"] {
+            let mut game = Game::new(7, SceneKind::Day);
+            let mut removed = test_plant(1, PlantType::Peashooter, 2, 1);
+            // These terminal transitions remove the plant from the board in
+            // the clean-room model before Catapult target search.
+            removed.health = 0;
+            game.state.board.plants = vec![removed, test_plant(2, PlantType::Peashooter, 2, 2)];
+
+            assert_eq!(
+                game.find_catapult_target(2, grid_x(4))
+                    .map(|index| game.state.board.plants[index].id),
+                Some(2),
+                "a {state} plant must not arm a Catapult shot"
+            );
+        }
+
+        let mut stacked = Game::new(7, SceneKind::Day);
+        stacked.state.board.plants = vec![
+            test_plant(1, PlantType::Other(35), 2, 1),
+            test_plant(2, PlantType::Peashooter, 2, 1),
+            test_plant(3, PlantType::Other(30), 2, 1),
+            test_plant(4, PlantType::Other(16), 2, 1),
+        ];
+        assert_eq!(
+            stacked
+                .find_catapult_target(2, grid_x(4))
+                .map(|index| stacked.state.board.plants[index].id),
+            Some(1),
+            "launch search must use the Catapult top-plant priority"
         );
     }
 
