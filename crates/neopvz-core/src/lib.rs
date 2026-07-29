@@ -18,6 +18,11 @@ pub const POOL_ROWS: u8 = 6;
 pub const REPLAY_FORMAT_VERSION: u32 = 1;
 
 const POSITION_SCALE: i64 = 1_000_000;
+
+pub fn fixed_point_to_logical(position: i64) -> f32 {
+    position as f32 / POSITION_SCALE as f32
+}
+
 const FIRST_WAVE_COUNTDOWN: u32 = 1_800;
 const SUN_COUNTDOWN: u32 = 425;
 const SUN_COUNTDOWN_RANGE: u32 = 275;
@@ -156,6 +161,10 @@ const SUN_FALL_SPEED: i64 = 670_000;
 const SUN_GRAVITY: i64 = 90_000;
 // Coin.cpp:491: dropped coins fall under the heavier 0.15 gravity.
 const COIN_GRAVITY: i64 = 150_000;
+// Coin.cpp:471-480: coins fanned out from an award drift for 80 updates,
+// then collect themselves.
+const PRESENT_COIN_TICKS: u32 = 80;
+const PRESENT_COIN_DECAY_PERCENT: i64 = 95;
 const ZOMBIE_NEXT_WAVE_COUNTDOWN: u32 = 2_500;
 const ZOMBIE_NEXT_WAVE_RANGE: u32 = 600;
 const ICE_START_X: i64 = 800 * POSITION_SCALE;
@@ -2005,15 +2014,6 @@ impl CoinType {
         self.sun_value() != 0
     }
 
-    fn award_value(self) -> u32 {
-        match self {
-            Self::Trophy => Self::Diamond.value(),
-            Self::AwardMoneyBag => Self::Gold.value() * 5,
-            Self::AwardBagDiamond | Self::AwardGoldSunflower => Self::Diamond.value() * 5,
-            _ => 0,
-        }
-    }
-
     fn unlock_mask(self) -> u8 {
         match self {
             Self::PresentMinigames => 1,
@@ -2365,6 +2365,10 @@ pub struct CoinPickupState {
     pub velocity_x: i64,
     #[serde(default)]
     pub velocity_y: i64,
+    #[serde(default)]
+    pub from_present: bool,
+    #[serde(default)]
+    pub age: u32,
 }
 
 #[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
@@ -2477,7 +2481,7 @@ pub struct BoardState {
 
 impl BoardState {
     fn new(scene: SceneKind, mode: ModeKind, level: u8, rng: &mut Mt19937) -> Self {
-        let rows = if scene == SceneKind::Pool {
+        let rows = if scene_has_water_rows(scene) {
             POOL_ROWS
         } else {
             DAY_ROWS
@@ -3034,6 +3038,10 @@ pub enum GameEvent {
         coin_type: CoinType,
         value: u32,
     },
+    CoinLanded {
+        entity: EntityId,
+        coin_type: CoinType,
+    },
     CoinCollected {
         entity: EntityId,
         coin_type: CoinType,
@@ -3056,6 +3064,12 @@ pub enum GameEvent {
     },
     SurvivalStageStarted {
         stage: u8,
+    },
+    HugeWaveSound {
+        wave: u32,
+    },
+    FlagWaveSound {
+        wave: u32,
     },
     WaveStarted {
         wave: u32,
@@ -3089,6 +3103,12 @@ pub enum GameEvent {
         source: EntityId,
         projectile_type: ProjectileType,
         row: u8,
+    },
+    ProjectileIgnited {
+        projectile: EntityId,
+    },
+    ProjectileWarmed {
+        projectile: EntityId,
     },
     CobCannonFired {
         entity: EntityId,
@@ -3134,6 +3154,8 @@ pub enum GameEvent {
     },
     MowerTriggered {
         row: u8,
+        #[serde(default)]
+        pool: bool,
     },
     ZombieHypnotized {
         entity: EntityId,
@@ -3508,6 +3530,107 @@ impl Game {
     }
 
     #[doc(hidden)]
+    pub fn debug_prepare_gold_coin_landing(&mut self) -> Vec<GameEvent> {
+        self.state.level_scene = SceneKind::Day;
+        self.state.scene = SceneKind::Day;
+        self.state.board.coins.clear();
+        let mut setup_events = Vec::new();
+        self.spawn_coin(
+            CoinType::Gold,
+            300 * POSITION_SCALE,
+            200 * POSITION_SCALE,
+            &mut setup_events,
+        );
+        for _ in 0..100 {
+            let events = self.advance(InputFrame::default());
+            if events.iter().any(|event| {
+                matches!(
+                    event,
+                    GameEvent::CoinLanded {
+                        coin_type: CoinType::Gold,
+                        ..
+                    }
+                )
+            }) {
+                return events;
+            }
+        }
+        panic!("gold coin landing checkpoint did not settle");
+    }
+
+    #[doc(hidden)]
+    pub fn debug_prepare_diamond_collection(&mut self) -> Vec<GameEvent> {
+        self.state.level_scene = SceneKind::Day;
+        self.state.scene = SceneKind::Day;
+        self.state.board.coins.clear();
+        let mut events = Vec::new();
+        self.spawn_pickup(
+            CoinType::Diamond,
+            300 * POSITION_SCALE,
+            200 * POSITION_SCALE,
+            &mut events,
+        );
+        let entity = self.state.board.coins[0].id;
+        self.collect_coin(entity, &mut events);
+        events
+    }
+
+    #[doc(hidden)]
+    pub fn debug_prepare_usable_seed_collection(&mut self) -> Vec<GameEvent> {
+        self.state.level_scene = SceneKind::Day;
+        self.state.scene = SceneKind::Day;
+        self.state.board.coins.clear();
+        let mut events = Vec::new();
+        self.spawn_pickup_with_payload(
+            CoinType::UsableSeedPacket,
+            300 * POSITION_SCALE,
+            200 * POSITION_SCALE,
+            Some(PlantType::Peashooter),
+            Some(PlantType::Peashooter),
+            &mut events,
+        );
+        let entity = self.state.board.coins[0].id;
+        self.collect_coin(entity, &mut events);
+        events
+    }
+
+    #[doc(hidden)]
+    pub fn debug_prepare_prize_collection(&mut self) -> Vec<GameEvent> {
+        self.state.level_scene = SceneKind::Day;
+        self.state.scene = SceneKind::Day;
+        self.state.board.coins.clear();
+        let mut events = Vec::new();
+        self.spawn_pickup_with_payload(
+            CoinType::PresentPlant,
+            300 * POSITION_SCALE,
+            200 * POSITION_SCALE,
+            Some(PlantType::Peashooter),
+            None,
+            &mut events,
+        );
+        let entity = self.state.board.coins[0].id;
+        self.collect_coin(entity, &mut events);
+        events
+    }
+
+    #[doc(hidden)]
+    pub fn debug_prepare_sun_pickup_collection(&mut self) -> Vec<GameEvent> {
+        self.state.level_scene = SceneKind::Day;
+        self.state.scene = SceneKind::Day;
+        self.state.board.coins.clear();
+        let mut events = Vec::new();
+        self.spawn_pickup(
+            CoinType::Sun,
+            300 * POSITION_SCALE,
+            200 * POSITION_SCALE,
+            &mut events,
+        );
+        let entity = self.state.board.coins[0].id;
+        self.collect_coin(entity, &mut events);
+        events
+    }
+
+    #[doc(hidden)]
     pub fn debug_prepare_sun_production(&mut self) {
         self.state.level_scene = SceneKind::Day;
         self.state.scene = SceneKind::Day;
@@ -3528,6 +3651,101 @@ impl Game {
             .find(|plant| plant.plant_type == PlantType::Sunflower)
             .expect("sun production checkpoint sunflower")
             .launch_counter = 1;
+    }
+
+    #[doc(hidden)]
+    pub fn debug_prepare_garden_fulfill(&mut self) -> Vec<GameEvent> {
+        self.state.level_scene = SceneKind::Garden;
+        self.state.scene = SceneKind::Garden;
+        self.state.garden_service = Some(GardenServiceKind::Zen);
+        self.state.garden = initial_garden_state(GardenServiceKind::Zen);
+        let mut events = Vec::new();
+        self.garden_fulfill_need(0, &mut events);
+        events
+    }
+
+    #[doc(hidden)]
+    pub fn debug_prepare_garden_tree_grow(&mut self) -> Vec<GameEvent> {
+        self.state.level_scene = SceneKind::Garden;
+        self.state.scene = SceneKind::Garden;
+        self.state.garden_service = Some(GardenServiceKind::TreeOfWisdom);
+        let mut events = Vec::new();
+        self.garden_feed_tree(&mut events);
+        events
+    }
+
+    #[doc(hidden)]
+    pub fn debug_prepare_huge_wave_sound(&mut self) {
+        self.state.level_scene = SceneKind::Day;
+        self.state.scene = SceneKind::Day;
+        self.state.mode = ModeKind::Adventure;
+        self.state.level = 6;
+        self.state.board.wave.current = 9;
+        self.state.board.wave.countdown = 1;
+        self.state.board.huge_wave_countdown = 726;
+        self.state.board.wave_plan = vec![vec![ZombieType::Normal]; 10];
+    }
+
+    #[doc(hidden)]
+    pub fn debug_prepare_dancer_rumble(&mut self) -> Vec<GameEvent> {
+        self.state.level_scene = SceneKind::Day;
+        self.state.scene = SceneKind::Day;
+        self.state.board.zombies.clear();
+        let mut setup_events = Vec::new();
+        let dancer = self.spawn_dancer_zombie(2, 0, Some(grid_x(2)), &mut setup_events);
+        let leader = self
+            .state
+            .board
+            .zombies
+            .iter_mut()
+            .find(|zombie| zombie.id == dancer)
+            .expect("dancer rumble checkpoint leader");
+        leader.speed = 0;
+        leader.dancer_phase = DANCER_SNAP_PHASE;
+        leader.dancer_counter = 1;
+        self.advance(InputFrame::default())
+    }
+
+    #[doc(hidden)]
+    pub fn debug_prepare_first_wave_sound(&mut self) -> Vec<GameEvent> {
+        self.state.level_scene = SceneKind::Day;
+        self.state.scene = SceneKind::Day;
+        self.state.mode = ModeKind::Adventure;
+        self.state.level = 1;
+        self.state.board.wave.current = 0;
+        self.state.board.wave.countdown = 1;
+        self.state.board.wave.countdown_start = 1;
+        self.state.board.wave_plan = vec![vec![ZombieType::Normal]; 8];
+        self.advance(InputFrame::default())
+    }
+
+    #[doc(hidden)]
+    pub fn debug_prepare_flag_wave_sound(&mut self) -> Vec<GameEvent> {
+        self.state.level_scene = SceneKind::Day;
+        self.state.scene = SceneKind::Day;
+        self.state.mode = ModeKind::Adventure;
+        self.state.level = 6;
+        self.state.board.wave.current = 9;
+        self.state.board.wave.countdown = 1;
+        self.state.board.wave.countdown_start = 1;
+        self.state.board.wave_plan = vec![vec![ZombieType::Normal]; 10];
+        self.advance(InputFrame::default())
+    }
+
+    #[doc(hidden)]
+    pub fn debug_prepare_boss_attack(&mut self) -> Vec<GameEvent> {
+        self.state.level_scene = SceneKind::Boss;
+        self.state.scene = SceneKind::Boss;
+        self.state.mode = ModeKind::MiniGame;
+        self.state.level = 19;
+        self.state
+            .board
+            .zombies
+            .iter_mut()
+            .find(|zombie| zombie.zombie_type == ZombieType::Boss)
+            .expect("boss attack checkpoint boss")
+            .boss_head_counter = 1;
+        self.advance(InputFrame::default())
     }
 
     #[doc(hidden)]
@@ -3859,17 +4077,59 @@ impl Game {
     }
 
     #[doc(hidden)]
+    pub fn debug_prepare_torchwood(&mut self) -> Vec<GameEvent> {
+        self.state.level_scene = SceneKind::Day;
+        self.state.scene = SceneKind::Day;
+        self.state.sun = 300;
+        self.state.board.plants.clear();
+        self.state.board.zombies.clear();
+        self.state.board.projectiles.clear();
+        self.advance(InputFrame {
+            actions: vec![
+                InputAction::SelectSeed { slot: 22 },
+                InputAction::Plant { row: 2, column: 1 },
+            ],
+        });
+
+        let mut setup_events = Vec::new();
+        self.fire_projectile(
+            0,
+            ProjectileType::Pea,
+            2,
+            ProjectileTrajectory {
+                motion: ProjectileMotion::Straight,
+                position_x: grid_x(1) - POSITION_SCALE,
+                position_y: grid_y(2),
+                velocity_x: 3_330_000,
+                velocity_y: 0,
+            },
+            &mut setup_events,
+        );
+        self.advance(InputFrame::default())
+    }
+
+    #[doc(hidden)]
     pub fn debug_prepare_vase_break(&mut self) -> Vec<GameEvent> {
         self.state.level_scene = SceneKind::Day;
         self.state.scene = SceneKind::Day;
         self.state.mode = ModeKind::Vasebreaker;
-        self.state.board.vases = vec![VaseState {
-            id: 1,
-            row: 2,
-            column: 2,
-            contents: VaseContents::Plant(PlantType::Peashooter),
-            leaf: false,
-        }];
+        // Keep one vase so this audio checkpoint remains on the board scene.
+        self.state.board.vases = vec![
+            VaseState {
+                id: 1,
+                row: 2,
+                column: 2,
+                contents: VaseContents::Plant(PlantType::Peashooter),
+                leaf: false,
+            },
+            VaseState {
+                id: 2,
+                row: 0,
+                column: 1,
+                contents: VaseContents::Plant(PlantType::Sunflower),
+                leaf: false,
+            },
+        ];
         let mut events = Vec::new();
         self.break_vase(2, 2, &mut events);
         events
@@ -3883,6 +4143,17 @@ impl Game {
         self.state.board.zombies.clear();
         let mut setup_events = Vec::new();
         self.spawn_normal_zombie(2, 0, Some(grid_x(2)), &mut setup_events);
+        self.advance(InputFrame::default())
+    }
+
+    #[doc(hidden)]
+    pub fn debug_prepare_pool_mower(&mut self) -> Vec<GameEvent> {
+        self.state.level_scene = SceneKind::Pool;
+        self.state.scene = SceneKind::Pool;
+        self.state.board.zombies.clear();
+        let mut setup_events = Vec::new();
+        self.spawn_normal_zombie(2, 0, Some(0), &mut setup_events);
+        self.state.board.zombies[0].speed = 0;
         self.advance(InputFrame::default())
     }
 
@@ -4466,6 +4737,32 @@ impl Game {
         &self.state
     }
 
+    pub fn apply_profile(&mut self, profile: &SaveProfile) {
+        self.state.coins = profile.inventory.coins;
+        self.state.garden = profile.garden.clone();
+    }
+
+    pub fn update_profile(&self, profile: &mut SaveProfile) {
+        profile.inventory.coins = self.state.coins;
+        profile.garden = self.state.garden.clone();
+        if self.state.scene == SceneKind::Complete {
+            let completed_levels = u16::from(self.state.level).saturating_add(1);
+            if let Some(completion) = profile
+                .mode_completion
+                .iter_mut()
+                .find(|completion| completion.mode == self.state.mode)
+            {
+                completion.completed_levels = completion.completed_levels.max(completed_levels);
+            } else if profile.mode_completion.len() < 6 {
+                profile.mode_completion.push(ModeCompletion {
+                    mode: self.state.mode,
+                    completed_levels,
+                    endless_unlocked: false,
+                });
+            }
+        }
+    }
+
     pub fn advance(&mut self, input: InputFrame) -> Vec<GameEvent> {
         let mut events = Vec::new();
         let mut restarted = false;
@@ -4475,7 +4772,11 @@ impl Game {
         }
 
         if !restarted && !self.state.paused {
-            if self.state.scene == SceneKind::Garden {
+            if self.state.scene == SceneKind::Complete {
+                self.update_suns(&mut events);
+                self.state.tick = self.state.tick.saturating_add(1);
+                events.push(GameEvent::StateChanged);
+            } else if self.state.scene == SceneKind::Garden {
                 self.update_garden();
                 self.state.tick = self.state.tick.saturating_add(1);
                 events.push(GameEvent::StateChanged);
@@ -4495,7 +4796,7 @@ impl Game {
                 self.state.board.ice_counter = self.state.board.ice_counter.saturating_sub(1);
                 self.update_craters();
                 self.update_ice();
-                self.update_suns();
+                self.update_suns(&mut events);
                 self.update_sky_drop(&mut events);
                 self.state.tick = self.state.tick.saturating_add(1);
                 self.state.wave = self.state.board.wave.current;
@@ -5695,16 +5996,12 @@ impl Game {
             plant.row == row && plant.column == column && plant.plant_type.slot() == 33
         });
         let aquatic = matches!(effective_type.slot(), 16 | 19 | 24);
-        let valid_terrain = match self.state.scene {
-            SceneKind::Pool => {
-                if aquatic {
-                    true
-                } else {
-                    effective_type.slot() == 43 || has_lilypad
-                }
-            }
-            SceneKind::Roof => effective_type.slot() == 33 || has_flowerpot,
-            _ => !aquatic && effective_type.slot() != 33,
+        let valid_terrain = if scene_row_is_water(self.state.scene, row) {
+            aquatic || effective_type.slot() == 43 || has_lilypad
+        } else if self.state.scene == SceneKind::Roof {
+            effective_type.slot() == 33 || has_flowerpot
+        } else {
+            !aquatic && effective_type.slot() != 33
         };
         if !valid_terrain {
             events.push(GameEvent::InputRejected {
@@ -6084,9 +6381,6 @@ impl Game {
             self.state.sun = self.state.sun.saturating_add(value).min(MAX_SUN);
         } else if coin.coin_type.is_money() {
             self.state.coins = self.state.coins.saturating_add(value);
-        } else if coin.coin_type.award_value() != 0 {
-            value = coin.coin_type.award_value();
-            self.state.coins = self.state.coins.saturating_add(value);
         } else if coin.coin_type.unlock_mask() != 0 {
             self.state.unlocked_modes |= coin.coin_type.unlock_mask();
         } else if matches!(
@@ -6121,6 +6415,14 @@ impl Game {
                 coin.value.max(1)
             };
         }
+        if let Some((fanout_type, count)) = self.award_fanout(coin.coin_type) {
+            self.spawn_coins_from_present(
+                fanout_type,
+                coin.position_x + 20 * POSITION_SCALE,
+                coin.position_y,
+                count,
+            );
+        }
         events.push(GameEvent::PickupCollected {
             entity,
             coin_type: coin.coin_type,
@@ -6135,6 +6437,32 @@ impl Game {
                 value: coin.value,
                 coin_total: self.state.coins,
             });
+        }
+    }
+
+    fn award_fanout(&self, coin_type: CoinType) -> Option<(CoinType, usize)> {
+        if coin_type.is_level_award()
+            && self.state.mode == ModeKind::Adventure
+            && self.state.level == 50
+        {
+            return Some((CoinType::Diamond, 3));
+        }
+        if self.state.mode == ModeKind::Adventure && self.state.level == 35 {
+            return matches!(coin_type, CoinType::Trophy | CoinType::AwardMoneyBag)
+                .then_some((CoinType::Gold, 5));
+        }
+        if self.state.mode == ModeKind::IZombie && self.state.level == 9 {
+            return match coin_type {
+                CoinType::AwardBagDiamond => Some((CoinType::Diamond, 1)),
+                CoinType::AwardMoneyBag => Some((CoinType::Gold, 5)),
+                _ => None,
+            };
+        }
+        match coin_type {
+            CoinType::Trophy => Some((CoinType::Diamond, 1)),
+            CoinType::AwardMoneyBag => Some((CoinType::Gold, 5)),
+            CoinType::AwardGoldSunflower => Some((CoinType::Diamond, 5)),
+            _ => None,
         }
     }
 
@@ -7006,7 +7334,10 @@ impl Game {
             return false;
         };
         mower.active = true;
-        events.push(GameEvent::MowerTriggered { row });
+        events.push(GameEvent::MowerTriggered {
+            row,
+            pool: self.state.scene == SceneKind::Pool,
+        });
         let mut dead_ids = Vec::new();
         for zombie in &mut self.state.board.zombies {
             if zombie.row == row && zombie.health > 0 {
@@ -9362,7 +9693,7 @@ impl Game {
                 }
                 continue;
             }
-            self.apply_torchwood(projectile_index);
+            self.apply_torchwood(projectile_index, events);
             let projectile = self.state.board.projectiles[projectile_index].clone();
             let projectile_row = projectile_row(projectile.position_y, self.state.board.rows);
             let target = self
@@ -9413,7 +9744,7 @@ impl Game {
         }
     }
 
-    fn apply_torchwood(&mut self, projectile_index: usize) {
+    fn apply_torchwood(&mut self, projectile_index: usize, events: &mut Vec<GameEvent>) {
         let projectile_type = self.state.board.projectiles[projectile_index].projectile_type;
         if !matches!(
             projectile_type,
@@ -9426,26 +9757,34 @@ impl Game {
         let projectile_row = projectile.row;
         let previous_x = projectile.position_x - projectile.velocity_x;
         let current_x = projectile.position_x;
-        let (left_x, right_x) = if previous_x <= current_x {
-            (previous_x, current_x)
-        } else {
-            (current_x, previous_x)
-        };
         if !self.state.board.plants.iter().any(|plant| {
             let torchwood_x = grid_x(plant.column);
             plant.row == projectile_row
                 && plant.plant_type.is_torchwood()
-                && left_x <= torchwood_x
-                && torchwood_x <= right_x
+                && if previous_x <= current_x {
+                    previous_x < torchwood_x && torchwood_x <= current_x
+                } else {
+                    current_x <= torchwood_x && torchwood_x < previous_x
+                }
         }) {
             return;
         }
 
-        // ponytail: upgrade only the verified pea-family shots here; widen the bullet matrix once
-        // the remaining torchwood cases are observed locally.
+        let projectile_id = self.state.board.projectiles[projectile_index].id;
         let projectile = &mut self.state.board.projectiles[projectile_index];
-        projectile.projectile_type = ProjectileType::Fireball;
-        projectile.damage = ProjectileType::Fireball.damage();
+        if projectile_type == ProjectileType::Pea {
+            projectile.projectile_type = ProjectileType::Fireball;
+            projectile.damage = ProjectileType::Fireball.damage();
+            events.push(GameEvent::ProjectileIgnited {
+                projectile: projectile_id,
+            });
+        } else {
+            projectile.projectile_type = ProjectileType::Pea;
+            projectile.damage = ProjectileType::Pea.damage();
+            events.push(GameEvent::ProjectileWarmed {
+                projectile: projectile_id,
+            });
+        }
     }
 
     fn emit_projectile_impact(
@@ -9788,7 +10127,7 @@ impl Game {
         }
     }
 
-    fn update_suns(&mut self) {
+    fn update_suns(&mut self, events: &mut Vec<GameEvent>) {
         for sun in &mut self.state.board.suns {
             if let Some(target_y) = sun.target_y {
                 if sun.velocity_y != 0 || sun.velocity_x != 0 {
@@ -9810,19 +10149,35 @@ impl Game {
                 }
             }
         }
+        let mut present_coins_to_collect = Vec::new();
         for coin in &mut self.state.board.coins {
-            if let Some(target_y) = coin.target_y {
+            if coin.from_present {
+                coin.position_x += coin.velocity_x;
+                coin.position_y += coin.velocity_y;
+                coin.velocity_x = coin.velocity_x * PRESENT_COIN_DECAY_PERCENT / 100;
+                coin.velocity_y = coin.velocity_y * PRESENT_COIN_DECAY_PERCENT / 100;
+                coin.age = coin.age.saturating_add(1);
+                if coin.age >= PRESENT_COIN_TICKS {
+                    present_coins_to_collect.push(coin.id);
+                }
+            } else if let Some(target_y) = coin.target_y {
                 if coin.position_y + coin.velocity_y < target_y {
                     coin.position_x += coin.velocity_x;
                     coin.position_y += coin.velocity_y;
                     coin.velocity_y += COIN_GRAVITY;
                 } else {
+                    let entity = coin.id;
+                    let coin_type = coin.coin_type;
                     coin.position_y = target_y;
                     coin.target_y = None;
                     coin.velocity_x = 0;
                     coin.velocity_y = 0;
+                    events.push(GameEvent::CoinLanded { entity, coin_type });
                 }
             }
+        }
+        for entity in present_coins_to_collect {
+            self.collect_coin(entity, events);
         }
     }
 
@@ -9850,6 +10205,11 @@ impl Game {
         // the wave releases immediately.
         if adventure && self.state.board.huge_wave_countdown > 0 {
             self.state.board.huge_wave_countdown -= 1;
+            if self.state.board.huge_wave_countdown == 725 {
+                events.push(GameEvent::HugeWaveSound {
+                    wave: self.state.board.wave.current,
+                });
+            }
             if self.state.board.huge_wave_countdown > 0 {
                 return;
             }
@@ -9877,6 +10237,9 @@ impl Game {
 
         let wave = self.state.board.wave.current;
         events.push(GameEvent::WaveStarted { wave });
+        if adventure && adventure_is_flag_wave(self.state.level, false, wave) {
+            events.push(GameEvent::FlagWaveSound { wave });
+        }
         let row = self.rng.range(u32::from(self.state.board.rows)) as u8;
         match self.state.challenge.kind {
             ChallengeKind::BobsledBonanza => {
@@ -10683,6 +11046,34 @@ impl Game {
         }
     }
 
+    fn spawn_coins_from_present(
+        &mut self,
+        coin_type: CoinType,
+        position_x: i64,
+        position_y: i64,
+        count: usize,
+    ) {
+        for index in 0..count {
+            let angle = std::f64::consts::PI / 2.0
+                + std::f64::consts::PI * (index + 1) as f64 / (count + 1) as f64;
+            let id = self.state.board.allocate_entity();
+            self.state.board.coins.push(CoinPickupState {
+                id,
+                coin_type,
+                value: coin_type.value(),
+                position_x,
+                position_y,
+                plant_type: None,
+                usable_seed_type: None,
+                target_y: None,
+                velocity_x: (5.0 * angle.sin() * POSITION_SCALE as f64).round() as i64,
+                velocity_y: (5.0 * angle.cos() * POSITION_SCALE as f64).round() as i64,
+                from_present: true,
+                age: 0,
+            });
+        }
+    }
+
     fn spawn_pickup(
         &mut self,
         coin_type: CoinType,
@@ -10756,6 +11147,8 @@ impl Game {
             target_y,
             velocity_x,
             velocity_y,
+            from_present: false,
+            age: 0,
         });
         events.push(GameEvent::CoinProduced {
             entity: id,
@@ -12148,6 +12541,14 @@ fn scene_is_night(scene: SceneKind) -> bool {
     matches!(scene, SceneKind::Night | SceneKind::Fog | SceneKind::Boss)
 }
 
+fn scene_has_water_rows(scene: SceneKind) -> bool {
+    matches!(scene, SceneKind::Pool | SceneKind::Fog)
+}
+
+fn scene_row_is_water(scene: SceneKind, row: u8) -> bool {
+    scene_has_water_rows(scene) && matches!(row, 2 | 3)
+}
+
 fn is_ladder_target(plant_type: PlantType) -> bool {
     matches!(plant_type.slot(), 3 | 23 | 30)
 }
@@ -12372,6 +12773,13 @@ fn zamboni_speed(position_x: i64) -> i64 {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn fixed_point_positions_convert_to_logical_units() {
+        assert_eq!(fixed_point_to_logical(0), 0.0);
+        assert_eq!(fixed_point_to_logical(POSITION_SCALE), 1.0);
+        assert_eq!(fixed_point_to_logical(-2 * POSITION_SCALE), -2.0);
+    }
 
     #[test]
     fn mt19937_matches_the_target_generator_sequence() {
@@ -12994,10 +13402,14 @@ mod tests {
         }
 
         let mut saw_fireball = false;
+        let mut saw_firepea = false;
         let mut saw_fireball_hit = false;
         let mut saw_fireball_splash = false;
         for _ in 0..200 {
             let events = game.advance(InputFrame::default());
+            saw_firepea |= events
+                .iter()
+                .any(|event| matches!(event, GameEvent::ProjectileIgnited { .. }));
             saw_fireball |= game.state.board.projectiles.iter().any(|projectile| {
                 projectile.projectile_type == ProjectileType::Fireball && projectile.damage == 40
             });
@@ -13012,9 +13424,63 @@ mod tests {
             }
         }
 
+        assert!(saw_firepea);
         assert!(saw_fireball);
         assert!(saw_fireball_hit);
         assert!(saw_fireball_splash);
+    }
+
+    #[test]
+    fn torchwood_warms_snowpeas_without_igniting_them() {
+        let mut game = Game::new(7, SceneKind::Day);
+        game.state.sun = 175;
+        game.advance(InputFrame {
+            actions: vec![
+                InputAction::SelectSeed { slot: 22 },
+                InputAction::Plant { row: 2, column: 1 },
+            ],
+        });
+        let mut setup_events = Vec::new();
+        game.fire_projectile(
+            0,
+            ProjectileType::SnowPea,
+            2,
+            ProjectileTrajectory {
+                motion: ProjectileMotion::Straight,
+                position_x: grid_x(1) - POSITION_SCALE,
+                position_y: grid_y(2),
+                velocity_x: 3_330_000,
+                velocity_y: 0,
+            },
+            &mut setup_events,
+        );
+
+        let events = game.advance(InputFrame::default());
+        assert!(
+            events
+                .iter()
+                .any(|event| matches!(event, GameEvent::ProjectileWarmed { .. }))
+        );
+        assert!(
+            events
+                .iter()
+                .all(|event| !matches!(event, GameEvent::ProjectileIgnited { .. }))
+        );
+        assert_eq!(
+            game.state.board.projectiles[0].projectile_type,
+            ProjectileType::Pea
+        );
+        assert_eq!(game.state.board.projectiles[0].damage, 20);
+
+        let events = game.advance(InputFrame::default());
+        assert!(events.iter().all(|event| !matches!(
+            event,
+            GameEvent::ProjectileIgnited { .. } | GameEvent::ProjectileWarmed { .. }
+        )));
+        assert_eq!(
+            game.state.board.projectiles[0].projectile_type,
+            ProjectileType::Pea
+        );
     }
 
     #[test]
@@ -18140,6 +18606,38 @@ mod tests {
     }
 
     #[test]
+    fn huge_wave_sound_matches_the_source_countdown_boundary() {
+        let mut game = Game::new_mode(7, ModeKind::Adventure, 6);
+        game.state.board.wave.current = 9;
+        game.state.board.wave.countdown = 6;
+        game.state.board.wave_plan = vec![vec![ZombieType::Normal]; 10];
+
+        let start = game.advance(InputFrame::default());
+        assert_eq!(game.state.board.huge_wave_countdown, 750);
+        assert!(
+            !start
+                .iter()
+                .any(|event| matches!(event, GameEvent::HugeWaveSound { .. }))
+        );
+
+        for _ in 0..24 {
+            let events = game.advance(InputFrame::default());
+            assert!(
+                !events
+                    .iter()
+                    .any(|event| matches!(event, GameEvent::HugeWaveSound { .. }))
+            );
+        }
+        let sound = game.advance(InputFrame::default());
+        assert!(
+            sound
+                .iter()
+                .any(|event| matches!(event, GameEvent::HugeWaveSound { wave: 9 }))
+        );
+        assert_eq!(game.state.board.huge_wave_countdown, 725);
+    }
+
+    #[test]
     fn jackbox_spawn_schedule_matches_source_and_pauses_while_frozen() {
         let mut game = Game::new(7, SceneKind::Day);
         game.rng = Mt19937::new(1);
@@ -18699,59 +19197,165 @@ mod tests {
     }
 
     #[test]
-    fn aquatic_plants_require_pool_and_lilypad_supports_a_land_plant() {
-        let mut lawn = Game::new(7, SceneKind::Day);
-        lawn.state.sun = 500;
-        let rejected = lawn.advance(InputFrame {
-            actions: vec![
-                InputAction::SelectSeed { slot: 16 },
-                InputAction::Plant { row: 2, column: 2 },
-            ],
-        });
-        assert!(rejected.iter().any(|event| matches!(
-            event,
-            GameEvent::InputRejected {
-                reason: InputRejectReason::InvalidTerrain,
-                ..
+    fn pool_and_fog_planting_uses_per_row_terrain() {
+        for scene in [SceneKind::Pool, SceneKind::Fog] {
+            let board = Game::new(7, scene);
+            assert_eq!(board.state.board.rows, POOL_ROWS);
+
+            for row in [0, 5] {
+                for slot in [16, 19, 24] {
+                    let mut aquatic = Game::new(7, scene);
+                    aquatic.state.sun = 500;
+                    let events = aquatic.advance(InputFrame {
+                        actions: vec![
+                            InputAction::SelectSeed { slot },
+                            InputAction::Plant { row, column: 2 },
+                        ],
+                    });
+                    assert!(
+                        events.iter().any(|event| matches!(
+                            event,
+                            GameEvent::InputRejected {
+                                reason: InputRejectReason::InvalidTerrain,
+                                ..
+                            }
+                        )),
+                        "{scene:?} row {row} accepted aquatic slot {slot}"
+                    );
+                    assert!(aquatic.state.board.plants.is_empty());
+                }
+
+                let mut land = Game::new(7, scene);
+                land.state.sun = 500;
+                land.advance(InputFrame {
+                    actions: vec![
+                        InputAction::SelectSeed { slot: 0 },
+                        InputAction::Plant { row, column: 2 },
+                    ],
+                });
+                assert_eq!(land.state.board.plants.len(), 1, "{scene:?} row {row}");
+                assert_eq!(land.state.board.plants[0].row, row);
+                assert_eq!(land.state.board.plants[0].plant_type, PlantType::Peashooter);
             }
-        )));
-        assert!(lawn.state.board.plants.is_empty());
-        assert_eq!(lawn.state.sun, 500);
 
-        let mut pool = Game::new(7, SceneKind::Pool);
-        pool.state.sun = 500;
-        pool.advance(InputFrame {
-            actions: vec![
-                InputAction::SelectSeed { slot: 16 },
-                InputAction::Plant { row: 2, column: 2 },
-                InputAction::SelectSeed { slot: 0 },
-                InputAction::Plant { row: 2, column: 2 },
-            ],
-        });
-        assert_eq!(pool.state.board.plants.len(), 2);
-        assert_eq!(pool.state.board.plants[0].plant_type, PlantType::Other(16));
-        assert_eq!(pool.state.board.plants[1].plant_type, PlantType::Peashooter);
+            let mut water = Game::new(7, scene);
+            water.state.sun = 500;
+            let events = water.advance(InputFrame {
+                actions: vec![
+                    InputAction::SelectSeed { slot: 19 },
+                    InputAction::Plant { row: 2, column: 2 },
+                ],
+            });
+            assert!(events.iter().any(|event| matches!(
+                event,
+                GameEvent::PlantPlaced {
+                    plant_type: PlantType::Other(19),
+                    row: 2,
+                    column: 2,
+                    ..
+                }
+            )));
 
-        let top = pool.state.board.plants[1].id;
-        let events = pool.advance(InputFrame {
-            actions: vec![InputAction::Shovel { row: 2, column: 2 }],
-        });
-        assert!(events.iter().any(|event| matches!(
-            event,
-            GameEvent::PlantShoveled { entity } if *entity == top
-        )));
-        assert_eq!(pool.state.board.plants.len(), 1);
-        assert_eq!(pool.state.board.plants[0].plant_type, PlantType::Other(16));
+            let mut imitater_land = Game::new(7, scene);
+            imitater_land.state.sun = 500;
+            let events = imitater_land.advance(InputFrame {
+                actions: vec![
+                    InputAction::SelectSeed { slot: 48 },
+                    InputAction::PlantImitater {
+                        plant_slot: 19,
+                        row: 0,
+                        column: 2,
+                    },
+                ],
+            });
+            assert!(events.iter().any(|event| matches!(
+                event,
+                GameEvent::InputRejected {
+                    reason: InputRejectReason::InvalidTerrain,
+                    ..
+                }
+            )));
+            assert!(imitater_land.state.board.plants.is_empty());
 
-        let base = pool.state.board.plants[0].id;
-        let events = pool.advance(InputFrame {
-            actions: vec![InputAction::Shovel { row: 2, column: 2 }],
-        });
-        assert!(events.iter().any(|event| matches!(
-            event,
-            GameEvent::PlantShoveled { entity } if *entity == base
-        )));
-        assert!(pool.state.board.plants.is_empty());
+            let mut imitater_water = Game::new(7, scene);
+            imitater_water.state.sun = 500;
+            imitater_water.advance(InputFrame {
+                actions: vec![
+                    InputAction::SelectSeed { slot: 48 },
+                    InputAction::PlantImitater {
+                        plant_slot: 19,
+                        row: 2,
+                        column: 2,
+                    },
+                ],
+            });
+            assert_eq!(imitater_water.state.board.plants.len(), 1);
+            assert_eq!(
+                imitater_water.state.board.plants[0].imitater_type,
+                Some(PlantType::Other(19))
+            );
+
+            let mut unsupported = Game::new(7, scene);
+            unsupported.state.sun = 500;
+            let events = unsupported.advance(InputFrame {
+                actions: vec![
+                    InputAction::SelectSeed { slot: 0 },
+                    InputAction::Plant { row: 2, column: 2 },
+                ],
+            });
+            assert!(events.iter().any(|event| matches!(
+                event,
+                GameEvent::InputRejected {
+                    reason: InputRejectReason::InvalidTerrain,
+                    ..
+                }
+            )));
+            assert!(unsupported.state.board.plants.is_empty());
+
+            let mut supported = Game::new(7, scene);
+            supported.state.sun = 500;
+            supported.advance(InputFrame {
+                actions: vec![
+                    InputAction::SelectSeed { slot: 16 },
+                    InputAction::Plant { row: 2, column: 2 },
+                    InputAction::SelectSeed { slot: 0 },
+                    InputAction::Plant { row: 2, column: 2 },
+                ],
+            });
+            assert_eq!(supported.state.board.plants.len(), 2, "{scene:?}");
+            assert_eq!(
+                supported.state.board.plants[0].plant_type,
+                PlantType::Other(16)
+            );
+            assert_eq!(
+                supported.state.board.plants[1].plant_type,
+                PlantType::Peashooter
+            );
+
+            let top = supported.state.board.plants[1].id;
+            let events = supported.advance(InputFrame {
+                actions: vec![InputAction::Shovel { row: 2, column: 2 }],
+            });
+            assert!(events.iter().any(|event| matches!(
+                event,
+                GameEvent::PlantShoveled { entity } if *entity == top
+            )));
+            assert_eq!(supported.state.board.plants.len(), 1);
+            assert_eq!(
+                supported.state.board.plants[0].plant_type,
+                PlantType::Other(16)
+            );
+
+            let base = supported.state.board.plants[0].id;
+            let events = supported.advance(InputFrame {
+                actions: vec![InputAction::Shovel { row: 2, column: 2 }],
+            });
+            assert!(events.iter().any(|event| matches!(
+                event,
+                GameEvent::PlantShoveled { entity } if *entity == base
+            )));
+            assert!(supported.state.board.plants.is_empty());
+        }
     }
 
     #[test]
@@ -18808,16 +19412,33 @@ mod tests {
 
         let events = game.advance(InputFrame::default());
 
-        assert!(
-            events
-                .iter()
-                .any(|event| matches!(event, GameEvent::MowerTriggered { row: 2 }))
-        );
+        assert!(events.iter().any(|event| matches!(
+            event,
+            GameEvent::MowerTriggered {
+                row: 2,
+                pool: false
+            }
+        )));
         assert!(events.iter().any(|event| matches!(
             event,
             GameEvent::ZombieDied { entity } if *entity == zombie
         )));
         assert!(matches!(game.state.scene, SceneKind::Day));
+        assert!(game.state.board.zombies.is_empty());
+        assert!(game.state.board.mowers[2].active);
+    }
+
+    #[test]
+    fn pool_mower_trigger_marks_pool_audio_variant() {
+        let mut game = Game::new(0, SceneKind::Pool);
+        let events = game.debug_prepare_pool_mower();
+
+        assert!(
+            events
+                .iter()
+                .any(|event| matches!(event, GameEvent::MowerTriggered { row: 2, pool: true }))
+        );
+        assert!(matches!(game.state.scene, SceneKind::Pool));
         assert!(game.state.board.zombies.is_empty());
         assert!(game.state.board.mowers[2].active);
     }
@@ -19295,7 +19916,77 @@ mod tests {
         collect(&mut game, CoinType::AwardMoneyBag, None, None);
         collect(&mut game, CoinType::AwardBagDiamond, None, None);
         assert_eq!(game.state.chocolates, 1);
-        assert_eq!(game.state.coins, 525);
+        assert_eq!(game.state.coins, 0);
+    }
+
+    #[test]
+    fn award_money_bag_fans_out_present_coins_and_auto_collects() {
+        let mut game = Game::new(7, SceneKind::Day);
+        let mut produced = Vec::new();
+        game.spawn_pickup(CoinType::AwardMoneyBag, grid_x(4), grid_y(2), &mut produced);
+        let award_id = game.state.board.coins[0].id;
+        game.state.scene = SceneKind::Complete;
+        let collected = game.advance(InputFrame {
+            actions: vec![InputAction::CollectCoin { entity: award_id }],
+        });
+        assert!(collected.iter().any(|event| matches!(
+            event,
+            GameEvent::PickupCollected {
+                entity,
+                coin_type: CoinType::AwardMoneyBag,
+                value: 1,
+                ..
+            } if *entity == award_id
+        )));
+        assert_eq!(game.state.coins, 0);
+        assert_eq!(game.state.board.coins.len(), 5);
+        assert!(game.state.board.coins.iter().all(|coin| {
+            coin.coin_type == CoinType::Gold && coin.from_present && coin.age == 1
+        }));
+
+        let mut auto_collected = Vec::new();
+        for _ in 1..PRESENT_COIN_TICKS {
+            auto_collected = game.advance(InputFrame::default());
+        }
+        assert_eq!(game.state.coins, 25);
+        assert!(game.state.board.coins.is_empty());
+        assert_eq!(
+            auto_collected
+                .iter()
+                .filter(|event| matches!(event, GameEvent::CoinCollected { .. }))
+                .count(),
+            5
+        );
+    }
+
+    #[test]
+    fn final_award_diamonds_do_not_retrigger_fanout() {
+        let mut game = Game::new_mode(7, ModeKind::Adventure, 50);
+        let mut produced = Vec::new();
+        game.spawn_pickup(
+            CoinType::AwardSilverSunflower,
+            grid_x(4),
+            grid_y(2),
+            &mut produced,
+        );
+        let award_id = game.state.board.coins[0].id;
+        game.state.scene = SceneKind::Complete;
+        game.advance(InputFrame {
+            actions: vec![InputAction::CollectCoin { entity: award_id }],
+        });
+        assert_eq!(game.state.board.coins.len(), 3);
+        assert!(
+            game.state
+                .board
+                .coins
+                .iter()
+                .all(|coin| coin.coin_type == CoinType::Diamond)
+        );
+        for _ in 1..PRESENT_COIN_TICKS {
+            game.advance(InputFrame::default());
+        }
+        assert_eq!(game.state.coins, 300);
+        assert!(game.state.board.coins.is_empty());
     }
 
     #[test]
@@ -20006,6 +20697,161 @@ mod tests {
     }
 
     #[test]
+    fn debug_boss_attack_checkpoint_emits_windup_event() {
+        let mut game = Game::new_mode(3, ModeKind::MiniGame, 19);
+        let events = game.debug_prepare_boss_attack();
+        assert!(
+            events
+                .iter()
+                .any(|event| matches!(event, GameEvent::BossAttackWindup { .. }))
+        );
+        assert!(
+            game.state.board.zombies.iter().any(|zombie| {
+                zombie.zombie_type == ZombieType::Boss && zombie.boss_ball_active
+            })
+        );
+    }
+
+    #[test]
+    fn debug_vase_break_checkpoint_keeps_a_board_vase_visible() {
+        let mut game = Game::new(0, SceneKind::Day);
+        let events = game.debug_prepare_vase_break();
+        assert!(
+            events
+                .iter()
+                .any(|event| matches!(event, GameEvent::VaseBroken { .. }))
+        );
+        assert_eq!(game.state.scene, SceneKind::Day);
+        assert_eq!(game.state.board.vases.len(), 1);
+    }
+
+    #[test]
+    fn debug_torchwood_checkpoint_emits_firepea_event() {
+        let mut game = Game::new(0, SceneKind::Day);
+        let events = game.debug_prepare_torchwood();
+        assert!(
+            events
+                .iter()
+                .any(|event| matches!(event, GameEvent::ProjectileIgnited { .. }))
+        );
+        assert!(game.state.board.projectiles.iter().any(|projectile| {
+            projectile.projectile_type == ProjectileType::Fireball && projectile.damage == 40
+        }));
+    }
+
+    #[test]
+    fn debug_gold_coin_checkpoint_emits_landing_event() {
+        let mut game = Game::new(0, SceneKind::Day);
+        let events = game.debug_prepare_gold_coin_landing();
+        assert!(events.iter().any(|event| {
+            matches!(
+                event,
+                GameEvent::CoinLanded {
+                    coin_type: CoinType::Gold,
+                    ..
+                }
+            )
+        }));
+        assert_eq!(game.state.board.coins[0].target_y, None);
+        assert_eq!(game.state.board.coins[0].velocity_y, 0);
+    }
+
+    #[test]
+    fn debug_diamond_checkpoint_emits_collection_event() {
+        let mut game = Game::new(0, SceneKind::Day);
+        let events = game.debug_prepare_diamond_collection();
+        assert!(events.iter().any(|event| {
+            matches!(
+                event,
+                GameEvent::CoinCollected {
+                    coin_type: CoinType::Diamond,
+                    ..
+                }
+            )
+        }));
+        assert!(game.state.board.coins.is_empty());
+    }
+
+    #[test]
+    fn debug_usable_seed_checkpoint_emits_collection_event() {
+        let mut game = Game::new(0, SceneKind::Day);
+        let events = game.debug_prepare_usable_seed_collection();
+        assert!(events.iter().any(|event| {
+            matches!(
+                event,
+                GameEvent::PickupCollected {
+                    coin_type: CoinType::UsableSeedPacket,
+                    ..
+                }
+            )
+        }));
+        assert_eq!(game.state.board.selected_seed, Some(0));
+        assert!(game.state.board.coins.is_empty());
+    }
+
+    #[test]
+    fn debug_prize_checkpoint_emits_collection_event() {
+        let mut game = Game::new(0, SceneKind::Day);
+        let events = game.debug_prepare_prize_collection();
+        assert!(events.iter().any(|event| {
+            matches!(
+                event,
+                GameEvent::PickupCollected {
+                    coin_type: CoinType::PresentPlant,
+                    ..
+                }
+            )
+        }));
+        assert_eq!(
+            game.state.garden.plants[0].plant_type,
+            PlantType::Peashooter
+        );
+        assert!(game.state.board.coins.is_empty());
+    }
+
+    #[test]
+    fn debug_sun_pickup_checkpoint_emits_collection_event() {
+        let mut game = Game::new(0, SceneKind::Day);
+        let events = game.debug_prepare_sun_pickup_collection();
+        assert!(events.iter().any(|event| {
+            matches!(
+                event,
+                GameEvent::PickupCollected {
+                    coin_type: CoinType::Sun,
+                    ..
+                }
+            )
+        }));
+        assert_eq!(game.state.sun, 75);
+        assert!(game.state.board.coins.is_empty());
+    }
+
+    #[test]
+    fn profile_progression_round_trips_game_state() {
+        let mut profile = SaveProfile::new("profile-test");
+        profile.inventory.coins = 125;
+        profile.garden.plants.push(GardenPlant {
+            plant_type: PlantType::Sunflower,
+            age_ticks: 240,
+            watered: true,
+            happy: true,
+        });
+
+        let mut game = Game::new(0, SceneKind::Day);
+        game.apply_profile(&profile);
+        assert_eq!(game.state.coins, 125);
+        assert_eq!(game.state.garden, profile.garden);
+
+        game.state.coins = 225;
+        game.state.scene = SceneKind::Complete;
+        game.state.mode = ModeKind::Adventure;
+        game.state.level = 2;
+        game.update_profile(&mut profile);
+        assert_eq!(profile.inventory.coins, 225);
+        assert_eq!(profile.mode_completion[0].completed_levels, 3);
+    }
+
+    #[test]
     fn cob_cannon_combines_kernel_pults_and_hits_a_selected_target() {
         let mut game = Game::new(7, SceneKind::Day);
         game.state.sun = 1_000;
@@ -20184,6 +21030,22 @@ mod tests {
                     .any(|event| matches!(event, GameEvent::GardenLeft))
             );
         }
+    }
+
+    #[test]
+    fn debug_garden_tree_checkpoint_emits_growth_event() {
+        let mut game = Game::new_mode(7, ModeKind::ZenGarden, 3);
+        let events = game.debug_prepare_garden_tree_grow();
+        assert!(
+            events
+                .iter()
+                .any(|event| matches!(event, GameEvent::GardenTreeGrew { height: 2 }))
+        );
+        assert_eq!(game.state.tree_height, 2);
+        assert_eq!(
+            game.state.garden_service,
+            Some(GardenServiceKind::TreeOfWisdom)
+        );
     }
 
     #[test]

@@ -85,6 +85,22 @@ pub const POOL_BACKGROUND_IMAGE_ID: u32 = 161;
 pub const FOG_BACKGROUND_IMAGE_ID: u32 = 162;
 pub const ROOF_BACKGROUND_IMAGE_ID: u32 = 163;
 pub const BOSS_BACKGROUND_IMAGE_ID: u32 = 164;
+pub const BOARD_ZOMBIE_BODY_IMAGE_ID: u32 = 165;
+pub const BOARD_PROJECTILE_PEA_IMAGE_ID: u32 = 166;
+pub const BOARD_PROJECTILE_SNOW_PEA_IMAGE_ID: u32 = 167;
+pub const BOARD_SUN_IMAGE_ID: u32 = 168;
+pub const BOARD_COIN_SILVER_IMAGE_ID: u32 = 169;
+pub const BOARD_COIN_GOLD_IMAGE_ID: u32 = 170;
+pub const BOARD_DIAMOND_IMAGE_ID: u32 = 171;
+pub const BOARD_SNOWPEA_IMAGE_ID: u32 = 172;
+pub const BOARD_PUFFSHROOM_IMAGE_ID: u32 = 173;
+pub const BOARD_FUMESHROOM_IMAGE_ID: u32 = 174;
+pub const BOARD_STARFRUIT_IMAGE_ID: u32 = 175;
+pub const BOARD_GRAVE_IMAGE_ID: u32 = 176;
+pub const BOARD_CRATER_IMAGE_ID: u32 = 177;
+pub const BOARD_BRAIN_IMAGE_ID: u32 = 178;
+pub const BOARD_VASE_TOP_IMAGE_ID: u32 = 179;
+pub const BOARD_VASE_BOTTOM_IMAGE_ID: u32 = 180;
 
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub struct LogicalViewport {
