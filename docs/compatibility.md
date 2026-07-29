@@ -114,6 +114,13 @@ top-plant order remains intact. Focused launch checks and same-version source
 evidence are recorded in ignored `artifacts/catapult-zombie/verification.md`;
 Issue `#218`, PR `#263`, Actions `30491696677`/`30491697034`.
 
+Threepeater launch targeting now matches the source center and adjacent-row
+gate, including board-row and attack-rectangle eligibility, while Starfruit's
+wider directional targeting remains independent. Focused positive and no-fire
+checks plus same-version source evidence are recorded in ignored
+`artifacts/threepeater/verification.md`; Issue `#228`, PR `#264`, Actions
+`30493122168`/`30493122181`.
+
 ## Player-Accessible Modes
 
 | Obligation | Mode domain | Accepted | Total | Status | Evidence / owner |
