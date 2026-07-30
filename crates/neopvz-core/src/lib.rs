@@ -11198,8 +11198,7 @@ impl Game {
                     && right >= attack_left
                     && left <= attack_right
                     && !self.state.board.plants.iter().any(|plant| {
-                        plant.plant_type.is_tangle_kelp()
-                            && plant.special_target == Some(zombie.id)
+                        plant.plant_type.is_tangle_kelp() && plant.special_target == Some(zombie.id)
                     })
             })
             .min_by_key(|zombie| zombie_horizontal_rect(zombie).0)
@@ -22325,12 +22324,8 @@ mod tests {
             let mut game = Game::new(7, SceneKind::Pool);
             game.place_izombie_plant(PlantType::Other(19), 2, 2);
             let mut setup = Vec::new();
-            let target = game.spawn_normal_zombie(
-                2,
-                0,
-                Some(grid_x(2) + 20 * POSITION_SCALE),
-                &mut setup,
-            );
+            let target =
+                game.spawn_normal_zombie(2, 0, Some(grid_x(2) + 20 * POSITION_SCALE), &mut setup);
             let state = game
                 .state
                 .board
@@ -22356,12 +22351,8 @@ mod tests {
         let mut game = Game::new(7, SceneKind::Pool);
         game.place_izombie_plant(PlantType::Other(19), 2, 2);
         let mut setup = Vec::new();
-        let target = game.spawn_normal_zombie(
-            2,
-            0,
-            Some(grid_x(2) + 20 * POSITION_SCALE),
-            &mut setup,
-        );
+        let target =
+            game.spawn_normal_zombie(2, 0, Some(grid_x(2) + 20 * POSITION_SCALE), &mut setup);
         assert_eq!(game.find_tangle_kelp_target(2, 2), None);
 
         {
