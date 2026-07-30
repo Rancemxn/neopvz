@@ -6854,7 +6854,7 @@ impl Game {
                 None
             };
             let tangle_target = if plant_type.is_tangle_kelp() {
-                self.find_chomper_target(row, column)
+                self.find_tangle_kelp_target(row, column)
             } else {
                 None
             };
@@ -11168,6 +11168,41 @@ impl Game {
                     && zombie.position_x <= center_x + 80 * POSITION_SCALE
             })
             .min_by_key(|zombie| zombie.position_x.abs_diff(center_x))
+            .map(|zombie| zombie.id)
+    }
+
+    // Plant::FindTargetZombie uses damage flags 5 and TangleKelp's own cell rect.
+    fn find_tangle_kelp_target(&self, row: u8, column: u8) -> Option<EntityId> {
+        let attack_left = grid_x(column);
+        let attack_right = attack_left + 80 * POSITION_SCALE;
+        self.state
+            .board
+            .zombies
+            .iter()
+            .filter(|zombie| {
+                let (left, right) = zombie_horizontal_rect(zombie);
+                plant_damage_can_hit_zombie(zombie)
+                    && !zombie_rejects_ground_damage(zombie)
+                    && !zombie.departed
+                    && zombie.row == row
+                    && zombie.in_pool
+                    && !balloon_is_airborne(zombie)
+                    && zombie.imp_flight_ticks == 0
+                    && !(zombie.zombie_type == ZombieType::PoleVaulter
+                        && zombie.special_phase == POLE_VAULT_IN_VAULT_PHASE)
+                    && !(zombie.zombie_type == ZombieType::DolphinRider
+                        && matches!(
+                            zombie.dolphin_phase,
+                            DOLPHIN_INTO_POOL_PHASE | DOLPHIN_IN_JUMP_PHASE
+                        ))
+                    && right >= attack_left
+                    && left <= attack_right
+                    && !self.state.board.plants.iter().any(|plant| {
+                        plant.plant_type.is_tangle_kelp()
+                            && plant.special_target == Some(zombie.id)
+                    })
+            })
+            .min_by_key(|zombie| zombie_horizontal_rect(zombie).0)
             .map(|zombie| zombie.id)
     }
 
@@ -22277,6 +22312,79 @@ mod tests {
         )));
         assert!(game.state.board.zombies.is_empty());
         assert!(game.state.board.plants.is_empty());
+    }
+
+    #[test]
+    fn tangle_kelp_targets_only_eligible_pool_zombies() {
+        for (zombie_type, snorkel_phase, dolphin_phase) in [
+            (ZombieType::Normal, 0, 0),
+            (ZombieType::Snorkel, SNORKEL_WALKING_IN_POOL_PHASE, 0),
+            (ZombieType::DolphinRider, 0, DOLPHIN_RIDING_PHASE),
+            (ZombieType::Conehead, 0, 0),
+        ] {
+            let mut game = Game::new(7, SceneKind::Pool);
+            game.place_izombie_plant(PlantType::Other(19), 2, 2);
+            let mut setup = Vec::new();
+            let target = game.spawn_normal_zombie(
+                2,
+                0,
+                Some(grid_x(2) + 20 * POSITION_SCALE),
+                &mut setup,
+            );
+            let state = game
+                .state
+                .board
+                .zombies
+                .iter_mut()
+                .find(|zombie| zombie.id == target)
+                .unwrap();
+            state.zombie_type = zombie_type;
+            state.in_pool = true;
+            state.snorkel_phase = snorkel_phase;
+            state.dolphin_phase = dolphin_phase;
+            state.speed = 0;
+
+            let events = game.advance(InputFrame::default());
+            assert_eq!(game.state.board.plants[0].special_target, Some(target));
+            assert!(events.iter().any(|event| matches!(
+                event,
+                GameEvent::TangleKelpGrabStarted { entity }
+                    if *entity == game.state.board.plants[0].id
+            )));
+        }
+
+        let mut game = Game::new(7, SceneKind::Pool);
+        game.place_izombie_plant(PlantType::Other(19), 2, 2);
+        let mut setup = Vec::new();
+        let target = game.spawn_normal_zombie(
+            2,
+            0,
+            Some(grid_x(2) + 20 * POSITION_SCALE),
+            &mut setup,
+        );
+        assert_eq!(game.find_tangle_kelp_target(2, 2), None);
+
+        {
+            let state = game
+                .state
+                .board
+                .zombies
+                .iter_mut()
+                .find(|zombie| zombie.id == target)
+                .unwrap();
+            state.in_pool = true;
+            state.position_x = grid_x(2) + 80 * POSITION_SCALE;
+        }
+        assert_eq!(game.find_tangle_kelp_target(2, 2), None);
+
+        game.state.board.zombies[0].position_x = grid_x(2) + 20 * POSITION_SCALE;
+        let mut other_tangle_kelp = game.state.board.plants[0].clone();
+        other_tangle_kelp.id = game.state.board.allocate_entity();
+        other_tangle_kelp.column = 3;
+        other_tangle_kelp.special_armed = true;
+        other_tangle_kelp.special_target = Some(target);
+        game.state.board.plants.push(other_tangle_kelp);
+        assert_eq!(game.find_tangle_kelp_target(2, 2), None);
     }
 
     #[test]
