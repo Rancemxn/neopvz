@@ -84,6 +84,9 @@ const MOWER_TRIGGER_X: i64 = 0;
 const MOWER_SPEED: i64 = 8 * POSITION_SCALE;
 // Plant_UpdateTanglekelp starts its grab state with a 100-tick countdown.
 const TANGLE_KELP_GRAB_TICKS: u32 = 100;
+// anim_block is 13 frames at 22 fps; the first five updates are TRIGGERED.
+const UMBRELLA_BLOCK_TICKS: u32 = 60;
+const UMBRELLA_REFLECT_TICKS: u32 = 55;
 // Plant_UpdateSpike / Plant_SpikesSetAnimAttack in 1.0.0.1051: attack
 // state lasts 100 ticks and deals 20 damage when the countdown reaches 75.
 const SPIKEWEED_ATTACK_TICKS: u32 = 100;
@@ -3326,6 +3329,10 @@ pub enum GameEvent {
     UmbrellaDeflected {
         plant: EntityId,
         zombie: EntityId,
+    },
+    UmbrellaTriggered {
+        plant: EntityId,
+        projectile: EntityId,
     },
     MetalStolen {
         plant: EntityId,
@@ -7027,6 +7034,11 @@ impl Game {
                         plant.special_target = Some(target);
                         tangle_started = true;
                     }
+                } else if plant_type.slot() == 37 && plant.special_armed {
+                    plant.special_counter = plant.special_counter.saturating_sub(1);
+                    if plant.special_counter == 0 {
+                        plant.special_armed = false;
+                    }
                 } else if plant_type.is_spikeweed() {
                     if plant.special_armed {
                         plant.special_counter = plant.special_counter.saturating_sub(1);
@@ -9368,19 +9380,9 @@ impl Game {
                         let plant = &self.state.board.plants[plant_index];
                         (plant.row, plant.column)
                     };
-                    // Plant::FindUmbrellaPlant: an Umbrella Leaf within one
-                    // cell bounces the bungee before the grab.
                     let umbrella = self
-                        .state
-                        .board
-                        .plants
-                        .iter()
-                        .find(|plant| {
-                            plant.plant_type.slot() == 37
-                                && plant.row.abs_diff(target_row) <= 1
-                                && plant.column.abs_diff(target_column) <= 1
-                        })
-                        .map(|plant| plant.id);
+                        .find_umbrella_plant(target_row, target_column)
+                        .map(|index| self.state.board.plants[index].id);
                     if let Some(umbrella_id) = umbrella {
                         events.push(GameEvent::UmbrellaDeflected {
                             plant: umbrella_id,
@@ -9885,6 +9887,51 @@ impl Game {
         }
     }
 
+    fn resolve_projectile_plant_hit(
+        &mut self,
+        plant_index: usize,
+        projectile: &ProjectileState,
+        events: &mut Vec<GameEvent>,
+    ) -> bool {
+        let target = &self.state.board.plants[plant_index];
+        if let Some(umbrella_index) = self.find_umbrella_plant(target.row, target.column) {
+            let umbrella = &mut self.state.board.plants[umbrella_index];
+            if umbrella.special_armed && umbrella.special_counter <= UMBRELLA_REFLECT_TICKS {
+                self.push_projectile_impact(
+                    projectile.id,
+                    None,
+                    ProjectileImpactSound::Splat,
+                    3,
+                    events,
+                );
+                return true;
+            }
+            if !umbrella.special_armed {
+                umbrella.special_armed = true;
+                umbrella.special_counter = UMBRELLA_BLOCK_TICKS;
+                events.push(GameEvent::UmbrellaTriggered {
+                    plant: umbrella.id,
+                    projectile: projectile.id,
+                });
+            }
+            return false;
+        }
+
+        let plant_id = self.state.board.plants[plant_index].id;
+        self.state.board.plants[plant_index].health -= projectile.damage;
+        let health_remaining = self.state.board.plants[plant_index].health;
+        events.push(GameEvent::PlantDamaged {
+            entity: plant_id,
+            damage: projectile.damage,
+            health_remaining,
+        });
+        if health_remaining <= 0 {
+            self.state.board.plants.remove(plant_index);
+            events.push(GameEvent::PlantDied { entity: plant_id });
+        }
+        true
+    }
+
     fn update_projectiles(&mut self, events: &mut Vec<GameEvent>) {
         let mut projectile_index = 0;
         while projectile_index < self.state.board.projectiles.len() {
@@ -10017,19 +10064,11 @@ impl Game {
                     continue;
                 }
                 if let Some(plant_index) = self.find_catapult_collision_target(&projectile) {
-                    let plant_id = self.state.board.plants[plant_index].id;
-                    self.state.board.plants[plant_index].health -= projectile.damage;
-                    let health_remaining = self.state.board.plants[plant_index].health;
-                    events.push(GameEvent::PlantDamaged {
-                        entity: plant_id,
-                        damage: projectile.damage,
-                        health_remaining,
-                    });
-                    if health_remaining <= 0 {
-                        self.state.board.plants.remove(plant_index);
-                        events.push(GameEvent::PlantDied { entity: plant_id });
+                    if self.resolve_projectile_plant_hit(plant_index, &projectile, events) {
+                        self.state.board.projectiles.remove(projectile_index);
+                    } else {
+                        projectile_index += 1;
                     }
-                    self.state.board.projectiles.remove(projectile_index);
                 } else if i64::from(projectile.lob_height)
                     > i64::from(CATAPULT_GROUND_HEIGHT) * PULT_LOB_SCALE
                 {
@@ -10095,19 +10134,11 @@ impl Game {
                     .map(|(index, _)| index);
 
                 if let Some(plant_index) = target {
-                    let plant_id = self.state.board.plants[plant_index].id;
-                    self.state.board.plants[plant_index].health -= projectile.damage;
-                    let health_remaining = self.state.board.plants[plant_index].health;
-                    events.push(GameEvent::PlantDamaged {
-                        entity: plant_id,
-                        damage: projectile.damage,
-                        health_remaining,
-                    });
-                    if health_remaining <= 0 {
-                        self.state.board.plants.remove(plant_index);
-                        events.push(GameEvent::PlantDied { entity: plant_id });
+                    if self.resolve_projectile_plant_hit(plant_index, &projectile, events) {
+                        self.state.board.projectiles.remove(projectile_index);
+                    } else {
+                        projectile_index += 1;
                     }
-                    self.state.board.projectiles.remove(projectile_index);
                 } else if projectile.position_x > i64::from(LOGICAL_WIDTH) * POSITION_SCALE
                     || projectile.position_x < -100 * POSITION_SCALE
                     || projectile_row.is_none()
@@ -10143,19 +10174,11 @@ impl Game {
                         })
                         .map(|(index, _)| index)
                         .next();
-                    if let Some(plant_index) = target {
-                        let plant_id = self.state.board.plants[plant_index].id;
-                        self.state.board.plants[plant_index].health -= projectile.damage;
-                        let health_remaining = self.state.board.plants[plant_index].health;
-                        events.push(GameEvent::PlantDamaged {
-                            entity: plant_id,
-                            damage: projectile.damage,
-                            health_remaining,
-                        });
-                        if health_remaining <= 0 {
-                            self.state.board.plants.remove(plant_index);
-                            events.push(GameEvent::PlantDied { entity: plant_id });
-                        }
+                    if let Some(plant_index) = target
+                        && !self.resolve_projectile_plant_hit(plant_index, &projectile, events)
+                    {
+                        projectile_index += 1;
+                        continue;
                     }
                     self.state.board.projectiles.remove(projectile_index);
                 } else {
@@ -11153,6 +11176,16 @@ impl Game {
                     && catapult_projectile_hits_plant(self.state.scene, projectile, plant)
             })
             .find_map(|plant| self.find_catapult_top_plant(plant.row, plant.column))
+    }
+
+    fn find_umbrella_plant(&self, row: u8, column: u8) -> Option<usize> {
+        self.state.board.plants.iter().position(|plant| {
+            plant.health > 0
+                && catapult_plant_type(plant).slot() == 37
+                && plant_is_on_ground(plant)
+                && plant.row.abs_diff(row) <= 1
+                && plant.column.abs_diff(column) <= 1
+        })
     }
 
     fn find_chomper_target(&self, row: u8, column: u8) -> Option<EntityId> {
@@ -20749,6 +20782,88 @@ mod tests {
             !game.state.board.zombies.iter().any(|z| z.id == bungee),
             "the bounced bungee still departs"
         );
+    }
+
+    #[test]
+    fn umbrella_leaf_triggers_then_reflects_plant_targeting_projectiles() {
+        for projectile_type in [ProjectileType::ZombiePea, ProjectileType::Other(1)] {
+            let mut game = Game::new(7, SceneKind::Day);
+            let umbrella = game.state.board.allocate_entity();
+            game.state
+                .board
+                .plants
+                .push(test_plant(umbrella, PlantType::Other(37), 2, 2));
+            let health = game.state.board.plants[0].health;
+            let projectile = ProjectileState {
+                id: game.state.board.allocate_entity(),
+                projectile_type,
+                motion: if projectile_type == ProjectileType::ZombiePea {
+                    ProjectileMotion::Backwards
+                } else {
+                    ProjectileMotion::Lobbed
+                },
+                row: 2,
+                position_x: grid_x(2),
+                position_y: grid_y(2),
+                velocity_x: 0,
+                velocity_y: 0,
+                shadow_y: grid_y(2),
+                damage: projectile_type.damage(),
+                age: 30,
+                target_x: Some(grid_x(2)),
+                target_row: Some(2),
+                lob_height: 61 * PULT_LOB_SCALE as i32,
+                lob_velocity: 0,
+            };
+            game.state.board.projectiles.push(projectile.clone());
+
+            let mut events = Vec::new();
+            game.update_projectiles(&mut events);
+            assert_eq!(game.state.board.plants[0].health, health);
+            assert_eq!(
+                game.state.board.plants[0].special_counter,
+                UMBRELLA_BLOCK_TICKS
+            );
+            assert!(game.state.board.plants[0].special_armed);
+            assert_eq!(game.state.board.projectiles.len(), 1);
+            assert!(events.iter().any(|event| matches!(
+                event,
+                GameEvent::UmbrellaTriggered {
+                    plant,
+                    projectile: id,
+                } if *plant == umbrella && *id == projectile.id
+            )));
+
+            game.state.board.projectiles.clear();
+            for _ in 0..5 {
+                game.advance(InputFrame::default());
+            }
+            assert_eq!(
+                game.state.board.plants[0].special_counter,
+                UMBRELLA_REFLECT_TICKS
+            );
+
+            game.state.board.projectiles.push(projectile.clone());
+            events.clear();
+            game.update_projectiles(&mut events);
+            assert_eq!(game.state.board.plants[0].health, health);
+            assert!(game.state.board.projectiles.is_empty());
+            assert!(events.iter().any(|event| matches!(
+                event,
+                GameEvent::ProjectileImpact {
+                    projectile: id,
+                    zombie: None,
+                    kind: ProjectileImpactSound::Splat,
+                    ..
+                } if *id == projectile.id
+            )));
+
+            for _ in 0..UMBRELLA_REFLECT_TICKS {
+                game.advance(InputFrame::default());
+            }
+            assert!(!game.state.board.plants[0].special_armed);
+            assert_eq!(game.state.board.plants[0].special_counter, 0);
+        }
     }
 
     #[test]

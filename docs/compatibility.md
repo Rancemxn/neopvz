@@ -172,6 +172,14 @@ Exact tick vectors and same-version source evidence are recorded in ignored
 `artifacts/plant-firing-cadence/verification.md`; Issue `#229`, PR `#273`,
 Actions `30504974125`/`30504974120` at exact implementation head `644c7c5`.
 
+UmbrellaLeaf now intercepts both Zombie Pea and Catapult basketball plant
+collisions through one live, ground, adjacent-cell lookup. The first impact
+starts the source five-tick triggered phase without plant damage; the remaining
+55 ticks reflect matching projectiles with the source Splat impact before the
+13-frame block animation returns to idle. Same-version source, compiled
+animation, deterministic, and audio-mapping evidence is recorded in ignored
+`artifacts/umbrella-projectile-interception/verification.md`; Issue `#200`.
+
 ## Player-Accessible Modes
 
 | Obligation | Mode domain | Accepted | Total | Status | Evidence / owner |
