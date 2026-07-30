@@ -1414,20 +1414,38 @@ impl PlantType {
         matches!(self.slot(), 32 | 34 | 39 | 44)
     }
 
-    fn burst_count(self) -> u8 {
-        match self.firing_pattern() {
-            FiringPattern::Burst(count) => count,
-            _ => 1,
+    // Plant::FindTargetAndFire and UpdateShooting (Plant.cpp:714-800, 3235-3339).
+    fn shooting_counter_start(self) -> u32 {
+        match self.slot() {
+            7 | 28 | 52 => 26,
+            40 => 100,
+            43 | 10 => 50,
+            42 => 200,
+            8 | 24 => 29,
+            13 => 25,
+            18 | 26 => 35,
+            29 => 40,
+            32 => 32,
+            34 => 30,
+            39 | 44 => 36,
+            _ => 33,
+        }
+    }
+
+    fn fires_at_shooting_counter(self, counter: u32) -> bool {
+        match self.slot() {
+            40 => matches!(counter, 68 | 51 | 35 | 18),
+            43 => counter == 19,
+            42 => matches!(counter, 126 | 98 | 70 | 42),
+            _ => counter == 1,
         }
     }
 
     fn firing_pattern(self) -> FiringPattern {
         match self.slot() {
-            7 => FiringPattern::Burst(2),
             18 => FiringPattern::ThreeRow,
             28 => FiringPattern::Split,
             29 => FiringPattern::Star,
-            40 => FiringPattern::Burst(4),
             43 => FiringPattern::Homing,
             52 => FiringPattern::Backward,
             _ => FiringPattern::Single,
@@ -1942,7 +1960,6 @@ struct PultAim {
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 enum FiringPattern {
     Single,
-    Burst(u8),
     ThreeRow,
     Split,
     Star,
@@ -2241,8 +2258,6 @@ pub struct PlantState {
     pub firing_directions: u8,
     #[serde(default)]
     pub kernel_pult_projectile: Option<ProjectileType>,
-    pub burst_remaining: u8,
-    pub burst_delay: u32,
     pub production_age: u32,
     pub production_stage: u8,
     pub special_counter: u32,
@@ -5453,8 +5468,6 @@ impl Game {
             recently_eaten_counter: 0,
             firing_directions: 0,
             kernel_pult_projectile: None,
-            burst_remaining: 0,
-            burst_delay: 0,
             production_age: 0,
             production_stage: 0,
             special_counter: 0,
@@ -6034,8 +6047,6 @@ impl Game {
         cannon.launch_rate = 0;
         cannon.shooting_counter = 0;
         cannon.firing_directions = 0;
-        cannon.burst_remaining = 0;
-        cannon.burst_delay = 0;
         cannon.production_age = 0;
         cannon.production_stage = 0;
         cannon.special_counter = COB_ARM_TICKS;
@@ -6382,8 +6393,6 @@ impl Game {
             recently_eaten_counter: 0,
             firing_directions: 0,
             kernel_pult_projectile: None,
-            burst_remaining: 0,
-            burst_delay: 0,
             production_age: 0,
             production_stage: 0,
             special_counter,
@@ -6449,8 +6458,6 @@ impl Game {
         plant.shooting_counter = 0;
         plant.firing_directions = 0;
         plant.kernel_pult_projectile = None;
-        plant.burst_remaining = 0;
-        plant.burst_delay = 0;
         plant.production_age = 0;
         plant.production_stage = 0;
         plant.special_counter = special_counter;
@@ -6899,6 +6906,7 @@ impl Game {
             let mut potato_armed_now = false;
             let mut squash_hum_started = false;
             let mut firing_projectile = None;
+            let mut fired_directions = 0;
             {
                 let plant = &mut self.state.board.plants[index];
                 if plant_type.is_cob_cannon() {
@@ -7043,49 +7051,59 @@ impl Game {
                         plant.production_stage = 1;
                     }
                 }
-                if plant.burst_remaining > 0 {
-                    if plant.burst_delay > 0 {
-                        plant.burst_delay -= 1;
-                    }
-                    if plant.burst_delay == 0 {
-                        fire = true;
-                        plant.burst_remaining -= 1;
-                        if plant.burst_remaining > 0 {
-                            plant.burst_delay = 5;
-                        }
-                    }
-                } else if plant.shooting_counter > 0 {
+                if plant.shooting_counter > 0 {
                     plant.shooting_counter -= 1;
-                    fire = plant.shooting_counter == 1;
+                    fire = plant_type.fires_at_shooting_counter(plant.shooting_counter)
+                        && (plant_type.firing_pattern() != FiringPattern::Homing || has_target);
                     if fire {
-                        plant.shooting_counter = 0;
+                        fired_directions = std::mem::take(&mut plant.firing_directions);
                         firing_projectile = plant.kernel_pult_projectile.take();
-                        plant.burst_remaining = plant_type.burst_count().saturating_sub(1);
-                        plant.burst_delay = if plant.burst_remaining == 0 { 0 } else { 5 };
                     }
                 }
 
-                if plant.launch_rate != 0
-                    && plant.launch_counter <= 1
-                    && plant.shooting_counter == 0
-                    && plant.burst_remaining == 0
-                {
-                    if plant_type.is_producer() {
-                        plant.launch_counter = self
-                            .rng
-                            .range_inclusive(plant.launch_rate - 150, plant.launch_rate);
-                        if plant_type.is_marigold() {
-                            produce_coin = true;
-                        } else {
-                            produce_suns = if plant_type.is_twin_sunflower() { 2 } else { 1 };
-                            if plant_type.is_sunshroom() && plant.production_stage == 0 {
-                                produce_value = SMALL_SUN_VALUE;
+                let mut attack_directions = None;
+                if plant.launch_rate != 0 {
+                    if plant.launch_counter <= 1 {
+                        if plant_type.is_producer() {
+                            plant.launch_counter = self
+                                .rng
+                                .range_inclusive(plant.launch_rate - 150, plant.launch_rate);
+                            if plant_type.is_marigold() {
+                                produce_coin = true;
+                            } else {
+                                produce_suns = if plant_type.is_twin_sunflower() { 2 } else { 1 };
+                                if plant_type.is_sunshroom() && plant.production_stage == 0 {
+                                    produce_value = SMALL_SUN_VALUE;
+                                }
                             }
+                        } else if plant_type.is_shooter() {
+                            plant.launch_counter = plant.launch_rate - self.rng.range(15);
+                            attack_directions =
+                                Some(if plant_type.firing_pattern() == FiringPattern::Split {
+                                    firing_directions & FIRING_BACKWARD
+                                } else {
+                                    firing_directions
+                                });
                         }
-                    } else if plant_type.is_shooter() {
-                        plant.launch_counter = plant.launch_rate - self.rng.range(15);
-                        if has_target {
-                            plant.firing_directions = firing_directions;
+                    } else {
+                        plant.launch_counter -= 1;
+                        // Plant::UpdateShooter checks these boundaries after decrementing.
+                        if (plant_type.firing_pattern() == FiringPattern::Homing
+                            && plant.launch_counter == 50)
+                            || (matches!(plant_type.slot(), 7 | 28 | 52)
+                                && plant.launch_counter == 25)
+                        {
+                            attack_directions = Some(firing_directions);
+                        }
+                    }
+
+                    if let Some(directions) = attack_directions {
+                        let attack_has_target = match plant_type.firing_pattern() {
+                            FiringPattern::Split | FiringPattern::Backward => directions != 0,
+                            _ => has_target,
+                        };
+                        if attack_has_target {
+                            plant.firing_directions = directions;
                             if plant_type.is_kernel_pult() {
                                 plant.kernel_pult_projectile = Some(if self.rng.range(4) == 0 {
                                     ProjectileType::Butter
@@ -7093,16 +7111,9 @@ impl Game {
                                     ProjectileType::Kernel
                                 });
                             }
-                            plant.shooting_counter =
-                                if plant_type.firing_pattern() == FiringPattern::Star {
-                                    40
-                                } else {
-                                    33
-                                };
+                            plant.shooting_counter = plant_type.shooting_counter_start();
                         }
                     }
-                } else if plant.launch_counter > 0 {
-                    plant.launch_counter -= 1;
                 }
             }
 
@@ -7117,8 +7128,8 @@ impl Game {
                     id,
                     plant_type,
                     firing_projectile.unwrap_or_else(|| plant_type.projectile_type()),
-                    row,
-                    column,
+                    (row, column),
+                    fired_directions,
                     events,
                 );
             }
@@ -11464,21 +11475,11 @@ impl Game {
         source: EntityId,
         plant_type: PlantType,
         projectile_type: ProjectileType,
-        row: u8,
-        column: u8,
+        source_cell: (u8, u8),
+        firing_directions: u8,
         events: &mut Vec<GameEvent>,
     ) {
-        let firing_directions = match plant_type.firing_pattern() {
-            FiringPattern::Split | FiringPattern::Backward => self
-                .state
-                .board
-                .plants
-                .iter_mut()
-                .find(|plant| plant.id == source)
-                .map(|plant| std::mem::take(&mut plant.firing_directions))
-                .unwrap_or_default(),
-            _ => 0,
-        };
+        let (row, column) = source_cell;
         let position_x = if plant_type.is_gloom_shroom() {
             grid_x(column) - 80 * POSITION_SCALE
         } else {
@@ -13794,8 +13795,6 @@ mod tests {
             recently_eaten_counter: 0,
             firing_directions: 0,
             kernel_pult_projectile: None,
-            burst_remaining: 0,
-            burst_delay: 0,
             production_age: 0,
             production_stage: 0,
             special_counter: 0,
@@ -13976,7 +13975,7 @@ mod tests {
             .unwrap()
             .health;
 
-        let events = (0..80)
+        let events = (0..60)
             .flat_map(|_| game.advance(InputFrame::default()))
             .collect::<Vec<_>>();
         assert!(events.iter().any(|event| matches!(
@@ -14215,7 +14214,7 @@ mod tests {
             &mut setup_events,
         );
 
-        let events = (0..60)
+        let events = (0..80)
             .flat_map(|_| game.advance(InputFrame::default()))
             .collect::<Vec<_>>();
 
@@ -14269,8 +14268,11 @@ mod tests {
         let row_two = game.spawn_normal_zombie(2, 0, Some(target_x), &mut setup_events);
         let row_three = game.spawn_normal_zombie(3, 0, Some(target_x), &mut setup_events);
         let far_row = game.spawn_normal_zombie(0, 0, Some(target_x), &mut setup_events);
+        for zombie in &mut game.state.board.zombies {
+            zombie.speed = 0;
+        }
 
-        let events = (0..60)
+        let events = (0..80)
             .flat_map(|_| game.advance(InputFrame::default()))
             .collect::<Vec<_>>();
 
@@ -14500,13 +14502,13 @@ mod tests {
 
     #[test]
     fn splitpea_and_leftpeater_arm_only_matching_directions() {
-        let run = |plant_type: PlantType, targets: &[(u8, i64)]| {
+        let run = |plant_type: PlantType, launch_counter, targets: &[(u8, i64)]| {
             let mut game = Game::new(7, SceneKind::Day);
             game.state
                 .board
                 .plants
                 .push(test_plant(100, plant_type, 2, 2));
-            game.state.board.plants[0].launch_counter = 1;
+            game.state.board.plants[0].launch_counter = launch_counter;
             let mut setup = Vec::new();
             for (row, position_x) in targets {
                 game.spawn_normal_zombie(*row, 0, Some(*position_x), &mut setup);
@@ -14533,7 +14535,12 @@ mod tests {
             (500 * POSITION_SCALE, ProjectileMotion::Straight),
             (100 * POSITION_SCALE, ProjectileMotion::Backwards),
         ] {
-            let (mut game, events) = run(PlantType::Other(28), &[(2, target_x)]);
+            let launch_counter = if expected_motion == ProjectileMotion::Straight {
+                26
+            } else {
+                1
+            };
+            let (mut game, events) = run(PlantType::Other(28), launch_counter, &[(2, target_x)]);
             assert_eq!(
                 events
                     .iter()
@@ -14566,7 +14573,7 @@ mod tests {
             assert_eq!(game.state.board.zombies[0].health, 250);
         }
 
-        let (no_target, events) = run(PlantType::Other(28), &[(1, 500 * POSITION_SCALE)]);
+        let (no_target, events) = run(PlantType::Other(28), 1, &[(1, 500 * POSITION_SCALE)]);
         assert!(
             events
                 .iter()
@@ -14574,7 +14581,7 @@ mod tests {
         );
         assert!(no_target.state.board.projectiles.is_empty());
 
-        let (backward, events) = run(PlantType::Other(52), &[(2, 100 * POSITION_SCALE)]);
+        let (backward, events) = run(PlantType::Other(52), 1, &[(2, 100 * POSITION_SCALE)]);
         assert_eq!(
             events
                 .iter()
@@ -14586,13 +14593,82 @@ mod tests {
             backward.state.board.projectiles[0].motion,
             ProjectileMotion::Backwards
         );
-        let (forward, events) = run(PlantType::Other(52), &[(2, 500 * POSITION_SCALE)]);
+        let (forward, events) = run(PlantType::Other(52), 1, &[(2, 500 * POSITION_SCALE)]);
         assert!(
             events
                 .iter()
                 .all(|event| !matches!(event, GameEvent::PlantFired { .. }))
         );
         assert!(forward.state.board.projectiles.is_empty());
+    }
+
+    #[test]
+    fn plant_specific_firing_cadence_matches_source_counters() {
+        let run = |plant_type: PlantType, target_x, ticks| {
+            let mut game = Game::new(7, SceneKind::Day);
+            game.state
+                .board
+                .plants
+                .push(test_plant(100, plant_type, 2, 2));
+            game.state.board.plants[0].launch_counter = 1;
+            let mut setup = Vec::new();
+            game.spawn_normal_zombie(2, 0, Some(target_x), &mut setup);
+            game.state.board.zombies[0].speed = 0;
+
+            let mut reset_counter = 0;
+            let mut fired = Vec::new();
+            for tick in 1..=ticks {
+                let events = game.advance(InputFrame::default());
+                if tick == 1 {
+                    reset_counter = game.state.board.plants[0].launch_counter;
+                }
+                for event in events {
+                    if matches!(event, GameEvent::ProjectileFired { source: 100, .. }) {
+                        fired.push(tick);
+                    }
+                }
+            }
+            (fired, reset_counter)
+        };
+
+        for (plant_type, target_x, ticks, expected) in [
+            (PlantType::Peashooter, 500 * POSITION_SCALE, 60, vec![33]),
+            (
+                PlantType::Other(40),
+                500 * POSITION_SCALE,
+                100,
+                vec![33, 50, 66, 83],
+            ),
+            (PlantType::Other(32), 500 * POSITION_SCALE, 60, vec![32]),
+            (
+                PlantType::Other(42),
+                250 * POSITION_SCALE,
+                180,
+                vec![75, 103, 131, 159],
+            ),
+            (PlantType::Other(10), 500 * POSITION_SCALE, 60, vec![50]),
+        ] {
+            assert_eq!(run(plant_type, target_x, ticks).0, expected);
+        }
+
+        let (repeater, repeater_cycle) = run(PlantType::Other(7), 500 * POSITION_SCALE, 200);
+        assert_eq!(repeater, vec![26, repeater_cycle + 1, repeater_cycle + 26]);
+
+        let (cattail, cattail_cycle) = run(PlantType::Other(43), 500 * POSITION_SCALE, 200);
+        assert_eq!(cattail, vec![32, cattail_cycle - 18, cattail_cycle + 32]);
+
+        let mut cattail = Game::new(7, SceneKind::Day);
+        cattail.state.board.plants = vec![test_plant(100, PlantType::Other(43), 2, 2)];
+        cattail.state.board.plants[0].launch_counter = 1;
+        let mut setup = Vec::new();
+        cattail.spawn_normal_zombie(4, 0, Some(500 * POSITION_SCALE), &mut setup);
+        cattail.advance(InputFrame::default());
+        cattail.state.board.zombies.clear();
+        assert!(
+            (0..31)
+                .flat_map(|_| cattail.advance(InputFrame::default()))
+                .all(|event| !matches!(event, GameEvent::ProjectileFired { source: 100, .. }))
+        );
     }
 
     #[test]
@@ -14777,7 +14853,7 @@ mod tests {
     }
 
     #[test]
-    fn repeater_emits_a_two_shot_burst() {
+    fn repeater_uses_the_launch_counter_second_shot() {
         let mut game = Game::new(7, SceneKind::Day);
         game.state.sun = 250;
         game.advance(InputFrame {
@@ -14790,7 +14866,7 @@ mod tests {
         let mut setup_events = Vec::new();
         game.spawn_normal_zombie(2, 0, Some(500 * POSITION_SCALE), &mut setup_events);
 
-        let fired = (0..50)
+        let fired = (0..160)
             .flat_map(|_| game.advance(InputFrame::default()))
             .filter(|event| matches!(event, GameEvent::ProjectileFired { .. }))
             .count();
@@ -14833,8 +14909,8 @@ mod tests {
             99,
             PlantType::Other(18),
             ProjectileType::Pea,
-            2,
-            2,
+            (2, 2),
+            0,
             &mut events,
         );
 
@@ -14934,8 +15010,8 @@ mod tests {
                 99,
                 PlantType::Other(18),
                 ProjectileType::Pea,
-                2,
-                2,
+                (2, 2),
+                0,
                 &mut events,
             );
             let expected_y = scene_plant_y(scene, 2, 2) + 10 * POSITION_SCALE;
@@ -15082,7 +15158,7 @@ mod tests {
         let mut setup_events = Vec::new();
         game.spawn_normal_zombie(2, 0, Some(500 * POSITION_SCALE), &mut setup_events);
 
-        let fired = (0..70)
+        let fired = (0..90)
             .flat_map(|_| game.advance(InputFrame::default()))
             .filter(|event| matches!(event, GameEvent::ProjectileFired { .. }))
             .count();
@@ -15136,18 +15212,13 @@ mod tests {
     #[test]
     fn leftpeater_fires_only_backward() {
         let mut game = Game::new(7, SceneKind::Day);
-        game.state
-            .board
-            .plants
-            .push(test_plant(1, PlantType::Other(52), 2, 2));
-        game.state.board.plants[0].firing_directions = FIRING_BACKWARD;
         let mut events = Vec::new();
         game.fire_projectiles(
             1,
             PlantType::Other(52),
             ProjectileType::Pea,
-            2,
-            2,
+            (2, 2),
+            FIRING_BACKWARD,
             &mut events,
         );
 
@@ -15305,8 +15376,8 @@ mod tests {
                 99,
                 PlantType::Other(29),
                 ProjectileType::Star,
-                2,
-                2,
+                (2, 2),
+                0,
                 &mut events,
             );
 
@@ -15828,7 +15899,7 @@ mod tests {
                 } else {
                     ProjectileType::Kernel
                 },
-                2,
+                (2, 0),
                 0,
                 &mut events,
             );
@@ -15915,7 +15986,7 @@ mod tests {
             1,
             PlantType::Other(32),
             ProjectileType::Cabbage,
-            2,
+            (2, 0),
             0,
             &mut fire_events,
         );
@@ -15964,7 +16035,7 @@ mod tests {
             1,
             PlantType::Other(32),
             ProjectileType::Cabbage,
-            2,
+            (2, 0),
             0,
             &mut fire_events,
         );
@@ -16021,7 +16092,7 @@ mod tests {
             1,
             PlantType::Other(32),
             ProjectileType::Cabbage,
-            2,
+            (2, 0),
             0,
             &mut fire_events,
         );
@@ -16128,7 +16199,7 @@ mod tests {
                 1,
                 PlantType::Other(32),
                 ProjectileType::Cabbage,
-                2,
+                (2, 0),
                 0,
                 &mut fire_events,
             );
@@ -22901,8 +22972,8 @@ mod tests {
             99,
             PlantType::Other(18),
             ProjectileType::Pea,
-            2,
-            2,
+            (2, 2),
+            0,
             &mut threepeater_events,
         );
         assert_eq!(

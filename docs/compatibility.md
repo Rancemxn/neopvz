@@ -161,7 +161,16 @@ of raw base-position comparisons. Focused direction, event-count, damage,
 no-fire, edge-overlap, and eligibility checks are recorded in ignored
 `artifacts/splitpea-directional-targets/verification.md`; Issue `#231`, PR
 `#272`, Actions `30502935720`/`30502935723` at exact implementation head
-`82f54f8`. Generic shooter cadence remains unresolved under Issue `#229`.
+`82f54f8`. The separately tracked generic cadence is covered below.
+
+Plant firing cadence now uses source-specific animation counters and emission
+boundaries instead of a universal 33-tick delay and five-tick burst. This
+includes the Repeater/LeftPeater/SplitPea launch-counter-25 path, Cattail's
+launch-counter-50 arm and counter-19 target recheck, GatlingPea's four shot
+boundaries, GloomShroom's four pulses, and the individual pult/shroom counters.
+Exact tick vectors and same-version source evidence are recorded in ignored
+`artifacts/plant-firing-cadence/verification.md`; Issue `#229`, PR `#273`,
+Actions `30504974125`/`30504974120` at exact implementation head `644c7c5`.
 
 ## Player-Accessible Modes
 
