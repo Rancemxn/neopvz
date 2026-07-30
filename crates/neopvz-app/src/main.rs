@@ -2857,6 +2857,7 @@ fn audio_for_event(event: &GameEvent) -> Option<(AudioKind, &'static str)> {
         GameEvent::RakeTriggered { .. } => Some((AudioKind::Effect, "sounds/swing.ogg")),
         GameEvent::JumpBlocked { .. } => Some((AudioKind::Effect, "sounds/bonk.ogg")),
         GameEvent::UmbrellaDeflected { .. } => Some((AudioKind::Effect, "sounds/boing.ogg")),
+        GameEvent::UmbrellaTriggered { .. } => Some((AudioKind::Effect, "sounds/throw2.ogg")),
         GameEvent::CobCannonFired { .. } => Some((AudioKind::Effect, "sounds/coblaunch.ogg")),
         GameEvent::ProjectileFired {
             projectile_type: neopvz_core::ProjectileType::Other(1),
@@ -3875,6 +3876,13 @@ mod tests {
             audio_companion_for_event(&GameEvent::UmbrellaDeflected {
                 plant: 1,
                 zombie: 2,
+            }),
+            Some((AudioKind::Effect, "sounds/throw2.ogg"))
+        );
+        assert_eq!(
+            audio_for_event(&GameEvent::UmbrellaTriggered {
+                plant: 1,
+                projectile: 2,
             }),
             Some((AudioKind::Effect, "sounds/throw2.ogg"))
         );
