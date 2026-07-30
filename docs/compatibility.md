@@ -154,6 +154,15 @@ are recorded in ignored `artifacts/starfruit-target-search/verification.md`;
 Issue `#230`, PR `#271`, Actions `30501265802`/`30501265816` at exact
 implementation head `dddb9b8`.
 
+SplitPea now evaluates and retains its forward and backward weapon gates
+independently through delayed emission, while LeftPeater retains only its
+backward gate. Both use the source inclusive zombie-rectangle overlap instead
+of raw base-position comparisons. Focused direction, event-count, damage,
+no-fire, edge-overlap, and eligibility checks are recorded in ignored
+`artifacts/splitpea-directional-targets/verification.md`; Issue `#231`, PR
+`#272`, Actions `30502935720`/`30502935723` at exact implementation head
+`82f54f8`. Generic shooter cadence remains unresolved under Issue `#229`.
+
 ## Player-Accessible Modes
 
 | Obligation | Mode domain | Accepted | Total | Status | Evidence / owner |
