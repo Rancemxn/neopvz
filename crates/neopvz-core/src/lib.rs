@@ -4441,6 +4441,7 @@ impl Game {
             Some(grid_x(2) + 30 * POSITION_SCALE),
             &mut setup_events,
         );
+        self.state.board.zombies[0].in_pool = true;
     }
 
     #[doc(hidden)]
@@ -11188,8 +11189,13 @@ impl Game {
                     && zombie.in_pool
                     && !balloon_is_airborne(zombie)
                     && zombie.imp_flight_ticks == 0
+                    && !(zombie.zombie_type == ZombieType::Bobsled
+                        && zombie.bobsled_sliding
+                        && !zombie.bobsled_leader)
                     && !(zombie.zombie_type == ZombieType::PoleVaulter
                         && zombie.special_phase == POLE_VAULT_IN_VAULT_PHASE)
+                    && !(zombie.zombie_type == ZombieType::Snorkel
+                        && zombie.snorkel_phase == SNORKEL_INTO_POOL_PHASE)
                     && !(zombie.zombie_type == ZombieType::DolphinRider
                         && matches!(
                             zombie.dolphin_phase,
@@ -22280,6 +22286,7 @@ mod tests {
         let mut setup_events = Vec::new();
         let zombie_x = grid_x(2) + 20 * POSITION_SCALE;
         let zombie = game.spawn_normal_zombie(2, 0, Some(zombie_x), &mut setup_events);
+        game.state.board.zombies[0].in_pool = true;
         assert_eq!(
             game.find_plant_for_zombie(2, zombie_x, ZombieType::Normal),
             None
@@ -22369,6 +22376,21 @@ mod tests {
         assert_eq!(game.find_tangle_kelp_target(2, 2), None);
 
         game.state.board.zombies[0].position_x = grid_x(2) + 20 * POSITION_SCALE;
+        game.state.board.zombies[0].zombie_type = ZombieType::Snorkel;
+        game.state.board.zombies[0].snorkel_phase = SNORKEL_INTO_POOL_PHASE;
+        assert_eq!(game.find_tangle_kelp_target(2, 2), None);
+
+        game.state.board.zombies[0].snorkel_phase = SNORKEL_WALKING_IN_POOL_PHASE;
+        assert_eq!(game.find_tangle_kelp_target(2, 2), Some(target));
+
+        game.state.board.zombies[0].zombie_type = ZombieType::Bobsled;
+        game.state.board.zombies[0].bobsled_sliding = true;
+        game.state.board.zombies[0].bobsled_leader = false;
+        assert_eq!(game.find_tangle_kelp_target(2, 2), None);
+
+        game.state.board.zombies[0].bobsled_leader = true;
+        assert_eq!(game.find_tangle_kelp_target(2, 2), Some(target));
+
         let mut other_tangle_kelp = game.state.board.plants[0].clone();
         other_tangle_kelp.id = game.state.board.allocate_entity();
         other_tangle_kelp.column = 3;
