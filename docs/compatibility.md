@@ -151,7 +151,8 @@ Digger offset, the high-column Boss case, and the 50-tick recently-eaten
 override are preserved. The source 40-tick Starfruit firing counter and focused
 positive, negative, movement, eligibility, Boss, bite, and first-fire checks
 are recorded in ignored `artifacts/starfruit-target-search/verification.md`;
-Issue `#230`.
+Issue `#230`, PR `#271`, Actions `30501265802`/`30501265816` at exact
+implementation head `dddb9b8`.
 
 ## Player-Accessible Modes
 
