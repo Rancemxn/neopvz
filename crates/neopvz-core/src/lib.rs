@@ -70,6 +70,8 @@ const INSTANT_PLANT_COUNTDOWN: u32 = 100;
 const BLOVER_SPECIAL_COUNTDOWN: u32 = 50;
 const COFFEE_WAKE_TICKS: u32 = 100;
 const GRAVEBUSTER_EAT_TICKS: u32 = 400;
+const GRAVE_RISE_LAND_TICKS: u32 = 150;
+const GRAVE_RISE_POOL_TICKS: u32 = 50;
 const POTATO_ARM_TICKS: u32 = 1_500;
 const IMITATER_MORPH_TICKS: u32 = 200;
 const COB_ARM_TICKS: u32 = 500;
@@ -2628,6 +2630,8 @@ pub struct ZombieState {
     pub departed: bool,
     #[serde(default)]
     pub in_pool: bool,
+    #[serde(default)]
+    pub rise_counter: u32,
     #[serde(default)]
     pub armor_intact: bool,
     #[serde(default)]
@@ -7896,19 +7900,20 @@ impl Game {
                 && plant.column == column
                 && !matches!(plant.plant_type.slot(), 16 | 33)
         });
-        let coffee_target = self
-            .state
-            .board
-            .plants
-            .iter()
-            .rfind(|plant| {
-                plant.row == row
-                    && plant.column == column
-                    && !matches!(plant.plant_type.slot(), 16 | 33)
-            })
-            .is_some_and(|plant| {
-                plant.plant_type.is_nocturnal() && plant.asleep && plant.wake_up_counter == 0
-            });
+        // Source Board::GetTopPlantAt resolves Coffee through the normal plant
+        // layer only: support (Lily Pad/Flower Pot), Pumpkin, and another
+        // flying Coffee are separate slots and never reject a valid overlay.
+        let coffee_target = self.state.board.plants.iter().any(|plant| {
+            plant.row == row
+                && plant.column == column
+                && !matches!(plant.plant_type.slot(), 16 | 30 | 33 | 35)
+                && plant.plant_type.is_nocturnal()
+                && plant.asleep
+                && plant.wake_up_counter == 0
+        });
+        let coffee_already_present = self.state.board.plants.iter().any(|plant| {
+            plant.row == row && plant.column == column && plant.plant_type.slot() == 35
+        });
         let pumpkin_already_present = self.state.board.plants.iter().any(|plant| {
             plant.row == row && plant.column == column && plant.plant_type.slot() == 30
         });
@@ -7925,7 +7930,7 @@ impl Game {
             });
             return;
         }
-        if effective_type.slot() == 35 && !coffee_target {
+        if effective_type.slot() == 35 && (coffee_already_present || !coffee_target) {
             events.push(GameEvent::InputRejected {
                 action,
                 reason: InputRejectReason::Occupied,
@@ -8983,16 +8988,16 @@ impl Game {
                 .board
                 .plants
                 .iter()
-                .rfind(|plant| {
+                .find(|plant| {
                     plant.id != plant_id
                         && plant.row == row
                         && plant.column == column
-                        && !matches!(plant.plant_type.slot(), 16 | 33)
+                        && !matches!(plant.plant_type.slot(), 16 | 30 | 33 | 35)
+                        && plant.plant_type.is_nocturnal()
+                        && plant.asleep
+                        && plant.wake_up_counter == 0
                 })
-                .and_then(|plant| {
-                    (plant.plant_type.is_nocturnal() && plant.asleep && plant.wake_up_counter == 0)
-                        .then_some(plant.id)
-                });
+                .map(|plant| plant.id);
             if let Some(target_id) = target_id
                 && let Some(target) = self
                     .state
@@ -11415,6 +11420,11 @@ impl Game {
                 zombie.groan_counter -= 1;
                 zombie.frozen_counter = zombie.frozen_counter.saturating_sub(1);
                 zombie.chilled_counter = zombie.chilled_counter.saturating_sub(1);
+                // Source UpdateZombieRiseFromGrave advances only when the
+                // ice/butter counter has cleared; a frozen riser pauses.
+                if zombie.rise_counter > 0 && zombie.frozen_counter == 0 {
+                    zombie.rise_counter -= 1;
+                }
                 if zombie.zombie_type == ZombieType::PeaHead {
                     zombie.pea_head_counter = zombie.pea_head_counter.saturating_sub(1);
                 }
@@ -11445,6 +11455,7 @@ impl Game {
                     || (zombie.zombie_type == ZombieType::Digger
                         && (zombie.digger_underground || zombie.digger_counter > 0))
                     || snorkel_blocks_movement(zombie)
+                    || zombie.rise_counter > 0
                     || (zombie.zombie_type == ZombieType::Balloon
                         && zombie.balloon_phase == BALLOON_POPPING_PHASE)
                     || zombie.zombie_type == ZombieType::Bungee)
@@ -12892,7 +12903,25 @@ impl Game {
             _ => 270,
         };
         let position = grid_x(column) - 25 * POSITION_SCALE;
-        self._spawn_zombie_inner(zombie_type, health, row, wave, Some(position), events);
+        let zombie_id =
+            self._spawn_zombie_inner(zombie_type, health, row, wave, Some(position), events);
+        if let Some(zombie) = self
+            .state
+            .board
+            .zombies
+            .iter_mut()
+            .find(|candidate| candidate.id == zombie_id)
+        {
+            // Source RiseFromGrave (Zombie.cpp:8130-8160): a 150-tick rise on
+            // land, or a 50-tick rise from the pool with mInPool set. The
+            // zombie is off-ground and stationary until the rise completes.
+            if self.state.scene == SceneKind::Pool {
+                zombie.rise_counter = GRAVE_RISE_POOL_TICKS;
+                zombie.in_pool = true;
+            } else {
+                zombie.rise_counter = GRAVE_RISE_LAND_TICKS;
+            }
+        }
     }
 
     /// TotalZombiesHealthInWave for the most recently spawned wave: body plus
@@ -15357,6 +15386,7 @@ impl Game {
             blowing_away: false,
             departed: false,
             in_pool: false,
+            rise_counter: 0,
             armor_intact: matches!(
                 zombie_type,
                 ZombieType::Buckethead
@@ -16020,7 +16050,9 @@ fn zombie_can_be_frozen(zombie: &ZombieState) -> bool {
 }
 
 fn zombie_rejects_ground_damage(zombie: &ZombieState) -> bool {
-    (zombie.zombie_type == ZombieType::BackupDancer && zombie.dancer_phase == DANCER_RISE_PHASE)
+    zombie.rise_counter > 0
+        || (zombie.zombie_type == ZombieType::BackupDancer
+            && zombie.dancer_phase == DANCER_RISE_PHASE)
         || (zombie.zombie_type == ZombieType::Digger
             && (zombie.digger_underground || zombie.digger_counter > 0))
 }
@@ -23347,6 +23379,84 @@ mod tests {
     }
 
     #[test]
+    fn rising_zombies_are_off_ground_until_the_source_timer_elapses() {
+        // Night grave rise: a 150-tick stationary, off-ground window.
+        let mut game = Game::new(7, SceneKind::Night);
+        let mut setup = Vec::new();
+        game.spawn_rising_zombie(ZombieType::Normal, 2, 2, 0, &mut setup);
+        let riser = game.state.board.zombies[0].id;
+        assert_eq!(
+            game.state.board.zombies[0].rise_counter,
+            GRAVE_RISE_LAND_TICKS
+        );
+        let rise_x = game.state.board.zombies[0].position_x;
+        let mut pea_events = Vec::new();
+        game.fire_projectile(
+            0,
+            ProjectileType::Pea,
+            2,
+            ProjectileTrajectory {
+                motion: ProjectileMotion::Straight,
+                position_x: rise_x,
+                position_y: grid_y(2),
+                velocity_x: 0,
+                velocity_y: 0,
+            },
+            &mut pea_events,
+        );
+        let events = game.advance(InputFrame::default());
+        assert!(!events.iter().any(|event| matches!(
+            event,
+            GameEvent::ProjectileHit { zombie, .. } if *zombie == riser
+        )));
+        assert_eq!(
+            game.state.board.zombies[0].rise_counter,
+            GRAVE_RISE_LAND_TICKS - 1
+        );
+        assert_eq!(game.state.board.zombies[0].position_x, rise_x);
+
+        for _ in 1..GRAVE_RISE_LAND_TICKS {
+            game.advance(InputFrame::default());
+        }
+        assert_eq!(game.state.board.zombies[0].rise_counter, 0);
+        let rise_x = game.state.board.zombies[0].position_x;
+        let mut pea_events = Vec::new();
+        game.fire_projectile(
+            0,
+            ProjectileType::Pea,
+            2,
+            ProjectileTrajectory {
+                motion: ProjectileMotion::Straight,
+                position_x: rise_x,
+                position_y: grid_y(2),
+                velocity_x: 0,
+                velocity_y: 0,
+            },
+            &mut pea_events,
+        );
+        let events = game.advance(InputFrame::default());
+        assert!(events.iter().any(|event| matches!(
+            event,
+            GameEvent::ProjectileHit { zombie, .. } if *zombie == riser
+        )));
+
+        // Pool rise: a 50-tick submerged emerge that keeps the pool flag.
+        let mut pool = Game::new(7, SceneKind::Pool);
+        let mut setup = Vec::new();
+        pool.spawn_rising_zombie(ZombieType::Normal, 2, 2, 0, &mut setup);
+        assert_eq!(
+            pool.state.board.zombies[0].rise_counter,
+            GRAVE_RISE_POOL_TICKS
+        );
+        assert!(pool.state.board.zombies[0].in_pool);
+        for _ in 0..GRAVE_RISE_POOL_TICKS {
+            pool.advance(InputFrame::default());
+        }
+        assert_eq!(pool.state.board.zombies[0].rise_counter, 0);
+        assert!(pool.state.board.zombies[0].in_pool);
+    }
+
+    #[test]
     fn adventure_night_boards_place_source_graves_and_sun() {
         let game = Game::new_mode(7, ModeKind::Adventure, 11);
         assert_eq!(game.state().board.graves.len(), 4);
@@ -25933,6 +26043,101 @@ mod tests {
             .unwrap();
         assert!(!mushroom_state.asleep);
         assert_eq!(mushroom_state.wake_up_counter, 0);
+    }
+
+    #[test]
+    fn coffee_wakes_a_sleeping_mushroom_beneath_a_pumpkin_shell() {
+        let mut game = Game::new(7, SceneKind::Day);
+        game.state.sun = 500;
+        game.state.board.set_seed_packets(&[
+            PlantType::Other(8),
+            PlantType::Other(30),
+            PlantType::Other(35),
+        ]);
+        game.advance(InputFrame {
+            actions: vec![
+                InputAction::SelectSeed { slot: 0 },
+                InputAction::Plant { row: 2, column: 2 },
+                InputAction::SelectSeed { slot: 1 },
+                InputAction::Plant { row: 2, column: 2 },
+                InputAction::SelectSeed { slot: 2 },
+                InputAction::Plant { row: 2, column: 2 },
+            ],
+        });
+
+        let mushroom = game
+            .state
+            .board
+            .plants
+            .iter()
+            .find(|plant| plant.plant_type.slot() == 8)
+            .unwrap()
+            .id;
+        let coffee = game
+            .state
+            .board
+            .plants
+            .iter()
+            .find(|plant| plant.plant_type.slot() == 35)
+            .unwrap()
+            .id;
+        assert!(
+            game.state
+                .board
+                .plants
+                .iter()
+                .find(|plant| plant.id == mushroom)
+                .unwrap()
+                .asleep
+        );
+        assert!(
+            game.state
+                .board
+                .plants
+                .iter()
+                .any(|plant| plant.plant_type.slot() == 30),
+            "the pumpkin shell must be accepted over the mushroom"
+        );
+
+        let mut wake_counter = 0;
+        for _ in 0..COFFEE_WAKE_TICKS {
+            let events = game.advance(InputFrame::default());
+            if events.iter().any(|event| {
+                matches!(
+                    event,
+                    GameEvent::PlantSpecialTriggered {
+                        entity,
+                        plant_type: PlantType::Other(35),
+                    } if *entity == coffee
+                )
+            }) {
+                wake_counter = game
+                    .state
+                    .board
+                    .plants
+                    .iter()
+                    .find(|plant| plant.id == mushroom)
+                    .unwrap()
+                    .wake_up_counter;
+                break;
+            }
+        }
+        assert_eq!(wake_counter, COFFEE_WAKE_TICKS);
+        assert!(
+            game.state
+                .board
+                .plants
+                .iter()
+                .all(|plant| plant.id != coffee)
+        );
+        let mushroom_state = game
+            .state
+            .board
+            .plants
+            .iter()
+            .find(|plant| plant.id == mushroom)
+            .unwrap();
+        assert!(mushroom_state.asleep);
     }
 
     #[test]
