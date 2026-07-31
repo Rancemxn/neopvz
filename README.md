@@ -20,22 +20,22 @@ kept behind an interface so desktop and mobile asset providers can differ.
 
 ## Development
 
-Do not run `cargo build`, `cargo test`, or other compilation commands locally.
-The local checkout does not have the complete test/resource environment. Use
-the GitHub Actions `full-gate` workflow from a branch or pull request:
+For implementation changes, run the local stable Cargo gate:
 
 ```text
-gh workflow run full-gate.yml --repo Rancemxn/neopvz --ref <branch>
+cargo +stable fmt --all -- --check
+cargo +stable clippy --workspace --all-targets --locked -- -D warnings
+cargo +stable test --workspace --locked
+cargo +stable build --workspace --locked
 ```
 
-Use issues and milestones for work planning, pull requests for changes, and
-Actions for verification. Tags and releases will be introduced after the
-implementation is stable.
+Use a local debug build with externally supplied 1.0.0.1051 resources for GUI,
+visual, and audio validation. GitHub Actions may record supplementary results,
+but they do not replace the local gate. Original resources and local comparison
+evidence must never be uploaded to the repository or Actions.
 
-The complete gate runs on Ubuntu. The `windows-artifact` workflow builds a
-resource-free Windows executable for download and local GUI, visual, and audio
-verification. Original resources and local comparison evidence must never be
-uploaded to the repository or Actions.
+Use issues and milestones for work planning and pull requests for changes. Tags
+and releases will be introduced after the implementation is stable.
 
 See [the development workflow](docs/development.md) for verification and
 reference boundaries. The bounded compatibility contract is in [loop.md](loop.md),

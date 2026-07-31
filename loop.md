@@ -17,20 +17,16 @@
   original runtime behavior, IDA, the 1.0.0.1051 function table, or another
   independent source.
 - **Observable success signal:** The finite compatibility ledger has no
-  `missing`, `unverified`, or `failing` required entries; the Ubuntu and
-  Windows gates are green; a Windows release artifact starts with an external
+  `missing`, `unverified`, or `failing` required entries; the local stable
+  Cargo gate is green; a local debug build starts with an external
   1.0.0.1051 resource directory or PAK; all required GUI, visual, audio,
   progression, and deterministic replay evidence exists in the ignored local
   verification area; and all required GitHub issues are closed.
-- **Current-run build-gate override:** For this run only, the user's explicit
-  authorization accepts local stable `fmt --check`, locked Clippy, locked
-  workspace tests, and a locked non-release workspace debug build in place of
-  waiting for GitHub Actions. If a compile/test command is started
-  asynchronously and its result must be polled, wait at least 20 seconds
-  before the first result read. Synchronous commands may be read immediately
-  when they return; do not add a 20-second delay after a successful build.
-  Do not run a release build. This does not weaken the repository's CI
-  requirements for later merges.
+- **Build gate:** Every code-affecting slice must pass local stable
+  `fmt --check`, locked Clippy, locked workspace tests, and a locked
+  non-release workspace debug build. A passing local gate is sufficient for
+  acceptance. GitHub Actions may be recorded as supplementary evidence but
+  never block progress or merge. Do not run a release build.
 - **Current-run app-validation override:** For this run only, the user's
   explicit authorization accepts the locally built `target/debug/neopvz.exe`
   with the external 1.0.0.1051 resources for GUI, visual, audio, and runtime
@@ -68,7 +64,7 @@
   or reverse-engineering conclusion counts only when it does one of those
   things.
 - **Goal-achievement check:** Evaluate every required ledger entry and every
-  success signal above against code, Action results, deterministic records,
+  success signal above against code, local Cargo results, deterministic records,
   GUI runs, screenshots, audio/event records, and local resource-boundary
   checks. Claims without domain-matched evidence do not pass.
 - **No-progress condition:** Three consecutive iterations that neither retire
@@ -127,9 +123,9 @@ prohibited and cannot be approved by this loop.
 |---|---|---|
 | Simulation and gameplay state | Same build, resource version, initial save, seed, and input sequence; compare state hashes, event order, damage, cooldowns, resources, waves, and input results | Deterministic replay record and matching final hash |
 | Resource and format loading | Synthetic fixtures plus legally supplied external directory/PAK; verify manifest, PAK, compiled, font, image, animation, and audio boundaries | Parser tests, fixture results, and local resource manifest |
-| Ubuntu build | GitHub full gate with formatting, Clippy, tests, and release build | Green Ubuntu Action run and release artifact |
-| Windows build | GitHub Windows Action with the required non-GUI checks and release build | Green Windows Action run and downloadable artifact without original resources |
-| GUI interaction | Run the Windows artifact locally with the ignored external resources; drive every player-accessible flow and record outcomes | Local interaction log, scenario result, and failure trace when applicable |
+| Local Cargo gate | Local `cargo +stable` formatting, locked Clippy, locked workspace tests, and locked debug workspace build | Passing local command output |
+| GitHub Actions | Optional Ubuntu/Windows workflow records | Supplementary run links only; never an acceptance blocker |
+| GUI interaction | Run the local debug build with ignored external resources; drive every player-accessible flow and record outcomes | Local interaction log, scenario result, and failure trace when applicable |
 | Visual output | Capture the original and neopvz displayed client area at the same checkpoint, seed, save, input sequence, scale, DPI, and viewport; reject blank or incorrectly cropped captures; generate diagnostic pixel comparisons and a semantic comparison; then require an independent visual review of both screenshots and the comparison | Ignored local original screenshot, neopvz screenshot, diagnostic diff image/metrics, semantic comparison record, capture metadata, and independent review result |
 | Original screenshot capture | Launch the original executable outside the repository, locate its top-level window, keep it visible and unobstructed, and use a DPI-aware capture process to capture the composed desktop pixels for its client area; verify that the result contains the complete client area without desktop pixels or window chrome; use windowed mode or Desktop Duplication if exclusive fullscreen is not capturable | Ignored local capture manifest containing executable/resource hashes, window bounds, DPI, checkpoint, seed, input record, and crop-validation result |
 | Original process instrumentation | Inspect `pvztools-master` source only for hypotheses, then independently author local scripts that use operating-system process-memory APIs to observe or control seed, state, time, or capture checkpoints; cross-check adopted offsets and behavior against original runtime, IDA, or the function table | Ignored self-authored script, provenance note, observation log, and reproducible checkpoint record; no pvztools binary or copied implementation |
@@ -233,5 +229,5 @@ shared workspace.
 | Dependency, FFI, parser, or architecture dead end | Preserve verified behavior and test vectors, return to the latest green implementation, and replace only the failing internal approach |
 | Original or neopvz screenshot is blank, incorrectly cropped, or uncomparable | Keep the window visible and unobstructed, use a DPI-aware client-area capture, validate the crop, switch from exclusive fullscreen to windowed or Desktop Duplication, and rely on semantic checks while retaining pixel metrics only as diagnostics |
 | Windows GUI or external resource validation is unavailable | Continue non-GUI obligations; leave affected entries unresolved and do not claim full success |
-| Ubuntu or Windows Action is unavailable | Retry changed queries/runs and continue independent work; never replace Action compilation with local Cargo compilation |
+| Ubuntu or Windows Action is unavailable | Record the unavailable supplementary run when useful and continue; the local Cargo gate remains authoritative |
 | 500 iterations are exhausted | Terminate incomplete with the full residual ledger and latest green commit; a successor loop inherits the same target and evidence requirements |

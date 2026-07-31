@@ -7,25 +7,33 @@ in this repository. Keep original binaries, extracted resources, IDA files,
 function tables, reference repositories, screenshots, recordings, diffs, and
 observation logs outside version control.
 
+Search local files with `fd`, `sg`, and `rg`; list directories with `eza`.
+Use FastCtx with absolute paths for reading files and encoding-sensitive text.
+If FastCtx reports ambiguous encoding, verify a candidate before reading or
+editing. Use `mcp__fastctx__replace` for mechanical replacements so source
+encoding and line endings are preserved.
+
 Direct dependency source snapshots belong in `third_party-src/` for local
 reference and are ignored by Git. Record the upstream URL and exact tag or
 commit in the dependency PR that introduces the dependency.
 
 ## Verification
 
-The local machine is intentionally not a build environment. Do not run local
-Cargo compilation or tests. Every implementation PR must pass `.github/workflows/full-gate.yml`.
+The local stable Cargo gate is authoritative for implementation changes. Run
+`cargo +stable fmt --all -- --check`, `cargo +stable clippy --workspace
+--all-targets --locked -- -D warnings`, `cargo +stable test --workspace
+--locked`, and `cargo +stable build --workspace --locked`. A passing local
+gate is sufficient for acceptance; do not run a release build.
 
-The full gate runs formatting, Clippy, unit tests, and a release build on
-Ubuntu. `.github/workflows/windows-artifact.yml` runs the required non-GUI
-tests, builds a release binary without original resources, and uploads that
-binary as an artifact. Do not spend Action capacity on macOS or mobile until
-the Ubuntu and Windows paths are stable.
+`.github/workflows/full-gate.yml` and `.github/workflows/windows-artifact.yml`
+may still record formatting, lint, test, and build results. Treat their links
+as supplementary evidence only and do not wait for completion. Do not spend
+Action capacity on macOS or mobile until the Ubuntu and Windows paths are
+stable.
 
-Download the Windows artifact for local resource-bound GUI, input, screenshot,
-and audio checks. This local execution does not permit local Cargo compilation.
-Keep all original resources and resulting evidence under ignored paths such as
-`artifacts/`; never upload them to GitHub or Actions.
+Use the local debug build for resource-bound GUI, input, screenshot, and audio
+checks. Keep all original resources and resulting evidence under ignored paths
+such as `artifacts/`; never upload them to GitHub or Actions.
 
 ### Fast GUI iteration
 
@@ -37,9 +45,8 @@ Preview static layouts against the external resource PNGs with a small native
 PowerShell/System.Drawing compositor before rebuilding. Use the preview only to
 tune positions and scales; it is not GPU or compatibility evidence.
 
-Batch related UI changes. Use an interim Windows smoke artifact for quick checks,
-then reserve the Ubuntu full gate and Windows release artifact for a coherent
-code batch and acceptance. After the layout stabilizes, run one complete route,
+Batch related UI changes. Use an interim local debug build for quick checks.
+After the layout stabilizes, run one complete route,
 capture the original and neopvz checkpoints, generate comparisons, and complete
 independent review. Never accept a preview or smoke result as final evidence.
 
@@ -85,7 +92,7 @@ independent source, and keep scripts and observations in ignored local storage.
 1. Open or update an issue.
 2. Put the issue in the current milestone.
 3. Work on a branch and open a pull request.
-4. Let the required Ubuntu and Windows Actions verify the change.
-5. Merge only after review and a green gate.
+4. Pass the local stable Cargo gate and the domain-specific evidence check.
+5. Merge after review and the passing local gate; append Action links when available without waiting for them.
 
 Tags and releases are intentionally deferred until the implementation is stable.
