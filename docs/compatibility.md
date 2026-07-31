@@ -180,6 +180,15 @@ starts the source five-tick triggered phase without plant damage; the remaining
 animation, deterministic, and audio-mapping evidence is recorded in ignored
 `artifacts/umbrella-projectile-interception/verification.md`; Issue `#200`.
 
+CobCannon now defers its Cob projectile to the source launch boundary: the fire
+input stores the target and the 206-tick firing counter, and the projectile is
+created and emitted only when the counter reaches 1, matching `CobCannonFire`
+and `UpdateShooting` (`Plant.cpp:4502-4516`, `3234-3340`). Reload arming stays
+separate from the firing animation. Focused coverage is
+`cob_cannon_defers_launch_until_the_firing_counter_elapses`, and the existing
+launch-and-impact test now keeps targets stationary through the firing
+animation; Issue `#199`.
+
 ## Player-Accessible Modes
 
 | Obligation | Mode domain | Accepted | Total | Status | Evidence / owner |
