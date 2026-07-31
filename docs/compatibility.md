@@ -180,6 +180,17 @@ starts the source five-tick triggered phase without plant damage; the remaining
 animation, deterministic, and audio-mapping evidence is recorded in ignored
 `artifacts/umbrella-projectile-interception/verification.md`; Issue `#200`.
 
+Torchwood interception now uses the source plant-attack and projectile
+rectangles with a >=10 overlap threshold instead of the plant-cell line
+crossing, and records the converting Torchwood column so a projectile is not
+reconverted by the same plant while still converting at later Torchwoods.
+Focused coverage is `torchwood_warms_then_ignites_across_two_columns` (a
+SnowPea warms to a Pea at the first Torchwood and ignites at a second), and the
+existing Pea/SnowPea tests retain the type behavior; source evidence is local
+`Plant.cpp` `UpdateTorchwood` (`1374-1400`) and `GetPlantAttackRect`
+(`5200-5229`), plus `Projectile.cpp` `ConvertToFireball`/`ConvertToPea`
+(`1194-1230`); Issue `#233`.
+
 ## Player-Accessible Modes
 
 | Obligation | Mode domain | Accepted | Total | Status | Evidence / owner |

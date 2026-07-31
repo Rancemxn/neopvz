@@ -2430,6 +2430,8 @@ pub struct ProjectileState {
     pub lob_height: i32,
     #[serde(default)]
     pub lob_velocity: i32,
+    #[serde(default)]
+    pub hit_torchwood_column: Option<u8>,
 }
 
 #[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
@@ -4213,7 +4215,17 @@ impl Game {
             },
             &mut setup_events,
         );
-        self.advance(InputFrame::default())
+        let mut events = Vec::new();
+        for _ in 0..12 {
+            events.extend(self.advance(InputFrame::default()));
+            if events
+                .iter()
+                .any(|event| matches!(event, GameEvent::ProjectileIgnited { .. }))
+            {
+                break;
+            }
+        }
+        events
     }
 
     #[doc(hidden)]
@@ -10266,32 +10278,51 @@ impl Game {
 
         let projectile = &self.state.board.projectiles[projectile_index];
         let projectile_row = projectile.row;
-        let previous_x = projectile.position_x - projectile.velocity_x;
-        let current_x = projectile.position_x;
-        if !self.state.board.plants.iter().any(|plant| {
-            let torchwood_x = grid_x(plant.column);
-            plant.row == projectile_row
-                && plant.plant_type.is_torchwood()
-                && if previous_x <= current_x {
-                    previous_x < torchwood_x && torchwood_x <= current_x
-                } else {
-                    current_x <= torchwood_x && torchwood_x < previous_x
+        let projectile_x = projectile.position_x;
+        let hit_column = projectile.hit_torchwood_column;
+        // Source Projectile::GetProjectileRect gives a Pea a 40x40 rect anchored
+        // at mX; UpdateTorchwood converts when the Torchwood attack rect
+        // (Rect(mX + 50, mY, 30, mHeight)) overlaps it by >= 10 units, and the
+        // mHitTorchwoodGridX guard skips the column that already converted it.
+        let projectile_left = projectile_x;
+        let projectile_right = projectile_x + 40 * POSITION_SCALE;
+        let Some(torchwood_column) = self
+            .state
+            .board
+            .plants
+            .iter()
+            .find(|plant| {
+                if plant.row != projectile_row
+                    || !plant.plant_type.is_torchwood()
+                    || hit_column == Some(plant.column)
+                {
+                    return false;
                 }
-        }) {
+                let torchwood_x = grid_x(plant.column);
+                let attack_left = torchwood_x + 50 * POSITION_SCALE;
+                let attack_right = torchwood_x + 80 * POSITION_SCALE;
+                let overlap =
+                    (attack_right.min(projectile_right) - attack_left.max(projectile_left)).max(0);
+                overlap >= 10 * POSITION_SCALE
+            })
+            .map(|plant| plant.column)
+        else {
             return;
-        }
+        };
 
         let projectile_id = self.state.board.projectiles[projectile_index].id;
         let projectile = &mut self.state.board.projectiles[projectile_index];
         if projectile_type == ProjectileType::Pea {
             projectile.projectile_type = ProjectileType::Fireball;
             projectile.damage = ProjectileType::Fireball.damage();
+            projectile.hit_torchwood_column = Some(torchwood_column);
             events.push(GameEvent::ProjectileIgnited {
                 projectile: projectile_id,
             });
         } else {
             projectile.projectile_type = ProjectileType::Pea;
             projectile.damage = ProjectileType::Pea.damage();
+            projectile.hit_torchwood_column = Some(torchwood_column);
             events.push(GameEvent::ProjectileWarmed {
                 projectile: projectile_id,
             });
@@ -11355,6 +11386,7 @@ impl Game {
             target_row: Some(target_row),
             lob_height: 0,
             lob_velocity: -8,
+            hit_torchwood_column: None,
         });
         events.push(GameEvent::ProjectileFired {
             entity: id,
@@ -11485,6 +11517,7 @@ impl Game {
             lob_height: 0,
             lob_velocity: ((range_y * PULT_LOB_SCALE) / (120 * POSITION_SCALE) - 7 * PULT_LOB_SCALE)
                 as i32,
+            hit_torchwood_column: None,
         });
         events.push(GameEvent::ProjectileFired {
             entity: id,
@@ -11534,6 +11567,7 @@ impl Game {
             lob_velocity: (((target_y - origin_y) * PULT_LOB_SCALE)
                 / (CATAPULT_LOB_FLIGHT_UPDATES * POSITION_SCALE)
                 - 7 * PULT_LOB_SCALE) as i32,
+            hit_torchwood_column: None,
         });
         events.push(GameEvent::ProjectileFired {
             entity: id,
@@ -11763,6 +11797,7 @@ impl Game {
             target_row: None,
             lob_height: 0,
             lob_velocity: 0,
+            hit_torchwood_column: None,
         });
         events.push(GameEvent::ProjectileFired {
             entity: id,
@@ -14852,17 +14887,24 @@ mod tests {
             &mut setup_events,
         );
 
-        let events = game.advance(InputFrame::default());
-        assert!(
-            events
+        let mut events = Vec::new();
+        let mut saw_warmed = false;
+        let mut saw_ignited = false;
+        for _ in 0..20 {
+            let tick_events = game.advance(InputFrame::default());
+            saw_warmed |= tick_events
                 .iter()
-                .any(|event| matches!(event, GameEvent::ProjectileWarmed { .. }))
-        );
-        assert!(
-            events
+                .any(|event| matches!(event, GameEvent::ProjectileWarmed { .. }));
+            saw_ignited |= tick_events
                 .iter()
-                .all(|event| !matches!(event, GameEvent::ProjectileIgnited { .. }))
-        );
+                .any(|event| matches!(event, GameEvent::ProjectileIgnited { .. }));
+            events.extend(tick_events);
+            if saw_warmed {
+                break;
+            }
+        }
+        assert!(saw_warmed);
+        assert!(!saw_ignited);
         assert_eq!(
             game.state.board.projectiles[0].projectile_type,
             ProjectileType::Pea
@@ -14923,6 +14965,70 @@ mod tests {
                 .health,
             270
         );
+    }
+
+    #[test]
+    fn torchwood_warms_then_ignites_across_two_columns() {
+        // A SnowPea converts to a Pea at the first Torchwood, is not
+        // reconverted by that column, then converts to a Fireball at a later
+        // Torchwood on the same row.
+        let mut game = Game::new(7, SceneKind::Day);
+        game.state.sun = 350;
+        game.advance(InputFrame {
+            actions: vec![
+                InputAction::SelectSeed { slot: 22 },
+                InputAction::Plant { row: 2, column: 1 },
+            ],
+        });
+        game.state.board.seed_packets[22].refresh_remaining = 0;
+        game.advance(InputFrame {
+            actions: vec![
+                InputAction::SelectSeed { slot: 22 },
+                InputAction::Plant { row: 2, column: 3 },
+            ],
+        });
+        let mut setup = Vec::new();
+        game.fire_projectile(
+            0,
+            ProjectileType::SnowPea,
+            2,
+            ProjectileTrajectory {
+                motion: ProjectileMotion::Straight,
+                position_x: grid_x(0) + 20 * POSITION_SCALE,
+                position_y: grid_y(2),
+                velocity_x: 40_000_000,
+                velocity_y: 0,
+            },
+            &mut setup,
+        );
+        let mut saw_warmed = false;
+        let mut saw_ignited = false;
+        let mut warmed_type = None;
+        for _ in 0..30 {
+            let events = game.advance(InputFrame::default());
+            let warmed_this_tick = events
+                .iter()
+                .any(|event| matches!(event, GameEvent::ProjectileWarmed { .. }));
+            let ignited_this_tick = events
+                .iter()
+                .any(|event| matches!(event, GameEvent::ProjectileIgnited { .. }));
+            saw_warmed |= warmed_this_tick;
+            saw_ignited |= ignited_this_tick;
+            if warmed_this_tick && !ignited_this_tick {
+                warmed_type = game
+                    .state
+                    .board
+                    .projectiles
+                    .first()
+                    .map(|projectile| projectile.projectile_type);
+            }
+        }
+        assert!(saw_warmed, "the SnowPea must warm at the first Torchwood");
+        assert!(
+            saw_ignited,
+            "the warmed Pea must ignite at the second Torchwood"
+        );
+        assert_eq!(warmed_type, Some(ProjectileType::Pea));
     }
 
     #[test]
@@ -19656,6 +19762,7 @@ mod tests {
             target_row: None,
             lob_height: 0,
             lob_velocity: 0,
+            hit_torchwood_column: None,
         });
         let events = game.advance(InputFrame::default());
         assert!(events.iter().any(|event| matches!(
@@ -19682,6 +19789,7 @@ mod tests {
             target_row: None,
             lob_height: 0,
             lob_velocity: 0,
+            hit_torchwood_column: None,
         });
         let events = game.advance(InputFrame::default());
         assert!(events.iter().any(|event| matches!(
@@ -20814,6 +20922,7 @@ mod tests {
                 target_row: Some(2),
                 lob_height: 61 * PULT_LOB_SCALE as i32,
                 lob_velocity: 0,
+                hit_torchwood_column: None,
             };
             game.state.board.projectiles.push(projectile.clone());
 
@@ -23386,6 +23495,7 @@ mod tests {
             target_row: None,
             lob_height: 0,
             lob_velocity: 0,
+            hit_torchwood_column: None,
         };
         let mut setup = Vec::new();
         let cone = game.spawn_conehead_zombie(2, 0, Some(500 * POSITION_SCALE), &mut setup);
@@ -25274,6 +25384,7 @@ mod tests {
             target_row: Some(2),
             lob_height: 61 * PULT_LOB_SCALE as i32,
             lob_velocity: 1,
+            hit_torchwood_column: None,
         };
         assert_eq!(
             game.find_catapult_collision_target(&projectile)
