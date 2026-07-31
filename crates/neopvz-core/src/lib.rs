@@ -6870,8 +6870,16 @@ impl Game {
                 && self.state.board.zombies.iter().any(|zombie| {
                     plant_damage_can_hit_zombie(zombie)
                         && !zombie_rejects_ground_damage(zombie)
-                        && zombie.row == row
                         && !balloon_is_airborne(zombie)
+                        && zombie.row == row
+                        // Source FindTargetZombie PotatoMine branch: a Pogo
+                        // carrying its object or a Pole Vaulter in vault cannot
+                        // be selected, and the Bungee target-column rule is not
+                        // modeled (the steal bungee has no stored target cell).
+                        && !(zombie.zombie_type == ZombieType::Pogo
+                            && (zombie.pogo_counter > 0 || zombie.pogo_phase != 0))
+                        && !(zombie.zombie_type == ZombieType::PoleVaulter
+                            && zombie.special_phase == POLE_VAULT_IN_VAULT_PHASE)
                         && (zombie.position_x - grid_x(column)).abs() <= 60 * POSITION_SCALE
                 });
             let spikeweed_target = plant_type.is_spikeweed()
@@ -16512,6 +16520,51 @@ mod tests {
         )));
         assert!(game.state.board.plants.is_empty());
         assert!(game.state.board.zombies.is_empty());
+    }
+
+    #[test]
+    fn potato_mine_ignores_a_bouncing_pogo_until_a_ground_target_arrives() {
+        let mut game = Game::new(7, SceneKind::Day);
+        game.state.sun = 100;
+        game.advance(InputFrame {
+            actions: vec![
+                InputAction::SelectSeed { slot: 4 },
+                InputAction::Plant { row: 2, column: 2 },
+            ],
+        });
+        game.state.board.plants[0].special_counter = 1;
+        let center = grid_x(2);
+        let mut setup = Vec::new();
+        let pogo = game.spawn_pogo_zombie(2, 0, Some(center + 50 * POSITION_SCALE), &mut setup);
+        {
+            let zombie = game
+                .state
+                .board
+                .zombies
+                .iter_mut()
+                .find(|candidate| candidate.id == pogo)
+                .unwrap();
+            zombie.pogo_counter = 10;
+            zombie.pogo_phase = 1;
+            zombie.speed = 0;
+        }
+        game.advance(InputFrame::default());
+        assert!(game.state.board.plants[0].special_armed);
+        // The mine stays armed while only a bouncing Pogo is in range.
+        game.advance(InputFrame::default());
+        assert!(game.state.board.plants[0].special_armed);
+        assert_eq!(game.state.board.plants.len(), 1);
+        assert_eq!(game.state.board.zombies.len(), 1);
+        // A walking ground zombie triggers it.
+        game.spawn_normal_zombie(2, 0, Some(center + 50 * POSITION_SCALE), &mut setup);
+        let events = game.advance(InputFrame::default());
+        assert!(events.iter().any(|event| matches!(
+            event,
+            GameEvent::PlantSpecialTriggered {
+                plant_type: PlantType::Other(4),
+                ..
+            }
+        )));
     }
 
     #[test]

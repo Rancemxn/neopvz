@@ -180,6 +180,17 @@ starts the source five-tick triggered phase without plant damage; the remaining
 animation, deterministic, and audio-mapping evidence is recorded in ignored
 `artifacts/umbrella-projectile-interception/verification.md`; Issue `#200`.
 
+Potato Mine acquisition now applies the source `FindTargetZombie` PotatoMine
+branch at the trigger: an armed mine ignores a bouncing Pogo carrying its
+object and a Pole Vaulter in vault, alongside the existing same-row, damage,
+and 60-unit eligibility, instead of accepting every nearby ground zombie. The
+detonation keeps the source 60-unit damage-range filter. Focused coverage is
+`potato_mine_ignores_a_bouncing_pogo_until_a_ground_target_arrives`; source
+evidence is local `Plant.cpp` `FindTargetZombie` (`4811-4925`, PotatoMine
+branch `4890-4912`) and `UpdatePotato` (`1138-1187`); the Bungee target-column
+rule is not yet modeled because the steal Bungee stores no target cell;
+Issue `#210`.
+
 ## Player-Accessible Modes
 
 | Obligation | Mode domain | Accepted | Total | Status | Evidence / owner |
