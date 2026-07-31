@@ -9,18 +9,20 @@ use std::{
 use clap::{Parser, ValueEnum};
 use neopvz_audio::{AudioBackend, AudioKind, KiraAudioBackend};
 use neopvz_core::{
-    CoinType, Game, GameEvent, GardenServiceKind, InputAction, InputFrame, ModeKind, PlantType,
-    ProjectileImpactSound, ProjectileType, SaveError, SaveProfile, SceneKind, SunSource,
-    ZombieType, fixed_point_to_logical, mode_level_name, mode_level_names,
+    ChallengeKind, CoinType, Game, GameEvent, GardenServiceKind, InputAction, InputFrame, ModeKind,
+    PlantType, ProjectileImpactSound, ProjectileType, SEEING_STARS_STARFRUIT_CELLS, SaveError,
+    SaveProfile, SceneKind, SunSource, ZombieType, adventure_seed_choices, adventure_seed_slots,
+    fixed_point_to_logical, mode_level_name, mode_level_names,
 };
 use neopvz_data::{AssetLayout, ResourceProvider};
 use neopvz_render::{
-    AffineSpriteCommand, BOARD_BRAIN_IMAGE_ID, BOARD_COIN_GOLD_IMAGE_ID,
-    BOARD_COIN_SILVER_IMAGE_ID, BOARD_CRATER_IMAGE_ID, BOARD_DIAMOND_IMAGE_ID,
-    BOARD_FUMESHROOM_IMAGE_ID, BOARD_GRAVE_IMAGE_ID, BOARD_PROJECTILE_PEA_IMAGE_ID,
-    BOARD_PROJECTILE_SNOW_PEA_IMAGE_ID, BOARD_PUFFSHROOM_IMAGE_ID, BOARD_SNOWPEA_IMAGE_ID,
-    BOARD_STARFRUIT_IMAGE_ID, BOARD_SUN_IMAGE_ID, BOARD_VASE_BOTTOM_IMAGE_ID,
-    BOARD_VASE_TOP_IMAGE_ID, BOARD_ZOMBIE_BODY_IMAGE_ID, BOSS_BACKGROUND_IMAGE_ID,
+    AffineSpriteCommand, BOARD_BEGHOULED_TWIST_OVERLAY_IMAGE_ID, BOARD_BRAIN_IMAGE_ID,
+    BOARD_COIN_GOLD_IMAGE_ID, BOARD_COIN_SILVER_IMAGE_ID, BOARD_CRATER_IMAGE_ID,
+    BOARD_DIAMOND_IMAGE_ID, BOARD_FUMESHROOM_IMAGE_ID, BOARD_GRAVE_IMAGE_ID,
+    BOARD_MAGNETSHROOM_IMAGE_ID, BOARD_PROJECTILE_PEA_IMAGE_ID, BOARD_PROJECTILE_SNOW_PEA_IMAGE_ID,
+    BOARD_PUFFSHROOM_IMAGE_ID, BOARD_SNOWPEA_IMAGE_ID, BOARD_STARFRUIT_IMAGE_ID,
+    BOARD_SUN_IMAGE_ID, BOARD_VASE_BOTTOM_IMAGE_ID, BOARD_VASE_TOP_IMAGE_ID,
+    BOARD_WALLNUT_IMAGE_ID, BOARD_ZOMBIE_BODY_IMAGE_ID, BOSS_BACKGROUND_IMAGE_ID,
     CHALLENGE_THUMBNAIL_BASE_IMAGE_ID, CRAZY_DAVE_BEARD_IMAGE_ID, CRAZY_DAVE_BODY_IMAGE_ID,
     CRAZY_DAVE_EYE_IMAGE_ID, CRAZY_DAVE_EYEBROW_IMAGE_ID, CRAZY_DAVE_HEAD_IMAGE_ID,
     CRAZY_DAVE_INNER_ARM_IMAGE_ID, CRAZY_DAVE_INNER_FINGER1_IMAGE_ID,
@@ -53,7 +55,7 @@ use neopvz_render::{
 use winit::{
     application::ApplicationHandler,
     dpi::{LogicalSize, PhysicalPosition},
-    event::{ElementState, MouseButton, WindowEvent},
+    event::{ElementState, MouseButton, MouseScrollDelta, WindowEvent},
     event_loop::{ActiveEventLoop, ControlFlow, EventLoop},
     keyboard::{KeyCode, PhysicalKey},
     window::{Fullscreen, Window, WindowId},
@@ -838,6 +840,17 @@ fn load_assets(resources: &ResourceProvider) -> Result<Vec<ImageAsset>, String> 
             BOARD_STARFRUIT_IMAGE_ID,
             "reanim/Starfruit_body.png",
         )?,
+        load_image(resources, BOARD_WALLNUT_IMAGE_ID, "reanim/Wallnut_body.png")?,
+        load_image(
+            resources,
+            BOARD_MAGNETSHROOM_IMAGE_ID,
+            "reanim/Magnetshroom_head1.png",
+        )?,
+        load_image(
+            resources,
+            BOARD_BEGHOULED_TWIST_OVERLAY_IMAGE_ID,
+            "images/Beghouled_Twist_overlay.png",
+        )?,
         load_image(
             resources,
             BOARD_GRAVE_IMAGE_ID,
@@ -1315,8 +1328,10 @@ struct App {
     last_update: Option<Instant>,
     simulation_accumulator: Duration,
     cursor_position: Option<PhysicalPosition<f64>>,
+    beghouled_drag_start: Option<(u8, u8)>,
     tutorial_page: u8,
-    seed_chooser_selection: [bool; 2],
+    seed_chooser_selection: Vec<bool>,
+    seed_chooser_scroll: usize,
     selected_mode: ModeKind,
     selected_level: u8,
     fullscreen: bool,
@@ -1490,7 +1505,7 @@ impl App {
             Some(Checkpoint::UmbrellaDeflect) => game.debug_prepare_umbrella_deflect(),
             _ => {}
         }
-        Self {
+        let mut app = Self {
             renderer: None,
             assets,
             resources,
@@ -1500,14 +1515,18 @@ impl App {
             last_update: None,
             simulation_accumulator: Duration::ZERO,
             cursor_position: None,
+            beghouled_drag_start: None,
             tutorial_page: 0,
-            seed_chooser_selection: [false; 2],
+            seed_chooser_selection: vec![false; 2],
+            seed_chooser_scroll: 0,
             selected_mode: ModeKind::MiniGame,
             selected_level: 0,
             fullscreen,
             startup_events,
             profile,
-        }
+        };
+        app.reset_seed_chooser_selection();
+        app
     }
 
     fn initialize(&mut self, event_loop: &ActiveEventLoop) {
@@ -1591,14 +1610,11 @@ impl App {
                 SceneKind::AdventureSelect => self.start_scene(SceneKind::AdventureTutorial),
                 SceneKind::AdventureTutorial => self.advance_tutorial(),
                 SceneKind::ModeSelect => self.start_selected_mode(),
+                SceneKind::Complete => self.continue_after_completion(),
                 SceneKind::SeedChooser if self.game.state().mode == ModeKind::Survival => {
                     self.pending_input.push(InputAction::ConfirmSurvivalRepick)
                 }
-                SceneKind::SeedChooser
-                    if self.seed_chooser_selection.iter().all(|selected| *selected) =>
-                {
-                    self.start_scene(SceneKind::Day)
-                }
+                SceneKind::SeedChooser => self.confirm_adventure_selection(),
                 SceneKind::Garden => self.pending_input.push(InputAction::GardenLeave),
                 _ => {}
             },
@@ -1635,10 +1651,31 @@ impl App {
                 self.selected_level = 0;
             }
             KeyCode::Digit1 if self.game.state().scene == SceneKind::SeedChooser => {
-                self.seed_chooser_selection[0] = !self.seed_chooser_selection[0];
+                self.toggle_seed_choice(0);
             }
             KeyCode::Digit2 if self.game.state().scene == SceneKind::SeedChooser => {
-                self.seed_chooser_selection[1] = !self.seed_chooser_selection[1];
+                self.toggle_seed_choice(1);
+            }
+            KeyCode::Digit3 if self.game.state().scene == SceneKind::SeedChooser => {
+                self.toggle_seed_choice(2);
+            }
+            KeyCode::Digit4 if self.game.state().scene == SceneKind::SeedChooser => {
+                self.toggle_seed_choice(3);
+            }
+            KeyCode::Digit5 if self.game.state().scene == SceneKind::SeedChooser => {
+                self.toggle_seed_choice(4);
+            }
+            KeyCode::Digit6 if self.game.state().scene == SceneKind::SeedChooser => {
+                self.toggle_seed_choice(5);
+            }
+            KeyCode::Digit7 if self.game.state().scene == SceneKind::SeedChooser => {
+                self.toggle_seed_choice(6);
+            }
+            KeyCode::Digit8 if self.game.state().scene == SceneKind::SeedChooser => {
+                self.toggle_seed_choice(7);
+            }
+            KeyCode::Digit9 if self.game.state().scene == SceneKind::SeedChooser => {
+                self.toggle_seed_choice(8);
             }
             KeyCode::KeyH if self.game.state().scene == SceneKind::Garden => {
                 self.pending_input
@@ -1715,8 +1752,20 @@ impl App {
                 if self.game.state().challenge.kind == neopvz_core::ChallengeKind::Beghouled
                     && is_board_scene(self.game.state().scene) =>
             {
+                self.pending_input.push(InputAction::ChallengeSwap {
+                    from_column: 2,
+                    from_row: 1,
+                    to_column: 2,
+                    to_row: 2,
+                });
+            }
+            KeyCode::KeyT
+                if self.game.state().challenge.kind
+                    == neopvz_core::ChallengeKind::BeghouledTwist
+                    && is_board_scene(self.game.state().scene) =>
+            {
                 self.pending_input
-                    .push(InputAction::ChallengeMatch { length: 3 });
+                    .push(InputAction::ChallengeTwist { column: 3, row: 0 });
             }
             KeyCode::KeyF
                 if self.game.state().challenge.kind == neopvz_core::ChallengeKind::Zombiquarium
@@ -1750,14 +1799,47 @@ impl App {
     }
 
     fn start_scene(&mut self, scene: SceneKind) {
-        let mut game = new_scene_game(scene);
+        let mut game = if self.game.state().mode == ModeKind::Adventure
+            && matches!(scene, SceneKind::Day | SceneKind::SeedChooser)
+        {
+            new_adventure_game(&self.game, self.profile.as_ref())
+        } else {
+            new_scene_game(scene)
+        };
         carry_profile(&self.game, &mut game, self.profile.as_mut());
         self.game = game;
         self.tutorial_page = 0;
         self.pending_input.clear();
         self.simulation_accumulator = Duration::ZERO;
         self.last_update = Some(Instant::now());
-        self.seed_chooser_selection = [false; 2];
+        self.reset_seed_chooser_selection();
+        self.selected_mode = ModeKind::MiniGame;
+        self.selected_level = 0;
+    }
+
+    fn continue_after_completion(&mut self) {
+        if self.game.state().mode != ModeKind::Adventure || self.game.state().level >= 50 {
+            self.start_scene(SceneKind::AdventureSelect);
+            return;
+        }
+
+        let next_level = self.game.state().level.saturating_add(1);
+        let (first_time, packet_upgrades) = if let Some(profile) = self.profile.as_mut() {
+            self.game.update_profile(profile);
+            (profile.adventure_rounds == 0, profile.packet_upgrades)
+        } else {
+            (true, 0)
+        };
+        let mut game = Game::new_adventure(0, next_level, first_time, packet_upgrades);
+        if let Some(profile) = self.profile.as_ref() {
+            game.apply_profile(profile);
+        }
+        self.game = game;
+        self.tutorial_page = 0;
+        self.pending_input.clear();
+        self.simulation_accumulator = Duration::ZERO;
+        self.last_update = Some(Instant::now());
+        self.reset_seed_chooser_selection();
         self.selected_mode = ModeKind::MiniGame;
         self.selected_level = 0;
     }
@@ -1795,8 +1877,110 @@ impl App {
         if self.tutorial_page == 0 {
             self.tutorial_page = 1;
         } else {
-            self.start_scene(SceneKind::SeedChooser);
+            self.start_scene(SceneKind::Day);
         }
+    }
+
+    fn toggle_seed_choice(&mut self, index: usize) {
+        if let Some(selected) = self.seed_chooser_selection.get_mut(index) {
+            *selected = !*selected;
+        }
+    }
+
+    fn reset_seed_chooser_selection(&mut self) {
+        let count = if self.game.state().scene == SceneKind::SeedChooser {
+            adventure_seed_choices(
+                self.game.state().level,
+                self.game.state().adventure_first_time,
+            )
+            .len()
+        } else {
+            2
+        };
+        self.seed_chooser_selection = vec![false; count];
+        self.seed_chooser_scroll = 0;
+    }
+
+    fn confirm_adventure_selection(&mut self) {
+        if self.game.state().mode != ModeKind::Adventure {
+            return;
+        }
+        let choices = adventure_seed_choices(
+            self.game.state().level,
+            self.game.state().adventure_first_time,
+        );
+        let selected = choices
+            .iter()
+            .zip(&self.seed_chooser_selection)
+            .filter_map(|(plant, selected)| (*selected).then_some(*plant))
+            .collect::<Vec<_>>();
+        if selected.len()
+            == usize::from(adventure_seed_slots(
+                self.game.state().level,
+                self.game.state().adventure_first_time,
+                self.game.state().packet_upgrades,
+            ))
+        {
+            self.pending_input
+                .push(InputAction::ConfirmAdventureSeeds { seeds: selected });
+        }
+    }
+
+    fn handle_beghouled_mouse_release(&mut self, button: MouseButton) {
+        let Some((from_column, from_row)) = self.beghouled_drag_start.take() else {
+            return;
+        };
+        if button != MouseButton::Left
+            || self.game.state().challenge.kind != ChallengeKind::Beghouled
+        {
+            return;
+        }
+        let Some(position) = self.cursor_position else {
+            return;
+        };
+        let Some((x, y)) = self.renderer.as_ref().and_then(|renderer| {
+            let size = renderer.window().inner_size();
+            logical_position(
+                size.width,
+                size.height,
+                position,
+                LogicalViewport::default(),
+            )
+        }) else {
+            return;
+        };
+        if !(80.0..800.0).contains(&x) || !(120.0..570.0).contains(&y) {
+            return;
+        }
+        let to_column = ((x - 80.0) / 80.0) as u8;
+        let to_row = ((y - 120.0) / 90.0) as u8;
+        if to_column >= 8 || to_row >= 5 {
+            return;
+        }
+        let delta_column = i16::from(to_column) - i16::from(from_column);
+        let delta_row = i16::from(to_row) - i16::from(from_row);
+        let target = if delta_column.abs() > delta_row.abs() {
+            if delta_column > 0 {
+                from_column.checked_add(1).map(|column| (column, from_row))
+            } else {
+                from_column.checked_sub(1).map(|column| (column, from_row))
+            }
+        } else if delta_row > 0 {
+            from_row.checked_add(1).map(|row| (from_column, row))
+        } else if delta_row < 0 {
+            from_row.checked_sub(1).map(|row| (from_column, row))
+        } else {
+            None
+        };
+        let Some((to_column, to_row)) = target else {
+            return;
+        };
+        self.pending_input.push(InputAction::ChallengeSwap {
+            from_column,
+            from_row,
+            to_column,
+            to_row,
+        });
     }
 
     fn handle_mouse_click(&mut self, button: MouseButton) {
@@ -1807,6 +1991,7 @@ impl App {
             && scene != SceneKind::SeedChooser
             && scene != SceneKind::ModeSelect
             && scene != SceneKind::Garden
+            && scene != SceneKind::Complete
             && !is_board_scene(scene)
         {
             return;
@@ -1878,23 +2063,21 @@ impl App {
             return;
         }
         if scene == SceneKind::SeedChooser {
-            if ((189.5..239.5).contains(&x) && (171.5..241.5).contains(&y))
-                || ((288.0..338.0).contains(&x) && (445.0..515.0).contains(&y))
-            {
-                self.seed_chooser_selection[0] = !self.seed_chooser_selection[0];
+            if (20.0..450.0).contains(&x) && (115.0..560.0).contains(&y) {
+                let column = ((x - 22.0) / 53.0).floor() as usize;
+                let row = ((y - 128.0) / 73.0).floor() as usize + self.seed_chooser_scroll;
+                let index = row.saturating_mul(8).saturating_add(column);
+                self.toggle_seed_choice(index);
                 return;
             }
-            if ((242.5..292.5).contains(&x) && (171.5..241.5).contains(&y))
-                || ((341.0..391.0).contains(&x) && (445.0..515.0).contains(&y))
-            {
-                self.seed_chooser_selection[1] = !self.seed_chooser_selection[1];
-                return;
+            if (322.0..478.0).contains(&x) && (535.0..577.0).contains(&y) {
+                self.confirm_adventure_selection();
             }
-            if (322.0..478.0).contains(&x)
-                && (535.0..577.0).contains(&y)
-                && self.seed_chooser_selection.iter().all(|selected| *selected)
-            {
-                self.start_scene(SceneKind::Day);
+            return;
+        }
+        if scene == SceneKind::Complete {
+            if button == MouseButton::Left {
+                self.continue_after_completion();
             }
             return;
         }
@@ -1910,6 +2093,14 @@ impl App {
                 self.pending_input
                     .push(InputAction::GardenFertilize { plant: 0 });
             }
+            return;
+        }
+        if self.game.state().challenge.kind == ChallengeKind::SlotMachine
+            && button == MouseButton::Left
+            && (473.0..528.0).contains(&x)
+            && (0.0..80.0).contains(&y)
+        {
+            self.pending_input.push(InputAction::ChallengeSpin);
             return;
         }
         if button == MouseButton::Left {
@@ -1941,6 +2132,15 @@ impl App {
                     .push(InputAction::CollectCoin { entity: coin.id });
                 return;
             }
+        }
+        if self.game.state().challenge.kind == ChallengeKind::Zombiquarium
+            && button == MouseButton::Left
+        {
+            self.pending_input.push(InputAction::ChallengeFeed {
+                x: x as u16,
+                y: y as u16,
+            });
+            return;
         }
         if !(80.0..800.0).contains(&x) || !(120.0..570.0).contains(&y) {
             return;
@@ -1977,14 +2177,23 @@ impl App {
             }
             return;
         }
-        match self.game.state().challenge.kind {
-            neopvz_core::ChallengeKind::Zombiquarium if button == MouseButton::Left => {
-                self.pending_input.push(InputAction::ChallengeFeed {
-                    x: x as u16,
-                    y: y as u16,
-                });
-                return;
+        if self.game.state().challenge.kind == ChallengeKind::Beghouled {
+            if button == MouseButton::Left && column < 8 && row < 5 {
+                self.beghouled_drag_start = Some((column, row));
+            } else if button == MouseButton::Right {
+                self.pending_input.push(InputAction::ChallengeClearCrater);
             }
+            return;
+        }
+        if self.game.state().challenge.kind == ChallengeKind::BeghouledTwist {
+            self.pending_input.push(match button {
+                MouseButton::Left => InputAction::ChallengeTwist { column, row },
+                MouseButton::Right => InputAction::ChallengeClearCrater,
+                _ => return,
+            });
+            return;
+        }
+        match self.game.state().challenge.kind {
             neopvz_core::ChallengeKind::WhackAZombie if button == MouseButton::Left => {
                 self.pending_input
                     .push(InputAction::ChallengeWhack { row, column });
@@ -2298,41 +2507,56 @@ impl App {
                     scale: 1.0,
                     alpha: 1.0,
                 });
-                for column in 2..8 {
+                for index in 0..48 {
+                    let column = index % 8;
+                    let row = index / 8;
+                    if row < self.seed_chooser_scroll || row >= self.seed_chooser_scroll + 6 {
+                        continue;
+                    }
                     frame.sprites.push(SpriteCommand {
                         resource_id: SEED_PACKET_SILHOUETTE_IMAGE_ID,
                         x: 189.5 + column as f32 * 53.0,
-                        y: 171.5,
+                        y: 171.5 + (row - self.seed_chooser_scroll) as f32 * 73.0,
                         z: 2,
                         scale: 1.0,
                         alpha: 1.0,
                     });
                 }
-                let packet_positions = [(189.5, 171.5), (242.5, 171.5)];
-                let bank_positions = [(288.0, 445.0), (341.0, 445.0)];
-                for (
-                    slot,
-                    (packet_x, packet_y),
-                    (bank_x, bank_y),
-                    (resource_id, icon_x, icon_y, scale),
-                ) in [
-                    (
-                        0,
-                        packet_positions[0],
-                        bank_positions[0],
-                        (SEED_PEASHOOTER_IMAGE_ID, 7.0, 9.5, 0.5),
-                    ),
-                    (
-                        1,
-                        packet_positions[1],
-                        bank_positions[1],
-                        (SEED_SUNFLOWER_IMAGE_ID, 8.0, 12.0, 0.6),
-                    ),
-                ] {
-                    let (x, y) = if self.seed_chooser_selection[slot] {
-                        (bank_x, bank_y)
+                let choices = adventure_seed_choices(
+                    self.game.state().level,
+                    self.game.state().adventure_first_time,
+                );
+                let selected_count = self
+                    .seed_chooser_selection
+                    .iter()
+                    .filter(|selected| **selected)
+                    .count();
+                let mut selected_index = 0usize;
+                for (slot, plant_type) in choices.iter().copied().enumerate() {
+                    let column = slot % 8;
+                    let row = slot / 8;
+                    let (x, y) = if self
+                        .seed_chooser_selection
+                        .get(slot)
+                        .copied()
+                        .unwrap_or(false)
+                    {
+                        let position = selected_index;
+                        selected_index += 1;
+                        (288.0 + position as f32 * 53.0, 445.0)
                     } else {
-                        (packet_x, packet_y)
+                        if row < self.seed_chooser_scroll || row >= self.seed_chooser_scroll + 6 {
+                            continue;
+                        }
+                        (
+                            189.5 + column as f32 * 53.0,
+                            171.5 + (row - self.seed_chooser_scroll) as f32 * 73.0,
+                        )
+                    };
+                    let (resource_id, icon_x, icon_y, scale) = match plant_type {
+                        PlantType::Peashooter => (SEED_PEASHOOTER_IMAGE_ID, 7.0, 9.5, 0.5),
+                        PlantType::Sunflower => (SEED_SUNFLOWER_IMAGE_ID, 8.0, 12.0, 0.6),
+                        _ => (SEED_PACKET_NORMAL_IMAGE_ID, 8.0, 10.0, 0.45),
                     };
                     frame.sprites.push(SpriteCommand {
                         resource_id: SEED_PACKET_NORMAL_IMAGE_ID,
@@ -2357,7 +2581,12 @@ impl App {
                     y: 535.0,
                     z: 3,
                     scale: 1.0,
-                    alpha: if self.seed_chooser_selection.iter().all(|selected| *selected) {
+                    alpha: if selected_count
+                        == usize::from(adventure_seed_slots(
+                            self.game.state().level,
+                            self.game.state().adventure_first_time,
+                            self.game.state().packet_upgrades,
+                        )) {
                         1.0
                     } else {
                         0.55
@@ -2448,10 +2677,21 @@ impl App {
                 }
                 for brain in &self.game.state().board.brains {
                     if !brain.squished {
+                        let (x, y) = if self.game.state().challenge.kind
+                            == ChallengeKind::Zombiquarium
+                            && brain.position_x != 0
+                        {
+                            (
+                                fixed_point_to_logical(brain.position_x) - 15.0,
+                                fixed_point_to_logical(brain.position_y) - 15.0,
+                            )
+                        } else {
+                            (20.0, board_row_y(brain.row) + 26.0)
+                        };
                         frame.sprites.push(SpriteCommand {
                             resource_id: BOARD_BRAIN_IMAGE_ID,
-                            x: 20.0,
-                            y: board_row_y(brain.row) + 26.0,
+                            x,
+                            y,
                             z: 9,
                             scale: 1.0,
                             alpha: 1.0,
@@ -2496,7 +2736,13 @@ impl App {
                 for zombie in &self.game.state().board.zombies {
                     if board_zombie_image(zombie.zombie_type).is_some() {
                         let x = fixed_point_to_logical(zombie.position_x);
-                        let y = board_row_y(zombie.row);
+                        let y = if self.game.state().challenge.kind == ChallengeKind::Zombiquarium
+                            && zombie.position_y != 0
+                        {
+                            fixed_point_to_logical(zombie.position_y)
+                        } else {
+                            board_row_y(zombie.row)
+                        };
                         frame.sprites.push(SpriteCommand {
                             resource_id: BOARD_ZOMBIE_BODY_IMAGE_ID,
                             x: x - 34.0,
@@ -2512,6 +2758,69 @@ impl App {
                             z: 8,
                             scale: 0.75,
                             alpha: 1.0,
+                        });
+                    }
+                }
+                if self.game.state().challenge.kind == ChallengeKind::SeeingStars {
+                    for &(row, column) in &SEEING_STARS_STARFRUIT_CELLS {
+                        let has_starfruit = self.game.state().board.plants.iter().any(|plant| {
+                            plant.row == row
+                                && plant.column == column
+                                && plant.plant_type == PlantType::Other(29)
+                        });
+                        if !has_starfruit {
+                            frame.sprites.push(SpriteCommand {
+                                resource_id: BOARD_STARFRUIT_IMAGE_ID,
+                                x: 80.0 + f32::from(column) * 80.0 + 6.0,
+                                y: board_row_y(row) + 16.0,
+                                z: 9,
+                                scale: 0.8,
+                                alpha: 100.0 / 255.0,
+                            });
+                        }
+                    }
+                }
+                if self.game.state().challenge.kind == ChallengeKind::BeghouledTwist
+                    && self.game.state().challenge.twist_state
+                        == neopvz_core::BeghouledTwistState::Normal
+                    && let Some(position) = self.cursor_position
+                    && let Some((cursor_x, cursor_y)) =
+                        self.renderer.as_ref().and_then(|renderer| {
+                            let size = renderer.window().inner_size();
+                            logical_position(
+                                size.width,
+                                size.height,
+                                position,
+                                LogicalViewport::default(),
+                            )
+                        })
+                {
+                    let column = ((cursor_x - 80.0) / 80.0) as u8;
+                    let row = ((cursor_y - 120.0) / 90.0) as u8;
+                    let complete_square = column < 7
+                        && row < 4
+                        && (0..=1).all(|row_offset| {
+                            (0..=1).all(|column_offset| {
+                                self.game.state().board.plants.iter().any(|plant| {
+                                    plant.row == row + row_offset
+                                        && plant.column == column + column_offset
+                                        && plant.health > 0
+                                })
+                            })
+                        });
+                    if complete_square {
+                        let angle =
+                            -(self.game.state().tick as f32) * 2.0 * std::f32::consts::PI * 0.01;
+                        frame.affine_sprites.push(AffineSpriteCommand {
+                            resource_id: BOARD_BEGHOULED_TWIST_OVERLAY_IMAGE_ID,
+                            x: 80.0 + f32::from(column) * 80.0 + 80.0,
+                            y: board_row_y(row) + 45.0,
+                            m00: angle.cos(),
+                            m01: -angle.sin(),
+                            m10: angle.sin(),
+                            m11: angle.cos(),
+                            z: 11,
+                            alpha: 0.5,
                         });
                     }
                 }
@@ -2603,6 +2912,8 @@ fn board_plant_image(plant_type: PlantType) -> Option<(u32, f32, f32, f32)> {
         PlantType::Other(8) => Some((BOARD_PUFFSHROOM_IMAGE_ID, 16.0, 34.0, 0.9)),
         PlantType::Other(10) => Some((BOARD_FUMESHROOM_IMAGE_ID, 6.0, 24.0, 0.7)),
         PlantType::Other(29) => Some((BOARD_STARFRUIT_IMAGE_ID, 6.0, 16.0, 0.8)),
+        PlantType::Other(21) => Some((BOARD_WALLNUT_IMAGE_ID, 8.0, 12.0, 0.8)),
+        PlantType::Other(31) => Some((BOARD_MAGNETSHROOM_IMAGE_ID, 11.0, 18.0, 0.8)),
         _ => None,
     }
 }
@@ -2612,7 +2923,8 @@ fn board_row_y(row: u8) -> f32 {
 }
 
 fn board_zombie_image(zombie_type: ZombieType) -> Option<u32> {
-    matches!(zombie_type, ZombieType::Normal).then_some(BOARD_ZOMBIE_BODY_IMAGE_ID)
+    matches!(zombie_type, ZombieType::Normal | ZombieType::Snorkel)
+        .then_some(BOARD_ZOMBIE_BODY_IMAGE_ID)
 }
 
 fn board_projectile_image(projectile_type: ProjectileType) -> Option<(u32, f32)> {
@@ -2646,6 +2958,19 @@ fn new_scene_game(scene: SceneKind) -> Game {
     }
 }
 
+fn new_adventure_game(current: &Game, profile: Option<&SaveProfile>) -> Game {
+    let (level, first_time, packet_upgrades) = profile
+        .map(|profile| {
+            (
+                profile.adventure_level,
+                profile.adventure_rounds == 0,
+                profile.packet_upgrades,
+            )
+        })
+        .unwrap_or((current.state().level.max(1), true, 0));
+    Game::new_adventure(0, level, first_time, packet_upgrades)
+}
+
 fn mode_level_at(mode: ModeKind, x: f32, y: f32) -> Option<u8> {
     if !(30.0..780.0).contains(&x) || !(55.0..595.0).contains(&y) {
         return None;
@@ -2662,6 +2987,14 @@ fn audio_for_event(event: &GameEvent) -> Option<(AudioKind, &'static str)> {
     match event {
         GameEvent::SeedSelected { .. } => Some((AudioKind::Effect, "sounds/tap.ogg")),
         GameEvent::InputRejected { .. } => Some((AudioKind::Effect, "sounds/buzzer.ogg")),
+        GameEvent::ChallengeAction {
+            kind: ChallengeKind::Beghouled | ChallengeKind::BeghouledTwist,
+            value,
+        } if *value == 0 => Some((AudioKind::Effect, "sounds/floop.ogg")),
+        GameEvent::ChallengeAction {
+            kind: ChallengeKind::Beghouled | ChallengeKind::BeghouledTwist,
+            value,
+        } if *value > 0 => Some((AudioKind::Effect, "sounds/diamond.au")),
         GameEvent::PlantPlaced { variant, .. } | GameEvent::ZombieDeployed { variant, .. } => {
             Some((
                 AudioKind::Effect,
@@ -2827,6 +3160,55 @@ fn audio_for_event(event: &GameEvent) -> Option<(AudioKind, &'static str)> {
             zombie_type: neopvz_core::ZombieType::BackupDancer,
             ..
         } => Some((AudioKind::Effect, "sounds/gravestone_rumble.ogg")),
+        GameEvent::ZombieSongStarted {
+            zombie_type: neopvz_core::ZombieType::Jackbox,
+            ..
+        } => Some((AudioKind::Effect, "sounds/jackinthebox.ogg")),
+        GameEvent::ZombieSongStarted {
+            zombie_type: neopvz_core::ZombieType::Digger,
+            ..
+        } => Some((AudioKind::Effect, "sounds/digger_zombie.ogg")),
+        GameEvent::ZombieGroaned {
+            zombie_type:
+                neopvz_core::ZombieType::Gargantuar | neopvz_core::ZombieType::Gigagargantuar,
+            variant,
+            ..
+        } => Some((
+            AudioKind::Effect,
+            if *variant == 0 {
+                "sounds/lowgroan.ogg"
+            } else {
+                "sounds/lowgroan2.ogg"
+            },
+        )),
+        GameEvent::ZombieGroaned { variant, .. } => Some((
+            AudioKind::Effect,
+            if *variant == 0 {
+                "sounds/groan.ogg"
+            } else {
+                "sounds/groan2.ogg"
+            },
+        )),
+        GameEvent::ZombieChew { soft: true, .. } => {
+            Some((AudioKind::Effect, "sounds/chompsoft.ogg"))
+        }
+        GameEvent::ZombieChew { variant, .. } => Some((
+            AudioKind::Effect,
+            if *variant == 0 {
+                "sounds/chomp.ogg"
+            } else {
+                "sounds/chomp2.ogg"
+            },
+        )),
+        GameEvent::ZombieDeathSound {
+            zombie_type: neopvz_core::ZombieType::Boss,
+            ..
+        } => Some((AudioKind::Effect, "sounds/bossexplosion.ogg")),
+        GameEvent::ZombieDeathSound {
+            zombie_type:
+                neopvz_core::ZombieType::Gargantuar | neopvz_core::ZombieType::Gigagargantuar,
+            ..
+        } => Some((AudioKind::Effect, "sounds/gargantudeath.ogg")),
         GameEvent::ZombieShieldHit { variant, .. } => Some((
             AudioKind::Effect,
             if *variant == 0 {
@@ -3039,6 +3421,10 @@ fn audio_companion_for_event(event: &GameEvent) -> Option<(AudioKind, &'static s
             },
         )),
         GameEvent::DolphinJumpStarted { .. } => Some((AudioKind::Effect, "sounds/plant_water.ogg")),
+        GameEvent::ZombieDeathSound {
+            zombie_type: neopvz_core::ZombieType::Boss,
+            ..
+        } => Some((AudioKind::Effect, "sounds/gargantudeath.ogg")),
         GameEvent::PlantFired {
             plant_type: neopvz_core::PlantType::Other(5 | 44),
             ..
@@ -3067,11 +3453,34 @@ impl ApplicationHandler for App {
             WindowEvent::CursorMoved { position, .. } => {
                 self.cursor_position = Some(position);
             }
+            WindowEvent::MouseWheel { delta, .. }
+                if self.game.state().scene == SceneKind::SeedChooser =>
+            {
+                let rows = self
+                    .seed_chooser_selection
+                    .len()
+                    .div_ceil(8)
+                    .saturating_sub(6);
+                let direction = match delta {
+                    MouseScrollDelta::LineDelta(_, y) => y,
+                    MouseScrollDelta::PixelDelta(position) => position.y as f32,
+                };
+                if direction < 0.0 {
+                    self.seed_chooser_scroll = self.seed_chooser_scroll.saturating_add(1).min(rows);
+                } else if direction > 0.0 {
+                    self.seed_chooser_scroll = self.seed_chooser_scroll.saturating_sub(1);
+                }
+            }
             WindowEvent::MouseInput {
                 state: ElementState::Pressed,
                 button,
                 ..
             } => self.handle_mouse_click(button),
+            WindowEvent::MouseInput {
+                state: ElementState::Released,
+                button,
+                ..
+            } => self.handle_beghouled_mouse_release(button),
             WindowEvent::KeyboardInput { event, .. }
                 if event.state == ElementState::Pressed && !event.repeat =>
             {
@@ -3976,6 +4385,79 @@ mod tests {
     }
 
     #[test]
+    fn maps_zombie_song_groan_chew_and_death_resources() {
+        assert_eq!(
+            audio_for_event(&GameEvent::ZombieSongStarted {
+                entity: 1,
+                zombie_type: neopvz_core::ZombieType::Jackbox,
+            }),
+            Some((AudioKind::Effect, "sounds/jackinthebox.ogg"))
+        );
+        assert_eq!(
+            audio_for_event(&GameEvent::ZombieSongStarted {
+                entity: 2,
+                zombie_type: neopvz_core::ZombieType::Digger,
+            }),
+            Some((AudioKind::Effect, "sounds/digger_zombie.ogg"))
+        );
+        assert_eq!(
+            audio_for_event(&GameEvent::ZombieGroaned {
+                entity: 3,
+                zombie_type: neopvz_core::ZombieType::Gargantuar,
+                variant: 1,
+            }),
+            Some((AudioKind::Effect, "sounds/lowgroan2.ogg"))
+        );
+        assert_eq!(
+            audio_for_event(&GameEvent::ZombieGroaned {
+                entity: 4,
+                zombie_type: neopvz_core::ZombieType::Normal,
+                variant: 0,
+            }),
+            Some((AudioKind::Effect, "sounds/groan.ogg"))
+        );
+        assert_eq!(
+            audio_for_event(&GameEvent::ZombieChew {
+                entity: 5,
+                target: None,
+                soft: true,
+                variant: 0,
+            }),
+            Some((AudioKind::Effect, "sounds/chompsoft.ogg"))
+        );
+        assert_eq!(
+            audio_for_event(&GameEvent::ZombieChew {
+                entity: 6,
+                target: Some(7),
+                soft: false,
+                variant: 1,
+            }),
+            Some((AudioKind::Effect, "sounds/chomp2.ogg"))
+        );
+        assert_eq!(
+            audio_for_event(&GameEvent::ZombieDeathSound {
+                entity: 8,
+                zombie_type: neopvz_core::ZombieType::Gargantuar,
+            }),
+            Some((AudioKind::Effect, "sounds/gargantudeath.ogg"))
+        );
+        assert_eq!(
+            audio_for_event(&GameEvent::ZombieDeathSound {
+                entity: 9,
+                zombie_type: neopvz_core::ZombieType::Boss,
+            }),
+            Some((AudioKind::Effect, "sounds/bossexplosion.ogg"))
+        );
+        assert_eq!(
+            audio_companion_for_event(&GameEvent::ZombieDeathSound {
+                entity: 9,
+                zombie_type: neopvz_core::ZombieType::Boss,
+            }),
+            Some((AudioKind::Effect, "sounds/gargantudeath.ogg"))
+        );
+    }
+
+    #[test]
     fn zombie_died_has_no_direct_audio_mapping() {
         assert_eq!(audio_for_event(&GameEvent::ZombieDied { entity: 2 }), None);
     }
@@ -4103,6 +4585,10 @@ mod tests {
     fn board_entity_images_use_loaded_assets_for_supported_entities() {
         assert_eq!(
             board_zombie_image(ZombieType::Normal),
+            Some(BOARD_ZOMBIE_BODY_IMAGE_ID)
+        );
+        assert_eq!(
+            board_zombie_image(ZombieType::Snorkel),
             Some(BOARD_ZOMBIE_BODY_IMAGE_ID)
         );
         assert_eq!(board_zombie_image(ZombieType::Conehead), None);
