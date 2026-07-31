@@ -16,6 +16,37 @@ pub const GRID_COLUMNS: u8 = 9;
 pub const DAY_ROWS: u8 = 5;
 pub const POOL_ROWS: u8 = 6;
 pub const REPLAY_FORMAT_VERSION: u32 = 1;
+const BEGHOULED_COLUMNS: u8 = 8;
+const BEGHOULED_ROWS: u8 = 5;
+const BEGHOULED_ZOMBIE_COUNTDOWN: u32 = 200;
+const BEGHOULED_CHALLENGE_COUNTDOWN: u32 = 1_500;
+const BEGHOULED_MOVE_TICKS: u32 = 100;
+const BEGHOULED_NO_MOVES_TICKS: u32 = 500;
+const BEGHOULED_CRATER_COST: u32 = 200;
+const BEGHOULED_SEED_TYPES: [PlantType; 6] = [
+    PlantType::Other(8),  // Puffshroom
+    PlantType::Other(29), // Starfruit
+    PlantType::Other(31), // Magnetshroom
+    PlantType::Other(5),  // Snow Pea
+    PlantType::Other(21), // Wall-nut
+    PlantType::Peashooter,
+];
+pub const SEEING_STARS_STARFRUIT_CELLS: [(u8, u8); 14] = [
+    (0, 3),
+    (1, 3),
+    (1, 4),
+    (2, 1),
+    (2, 2),
+    (2, 3),
+    (2, 4),
+    (2, 5),
+    (2, 6),
+    (3, 3),
+    (3, 4),
+    (3, 5),
+    (4, 3),
+    (4, 6),
+];
 
 const POSITION_SCALE: i64 = 1_000_000;
 
@@ -39,6 +70,8 @@ const INSTANT_PLANT_COUNTDOWN: u32 = 100;
 const BLOVER_SPECIAL_COUNTDOWN: u32 = 50;
 const COFFEE_WAKE_TICKS: u32 = 100;
 const GRAVEBUSTER_EAT_TICKS: u32 = 400;
+const GRAVE_RISE_LAND_TICKS: u32 = 150;
+const GRAVE_RISE_POOL_TICKS: u32 = 50;
 const POTATO_ARM_TICKS: u32 = 1_500;
 const IMITATER_MORPH_TICKS: u32 = 200;
 const COB_ARM_TICKS: u32 = 500;
@@ -60,9 +93,12 @@ const SQUASH_HALF_WIDTH: i64 = 40;
 const SQUASH_ATTACK_LEFT_OFFSET: i64 = 20;
 const SQUASH_ATTACK_RIGHT_OFFSET: i64 = 65;
 const SQUASH_FOOTBALL_OVERLAP_ALLOWANCE: i64 = 20;
-const ICE_SHROOM_INITIAL_FREEZE_TICKS: u32 = 400;
-const ICE_SHROOM_REFRESH_FREEZE_TICKS: u32 = 300;
 const ICE_SHROOM_CHILL_TICKS: u32 = 2_000;
+const ICE_SHROOM_POOL_FREEZE_TICKS: u32 = 300;
+const ICE_SHROOM_COLD_FREEZE_MIN: u32 = 300;
+const ICE_SHROOM_COLD_FREEZE_MAX: u32 = 400;
+const ICE_SHROOM_FRESH_FREEZE_MIN: u32 = 400;
+const ICE_SHROOM_FRESH_FREEZE_MAX: u32 = 600;
 const ICE_SHROOM_DAMAGE: i32 = 20;
 const BOARD_ICE_TICKS: u32 = 300;
 const DOOM_SHROOM_RADIUS: i64 = 250;
@@ -128,6 +164,34 @@ const YETI_RUNNING_SPEED: i64 = 800_000;
 const YETI_FLEE_EDGE: i64 = 850 * POSITION_SCALE;
 const YETI_DIAMOND_COUNT: usize = 4;
 const I_ZOMBIE_BRAIN_TICKS: u32 = 70;
+const ZOMBIQUARIUM_BRAIN_COST: u32 = 5;
+const ZOMBIQUARIUM_SNORKEL_COST: u32 = 100;
+const ZOMBIQUARIUM_TROPHY_COST: u32 = 1_000;
+const ZOMBIQUARIUM_MAX_BRAINS: usize = 3;
+const ZOMBIQUARIUM_BRAIN_ARM_TICKS: u32 = 15;
+const ZOMBIQUARIUM_BITE_TICKS: u32 = 200;
+const ZOMBIQUARIUM_HEAL: i32 = 200;
+const ZOMBIQUARIUM_MAX_ZOMBIES: usize = 100;
+const ZOMBIQUARIUM_START_HEALTH: i32 = 200;
+const ZOMBIQUARIUM_MAX_HEALTH: i32 = 300;
+const ZOMBIQUARIUM_DAMAGE_TICKS: u32 = 100;
+const ZOMBIQUARIUM_DAMAGE: i32 = 10;
+const ZOMBIQUARIUM_START_SPEED: i64 = 0;
+const ZOMBIQUARIUM_ACCELERATION: i64 = 10_000;
+const ZOMBIQUARIUM_MAX_SPEED: i64 = 500_000;
+const ZOMBIQUARIUM_DRIFT_SPEED: i64 = 50_000;
+const ZOMBIQUARIUM_BRAIN_SPEED: i64 = 500_000;
+const ZOMBIQUARIUM_DRIFT_PHASE: u8 = 0;
+const ZOMBIQUARIUM_ACCEL_PHASE: u8 = 1;
+const ZOMBIQUARIUM_BITE_PHASE: u8 = 2;
+const ZOMBIQUARIUM_BACK_AND_FORTH_PHASE: u8 = 3;
+const ZOMBIQUARIUM_MIN_X: i64 = 0;
+const ZOMBIQUARIUM_MAX_X: i64 = 680 * POSITION_SCALE;
+const ZOMBIQUARIUM_MIN_Y: i64 = 100 * POSITION_SCALE;
+const ZOMBIQUARIUM_MAX_Y: i64 = 400 * POSITION_SCALE;
+const PORTAL_INITIAL_COUNTDOWN: u32 = 200;
+const PORTAL_RELOCATION_COUNTDOWN: u32 = 6_000;
+const PORTAL_INITIAL_STATE_COUNTDOWN: u32 = 9_000;
 const ZOMBIE_PEA_HEAD_RELOAD_TICKS: u32 = 150;
 const POGO_BOUNCE_TICKS: u32 = 80;
 const POGO_HIGH_BOUNCE_PHASE: u8 = 1;
@@ -187,6 +251,7 @@ const PRESENT_COIN_TICKS: u32 = 80;
 const PRESENT_COIN_DECAY_PERCENT: i64 = 95;
 const ZOMBIE_NEXT_WAVE_COUNTDOWN: u32 = 2_500;
 const ZOMBIE_NEXT_WAVE_RANGE: u32 = 600;
+const COLUMN_WAVE_COUNTDOWN: u32 = 750;
 const ICE_START_X: i64 = 800 * POSITION_SCALE;
 const ICE_LAY_OFFSET: i64 = 118 * POSITION_SCALE;
 const ICE_LAY_MIN_X: i64 = 25 * POSITION_SCALE;
@@ -295,7 +360,6 @@ const DOLPHIN_POOL_SPEED: i64 = 300_000;
 const DOLPHIN_JUMP_BONK_COUNTER: u32 = 84;
 const DOLPHIN_JUMP_SPLASH_COUNTER: u32 = 61;
 const SNORKEL_ENTRY_SPEED: i64 = 200_000;
-const SNORKEL_POOL_SPEED: i64 = 300_000;
 const SNORKEL_ENTRY_TICKS: u32 = 100;
 // Zombie.cpp emits the water event at animation time 0.83.
 const SNORKEL_SPLASH_TICKS: u32 = 83;
@@ -409,6 +473,36 @@ pub enum ChallengeKind {
     FinalBoss,
 }
 
+#[derive(Clone, Copy, Debug, Default, Deserialize, Eq, PartialEq, Serialize)]
+pub enum SlotMachineSymbol {
+    #[default]
+    Sunflower,
+    Peashooter,
+    SnowPea,
+    Wallnut,
+    Sun,
+    Diamond,
+}
+
+const SLOT_MACHINE_START_SYMBOLS: [SlotMachineSymbol; 3] = [
+    SlotMachineSymbol::Sunflower,
+    SlotMachineSymbol::Peashooter,
+    SlotMachineSymbol::SnowPea,
+];
+
+fn slot_machine_start_symbols() -> [SlotMachineSymbol; 3] {
+    SLOT_MACHINE_START_SYMBOLS
+}
+
+#[derive(Clone, Copy, Debug, Default, Deserialize, Eq, PartialEq, Serialize)]
+pub enum BeghouledTwistState {
+    #[default]
+    Normal,
+    Moving,
+    Falling,
+    NoMoves,
+}
+
 #[derive(Clone, Debug, Default, Deserialize, Eq, PartialEq, Serialize)]
 pub struct ChallengeState {
     pub kind: ChallengeKind,
@@ -420,6 +514,20 @@ pub struct ChallengeState {
     pub conveyor_countdown: u32,
     #[serde(default)]
     pub last_conveyor_seed: Option<PlantType>,
+    #[serde(default)]
+    pub zombie_countdown: u32,
+    #[serde(default)]
+    pub twist_state: BeghouledTwistState,
+    #[serde(default)]
+    pub twist_counter: u32,
+    #[serde(default = "slot_machine_start_symbols")]
+    pub slot_machine_symbols: [SlotMachineSymbol; 3],
+    #[serde(default = "slot_machine_start_symbols")]
+    pub slot_machine_next_symbols: [SlotMachineSymbol; 3],
+    #[serde(default)]
+    pub slot_machine_countdown: u32,
+    #[serde(default)]
+    pub slot_machine_roll_count: u32,
 }
 
 fn challenge_kind(level: u8) -> ChallengeKind {
@@ -447,6 +555,10 @@ fn challenge_kind(level: u8) -> ChallengeKind {
     }
 }
 
+fn seeing_stars_cell(row: u8, column: u8) -> bool {
+    SEEING_STARS_STARFRUIT_CELLS.contains(&(row, column))
+}
+
 fn is_conveyor_challenge(kind: ChallengeKind) -> bool {
     matches!(
         kind,
@@ -462,6 +574,14 @@ fn is_conveyor_challenge(kind: ChallengeKind) -> bool {
 fn conveyor_initial_seeds(level: u8) -> &'static [PlantType] {
     match level {
         1 | 17 => &[PlantType::Other(3)],
+        10 => &[
+            PlantType::Peashooter,
+            PlantType::Other(7),
+            PlantType::Other(22),
+            PlantType::Other(26),
+            PlantType::Other(3),
+            PlantType::Other(2),
+        ],
         5 => &[PlantType::Peashooter, PlantType::Other(14)],
         11 => &[
             PlantType::Other(4),
@@ -585,7 +705,7 @@ fn conveyor_initial_countdown(level: u8) -> u32 {
     match level {
         1 | 17 => 400,
         5 | 11 | 19 => 1_000,
-        9 => 200,
+        9 | 10 => PORTAL_INITIAL_COUNTDOWN,
         _ => 0,
     }
 }
@@ -678,8 +798,11 @@ fn initial_challenge_state(mode: ModeKind, level: u8) -> ChallengeState {
     let (target, countdown) = match kind {
         ChallengeKind::SlotMachine => (2_000, 0),
         ChallengeKind::RainingSeeds => (0, 100),
-        ChallengeKind::Beghouled => (75, 1_500),
+        ChallengeKind::Beghouled | ChallengeKind::BeghouledTwist => {
+            (75, BEGHOULED_CHALLENGE_COUNTDOWN)
+        }
         ChallengeKind::Zombiquarium => (1_000, 0),
+        ChallengeKind::PortalCombat => (0, PORTAL_INITIAL_STATE_COUNTDOWN),
         ChallengeKind::WhackAZombie => (0, 200),
         ChallengeKind::LastStand => (5, 0),
         _ => (0, 0),
@@ -692,6 +815,20 @@ fn initial_challenge_state(mode: ModeKind, level: u8) -> ChallengeState {
         stage: 0,
         conveyor_countdown: 0,
         last_conveyor_seed: None,
+        zombie_countdown: if matches!(
+            kind,
+            ChallengeKind::Beghouled | ChallengeKind::BeghouledTwist
+        ) {
+            BEGHOULED_ZOMBIE_COUNTDOWN
+        } else {
+            0
+        },
+        twist_state: BeghouledTwistState::Normal,
+        twist_counter: 0,
+        slot_machine_symbols: SLOT_MACHINE_START_SYMBOLS,
+        slot_machine_next_symbols: SLOT_MACHINE_START_SYMBOLS,
+        slot_machine_countdown: 0,
+        slot_machine_roll_count: 0,
     }
 }
 
@@ -1047,6 +1184,18 @@ pub fn adventure_seed_slots(level: u8, first_time: bool, packet_upgrades: u8) ->
     }
 }
 
+/// Seed types visible to the source seed chooser for an adventure level.
+/// Finished adventures expose the full base catalog; first-run levels expose
+/// only the cards earned before the current level.
+pub fn adventure_seed_choices(level: u8, first_time: bool) -> Vec<PlantType> {
+    let available = if first_time {
+        adventure_award_seed(level).min(SOURCE_SEED_SLOTS)
+    } else {
+        SOURCE_SEED_SLOTS
+    };
+    (0..available).filter_map(PlantType::from_slot).collect()
+}
+
 /// Board::ChooseSeedsOnCurrentLevel: the chooser opens after the level-7
 /// tutorial stretch, except on conveyor and fixed-bank levels.
 pub fn adventure_uses_seed_chooser(level: u8, first_time: bool) -> bool {
@@ -1085,6 +1234,93 @@ pub fn adventure_level_is_conveyor(level: u8) -> bool {
     matches!(level, 5 | 10 | 20 | 25 | 30 | 40 | 45 | 50)
 }
 
+fn adventure_conveyor_initial_seeds(level: u8) -> &'static [PlantType] {
+    match level {
+        5 => &[PlantType::Other(3)],
+        50 => &[
+            PlantType::Other(32),
+            PlantType::Other(20),
+            PlantType::Other(32),
+            PlantType::Other(14),
+        ],
+        _ => &[],
+    }
+}
+
+fn adventure_conveyor_initial_countdown(level: u8) -> u32 {
+    match level {
+        5 => 400,
+        10 | 20 | 25 | 30 | 40 | 45 => 200,
+        50 => 1_000,
+        _ => 0,
+    }
+}
+
+fn adventure_conveyor_seed_pool(level: u8) -> &'static [(PlantType, u32)] {
+    match level {
+        5 => &[(PlantType::Other(3), 85), (PlantType::Other(49), 15)],
+        10 => &[
+            (PlantType::Peashooter, 20),
+            (PlantType::Other(2), 20),
+            (PlantType::Other(3), 15),
+            (PlantType::Other(7), 20),
+            (PlantType::Other(5), 10),
+            (PlantType::Other(6), 5),
+            (PlantType::Other(4), 10),
+        ],
+        20 => &[
+            (PlantType::Other(11), 20),
+            (PlantType::Other(14), 15),
+            (PlantType::Other(15), 15),
+            (PlantType::Other(12), 10),
+            (PlantType::Other(13), 15),
+            (PlantType::Other(10), 15),
+            (PlantType::Other(8), 10),
+        ],
+        25 => &[
+            (PlantType::Other(16), 25),
+            (PlantType::Other(3), 15),
+            (PlantType::Peashooter, 25),
+            (PlantType::Other(2), 35),
+        ],
+        30 => &[
+            (PlantType::Other(16), 25),
+            (PlantType::Other(17), 5),
+            (PlantType::Other(7), 25),
+            (PlantType::Other(19), 5),
+            (PlantType::Other(20), 10),
+            (PlantType::Other(18), 10),
+            (PlantType::Other(22), 10),
+            (PlantType::Other(23), 10),
+        ],
+        40 => &[
+            (PlantType::Other(16), 25),
+            (PlantType::Other(24), 10),
+            (PlantType::Other(31), 5),
+            (PlantType::Other(27), 5),
+            (PlantType::Other(26), 15),
+            (PlantType::Other(29), 25),
+            (PlantType::Other(28), 5),
+            (PlantType::Other(30), 10),
+        ],
+        45 => &[
+            (PlantType::Other(33), 50),
+            (PlantType::Other(6), 25),
+            (PlantType::Other(30), 15),
+            (PlantType::Other(2), 10),
+        ],
+        50 => &[
+            (PlantType::Other(32), 55),
+            (PlantType::Other(39), 10),
+            (PlantType::Other(20), 12),
+            (PlantType::Other(32), 10),
+            (PlantType::Other(34), 5),
+            (PlantType::Other(14), 8),
+        ],
+        _ => &[],
+    }
+}
+
 /// Board::IsFlagWave for adventure levels.
 pub fn adventure_is_flag_wave(level: u8, replay: bool, wave_index: u32) -> bool {
     if !replay && level == 1 {
@@ -1118,6 +1354,13 @@ const ADVENTURE_PICK_ORDER: [ZombieType; 20] = [
     ZombieType::Ladder,
     ZombieType::Catapult,
     ZombieType::Gargantuar,
+];
+
+const COLUMN_PICK_ORDER: [ZombieType; 4] = [
+    ZombieType::Normal,
+    ZombieType::Conehead,
+    ZombieType::Buckethead,
+    ZombieType::Football,
 ];
 
 fn put_zombie_in_wave(wave: &mut Vec<ZombieType>, points: &mut i32, zombie_type: ZombieType) {
@@ -2151,6 +2394,7 @@ pub enum InputRejectReason {
     NoSeedSelected,
     OutsideBoard,
     InvalidTerrain,
+    NotOnArt,
     Occupied,
     Crater,
     Ice,
@@ -2160,6 +2404,9 @@ pub enum InputRejectReason {
     NoVase,
     InvalidGardenTarget,
     ChallengeUnavailable,
+    SeedChooserUnavailable,
+    InvalidSeedChoice,
+    WrongSeedCount,
 }
 
 #[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
@@ -2210,9 +2457,17 @@ pub enum InputAction {
     GardenFeedTree,
     GardenLeave,
     ChallengeSpin,
-    ChallengeMatch {
-        length: u8,
+    ChallengeSwap {
+        from_column: u8,
+        from_row: u8,
+        to_column: u8,
+        to_row: u8,
     },
+    ChallengeTwist {
+        column: u8,
+        row: u8,
+    },
+    ChallengeClearCrater,
     ChallengeFeed {
         x: u16,
         y: u16,
@@ -2228,6 +2483,9 @@ pub enum InputAction {
         entity: EntityId,
     },
     ConfirmSurvivalRepick,
+    ConfirmAdventureSeeds {
+        seeds: Vec<PlantType>,
+    },
 }
 
 #[derive(Clone, Debug, Default, Deserialize, Eq, PartialEq, Serialize)]
@@ -2268,6 +2526,8 @@ pub struct PlantState {
     pub special_target: Option<EntityId>,
     #[serde(default)]
     pub squash_target_x: Option<i64>,
+    #[serde(default)]
+    pub cob_target: Option<(u8, u8)>,
     pub blink_counter: u32,
     #[serde(default)]
     pub asleep: bool,
@@ -2281,11 +2541,15 @@ pub struct ZombieState {
     pub zombie_type: ZombieType,
     pub row: u8,
     pub position_x: i64,
+    #[serde(default)]
+    pub position_y: i64,
     pub speed: i64,
     pub health: i32,
     pub max_health: i32,
     pub age: u32,
     pub groan_counter: i32,
+    #[serde(default)]
+    pub variant: u8,
     pub frozen_counter: u32,
     pub chilled_counter: u32,
     pub eating: bool,
@@ -2367,9 +2631,12 @@ pub struct ZombieState {
     #[serde(default)]
     pub in_pool: bool,
     #[serde(default)]
+    pub rise_counter: u32,
+    #[serde(default)]
     pub armor_intact: bool,
     #[serde(default)]
-    pub portal_cooldown: u32,
+    // Encodes the source mLastPortalX field: zero means -1, otherwise column + 1.
+    pub last_portal_column: u32,
     #[serde(default)]
     pub bungee_held: bool,
     #[serde(default)]
@@ -2406,6 +2673,18 @@ pub struct ZombieState {
     pub special_phase: u8,
     #[serde(default)]
     pub special_target: Option<EntityId>,
+    #[serde(default)]
+    pub aquarium_velocity_x: i64,
+    #[serde(default)]
+    pub aquarium_velocity_y: i64,
+    #[serde(default)]
+    pub aquarium_speed: i64,
+    #[serde(default)]
+    pub aquarium_counter: u32,
+    #[serde(default)]
+    pub aquarium_phase: u8,
+    #[serde(default)]
+    pub aquarium_phase_counter: u32,
 }
 
 #[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
@@ -2430,6 +2709,9 @@ pub struct ProjectileState {
     pub lob_height: i32,
     #[serde(default)]
     pub lob_velocity: i32,
+    #[serde(default)]
+    // Encodes the source mLastPortalX field: zero means -1, otherwise column + 1.
+    pub last_portal_column: u32,
 }
 
 #[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
@@ -2475,6 +2757,8 @@ pub struct CraterState {
     pub row: u8,
     pub column: u8,
     pub remaining: u32,
+    #[serde(default)]
+    pub persistent: bool,
 }
 
 #[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
@@ -2508,6 +2792,12 @@ pub struct VaseState {
 #[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
 pub struct BrainState {
     pub row: u8,
+    #[serde(default)]
+    pub position_x: i64,
+    #[serde(default)]
+    pub position_y: i64,
+    #[serde(default)]
+    pub age: u32,
     pub remaining: u32,
     pub squished: bool,
 }
@@ -2518,6 +2808,9 @@ pub struct MowerState {
     pub position_x: i64,
     pub active: bool,
     pub spent: bool,
+    #[serde(default)]
+    // Encodes the source mLastPortalX field: zero means -1, otherwise column + 1.
+    pub last_portal_column: u32,
 }
 
 #[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
@@ -2602,6 +2895,7 @@ impl BoardState {
                     position_x: -80 * POSITION_SCALE,
                     active: false,
                     spent: false,
+                    last_portal_column: 0,
                 })
                 .collect()
         } else {
@@ -2618,6 +2912,9 @@ impl BoardState {
             (0..DAY_ROWS)
                 .map(|row| BrainState {
                     row,
+                    position_x: 0,
+                    position_y: 0,
+                    age: 0,
                     remaining: I_ZOMBIE_BRAIN_TICKS,
                     squished: false,
                 })
@@ -2990,6 +3287,12 @@ pub struct GameState {
     pub wave: u32,
     pub paused: bool,
     #[serde(default)]
+    pub adventure_first_time: bool,
+    #[serde(default)]
+    pub packet_upgrades: u8,
+    #[serde(default)]
+    pub adventure_configured: bool,
+    #[serde(default)]
     pub garden_service: Option<GardenServiceKind>,
     #[serde(default)]
     pub garden: GardenState,
@@ -3183,6 +3486,25 @@ pub enum GameEvent {
         zombie_type: ZombieType,
         row: u8,
         wave: u32,
+    },
+    ZombieSongStarted {
+        entity: EntityId,
+        zombie_type: ZombieType,
+    },
+    ZombieGroaned {
+        entity: EntityId,
+        zombie_type: ZombieType,
+        variant: u8,
+    },
+    ZombieChew {
+        entity: EntityId,
+        target: Option<EntityId>,
+        soft: bool,
+        variant: u8,
+    },
+    ZombieDeathSound {
+        entity: EntityId,
+        zombie_type: ZombieType,
     },
     ZombieDamaged {
         entity: EntityId,
@@ -3568,11 +3890,32 @@ pub struct Game {
 
 impl Game {
     pub fn new(seed: u64, scene: SceneKind) -> Self {
-        Self::new_with_mode(seed, ModeKind::Adventure, 0, scene)
+        Self::new_with_config(seed, ModeKind::Adventure, 0, scene, false, true, 0)
     }
 
     pub fn new_mode(seed: u64, mode: ModeKind, level: u8) -> Self {
-        Self::new_with_mode(seed, mode, level, mode_level_scene(mode, level))
+        Self::new_with_config(
+            seed,
+            mode,
+            level,
+            mode_level_scene(mode, level),
+            false,
+            mode == ModeKind::Adventure,
+            0,
+        )
+    }
+
+    pub fn new_adventure(seed: u64, level: u8, first_time: bool, packet_upgrades: u8) -> Self {
+        let level = level.clamp(1, 50);
+        Self::new_with_config(
+            seed,
+            ModeKind::Adventure,
+            level,
+            mode_level_scene(ModeKind::Adventure, level),
+            true,
+            first_time,
+            packet_upgrades.min(4),
+        )
     }
 
     #[doc(hidden)]
@@ -4741,7 +5084,15 @@ impl Game {
         }
     }
 
-    fn new_with_mode(seed: u64, mode: ModeKind, level: u8, scene: SceneKind) -> Self {
+    fn new_with_config(
+        seed: u64,
+        mode: ModeKind,
+        level: u8,
+        scene: SceneKind,
+        adventure_configured: bool,
+        first_time: bool,
+        packet_upgrades: u8,
+    ) -> Self {
         let mut rng = Mt19937::new(seed);
         let mut board = BoardState::new(scene, mode, level, &mut rng);
         let (total_waves, endless) = mode_wave_config(mode, level);
@@ -4751,6 +5102,7 @@ impl Game {
             let countdown = match challenge_kind(level) {
                 ChallengeKind::BobsledBonanza => 4_500,
                 ChallengeKind::PogoParty => 5_500,
+                ChallengeKind::PortalCombat => PORTAL_INITIAL_COUNTDOWN,
                 _ => board.wave.countdown,
             };
             board.wave.countdown = countdown;
@@ -4784,9 +5136,45 @@ impl Game {
             }
         }
         let mut challenge = initial_challenge_state(mode, level);
-        if mode == ModeKind::MiniGame && is_conveyor_challenge(challenge.kind) {
+        if mode == ModeKind::MiniGame
+            && matches!(
+                challenge.kind,
+                ChallengeKind::Beghouled | ChallengeKind::BeghouledTwist
+            )
+        {
+            board.rows = BEGHOULED_ROWS;
+            board.columns = BEGHOULED_COLUMNS;
+            board.mowers.clear();
+        }
+        if adventure_configured && mode == ModeKind::Adventure && adventure_level_is_conveyor(level)
+        {
+            board.set_seed_packets(adventure_conveyor_initial_seeds(level));
+            challenge.conveyor_countdown = adventure_conveyor_initial_countdown(level);
+        } else if mode == ModeKind::MiniGame && is_conveyor_challenge(challenge.kind) {
             board.set_seed_packets(conveyor_initial_seeds(level));
             challenge.conveyor_countdown = conveyor_initial_countdown(level);
+        } else if adventure_configured && mode == ModeKind::Adventure && level == 15 {
+            board.set_seed_packets(&[
+                PlantType::Other(4),
+                PlantType::Other(11),
+                PlantType::Other(2),
+            ]);
+        } else if adventure_configured && mode == ModeKind::Adventure && level == 35 {
+            board.set_seed_packets(&[PlantType::Other(2)]);
+        } else if adventure_configured
+            && mode == ModeKind::Adventure
+            && !adventure_uses_seed_chooser(level, first_time)
+        {
+            let slots = adventure_seed_slots(level, first_time, packet_upgrades);
+            let packets = (0..slots)
+                .filter_map(PlantType::from_slot)
+                .collect::<Vec<_>>();
+            board.set_seed_packets(&packets);
+        } else if adventure_configured
+            && mode == ModeKind::Adventure
+            && adventure_uses_seed_chooser(level, first_time)
+        {
+            board.set_seed_packets(&[]);
         } else if let Some(seed_bank) = fixed_seed_bank(mode, level) {
             board.set_seed_packets(seed_bank);
         }
@@ -4802,11 +5190,25 @@ impl Game {
             sun: if mode == ModeKind::IZombie {
                 150
             } else if mode == ModeKind::MiniGame
+                && matches!(
+                    challenge.kind,
+                    ChallengeKind::Beghouled | ChallengeKind::BeghouledTwist
+                )
+            {
+                0
+            } else if mode == ModeKind::MiniGame
                 && challenge_kind(level) == ChallengeKind::LastStand
             {
                 5_000
             } else if mode == ModeKind::Adventure && (1..=50).contains(&level) {
-                adventure_starting_sun(level, true)
+                adventure_starting_sun(
+                    level,
+                    if adventure_configured {
+                        first_time
+                    } else {
+                        true
+                    },
+                )
             } else {
                 50
             },
@@ -4817,6 +5219,13 @@ impl Game {
             pickup_inventory: Vec::new(),
             wave: 0,
             paused: false,
+            adventure_first_time: adventure_configured && mode == ModeKind::Adventure && first_time,
+            packet_upgrades: if adventure_configured && mode == ModeKind::Adventure {
+                packet_upgrades
+            } else {
+                0
+            },
+            adventure_configured,
             garden_service,
             garden: garden_service.map(initial_garden_state).unwrap_or_default(),
             tree_height: 1,
@@ -4825,6 +5234,29 @@ impl Game {
             rng: rng.snapshot(),
         };
         let mut game = Self { state, rng };
+        if adventure_configured
+            && mode == ModeKind::Adventure
+            && adventure_uses_seed_chooser(level, first_time)
+        {
+            game.state.scene = SceneKind::SeedChooser;
+        }
+        if mode == ModeKind::MiniGame
+            && matches!(
+                game.state.challenge.kind,
+                ChallengeKind::Beghouled | ChallengeKind::BeghouledTwist
+            )
+        {
+            game.initialize_beghouled_twist();
+            game.state.rng = game.rng.snapshot();
+        }
+        if mode == ModeKind::MiniGame && game.state.challenge.kind == ChallengeKind::Column {
+            // Challenge::StartLevel starts at the final sub-wave of the first
+            // flag group without changing the board's initial countdown-start.
+            game.state.board.wave.current = 9;
+            game.state.board.wave.countdown = 2_400;
+            game.state.board.wave_plan = game.pick_column_waves();
+            game.state.rng = game.rng.snapshot();
+        }
         if mode == ModeKind::IZombie {
             game.initialize_izombie();
             game.state.rng = game.rng.snapshot();
@@ -4832,6 +5264,11 @@ impl Game {
             && game.state.challenge.kind == ChallengeKind::Zombiquarium
         {
             game.initialize_zombiquarium();
+            game.state.rng = game.rng.snapshot();
+        } else if mode == ModeKind::MiniGame
+            && game.state.challenge.kind == ChallengeKind::PortalCombat
+        {
+            game.initialize_portal_combat();
             game.state.rng = game.rng.snapshot();
         } else if mode == ModeKind::MiniGame
             && game.state.challenge.kind == ChallengeKind::FinalBoss
@@ -4851,11 +5288,23 @@ impl Game {
         self.state.coins = profile.inventory.coins;
         self.state.unlocked_plants = profile.unlocked_plants.clone();
         self.state.garden = profile.garden.clone();
+        if self.state.mode == ModeKind::Adventure {
+            self.state.adventure_first_time = profile.adventure_rounds == 0;
+            self.state.packet_upgrades = profile.packet_upgrades;
+        }
     }
 
     pub fn update_profile(&self, profile: &mut SaveProfile) {
         profile.inventory.coins = self.state.coins;
         profile.garden = self.state.garden.clone();
+        if self.state.mode == ModeKind::Adventure && self.state.scene == SceneKind::Complete {
+            profile.adventure_level = profile
+                .adventure_level
+                .max(self.state.level.saturating_add(1).min(50));
+            if self.state.level >= 50 {
+                profile.adventure_rounds = profile.adventure_rounds.saturating_add(1);
+            }
+        }
         if self.state.scene == SceneKind::Complete {
             let completed_levels = u16::from(self.state.level).saturating_add(1);
             if let Some(completion) = profile
@@ -4892,8 +5341,32 @@ impl Game {
                 self.state.tick = self.state.tick.saturating_add(1);
                 events.push(GameEvent::StateChanged);
             } else if self.is_playing_scene() {
-                self.update_plants(&mut events);
+                if !matches!(
+                    self.state.challenge.kind,
+                    ChallengeKind::Beghouled | ChallengeKind::BeghouledTwist
+                ) {
+                    self.update_plants(&mut events);
+                }
+                let twist_plants_before = if matches!(
+                    self.state.challenge.kind,
+                    ChallengeKind::Beghouled | ChallengeKind::BeghouledTwist
+                ) {
+                    self.state
+                        .board
+                        .plants
+                        .iter()
+                        .map(|plant| (plant.id, plant.row, plant.column))
+                        .collect::<Vec<_>>()
+                } else {
+                    Vec::new()
+                };
                 self.update_zombies(&mut events);
+                if matches!(
+                    self.state.challenge.kind,
+                    ChallengeKind::Beghouled | ChallengeKind::BeghouledTwist
+                ) {
+                    self.mark_twist_eaten_plants(&twist_plants_before, &mut events);
+                }
                 self.update_mowers(&mut events);
                 self.update_projectiles(&mut events);
                 self.update_seed_packets(&mut events);
@@ -4940,9 +5413,18 @@ impl Game {
                         ChallengeKind::Beghouled => {
                             self.state.challenge.score >= self.state.challenge.target
                         }
-                        ChallengeKind::Zombiquarium => {
-                            self.state.sun >= self.state.challenge.target
-                                && self.state.board.zombies.is_empty()
+                        ChallengeKind::BeghouledTwist => {
+                            self.state.challenge.score >= self.state.challenge.target
+                        }
+                        ChallengeKind::Zombiquarium => false,
+                        ChallengeKind::SeeingStars => {
+                            SEEING_STARS_STARFRUIT_CELLS.iter().all(|&(row, column)| {
+                                self.state.board.plants.iter().any(|plant| {
+                                    plant.row == row
+                                        && plant.column == column
+                                        && plant.plant_type == PlantType::Other(29)
+                                })
+                            })
                         }
                         _ => {
                             self.state.board.wave.current >= self.state.board.wave.total
@@ -4974,18 +5456,20 @@ impl Game {
                 if won {
                     self.state.scene = SceneKind::Complete;
                     events.push(GameEvent::GameWon);
-                    // Zombie::TrySpawnLevelAward: adventure completion drops
-                    // the level award (the trophy on 5-10, a seed packet
-                    // elsewhere; item levels keep their award identity in
-                    // adventure_award).
-                    if self.state.mode == ModeKind::Adventure
+                    let coin_type = if self.state.mode == ModeKind::Adventure
                         && (1..=50).contains(&self.state.level)
                     {
-                        let coin_type = if self.state.level == 50 {
+                        Some(if self.state.level == 50 {
                             CoinType::AwardSilverSunflower
                         } else {
                             CoinType::FinalSeedPacket
-                        };
+                        })
+                    } else if self.state.challenge.kind == ChallengeKind::SeeingStars {
+                        Some(CoinType::Trophy)
+                    } else {
+                        None
+                    };
+                    if let Some(coin_type) = coin_type {
                         self.spawn_pickup(coin_type, grid_x(4), grid_y(2), &mut events);
                     }
                 }
@@ -5049,8 +5533,56 @@ impl Game {
         });
     }
 
+    fn confirm_adventure_seeds(&mut self, seeds: Vec<PlantType>, events: &mut Vec<GameEvent>) {
+        let action = InputAction::ConfirmAdventureSeeds {
+            seeds: seeds.clone(),
+        };
+        let valid_scene = self.state.mode == ModeKind::Adventure
+            && self.state.scene == SceneKind::SeedChooser
+            && adventure_uses_seed_chooser(self.state.level, self.state.adventure_first_time);
+        if !valid_scene {
+            events.push(GameEvent::InputRejected {
+                action,
+                reason: InputRejectReason::SeedChooserUnavailable,
+            });
+            return;
+        }
+        let expected = usize::from(adventure_seed_slots(
+            self.state.level,
+            self.state.adventure_first_time,
+            self.state.packet_upgrades,
+        ));
+        if seeds.len() != expected {
+            events.push(GameEvent::InputRejected {
+                action,
+                reason: InputRejectReason::WrongSeedCount,
+            });
+            return;
+        }
+        let choices = adventure_seed_choices(self.state.level, self.state.adventure_first_time);
+        let duplicate = seeds
+            .iter()
+            .enumerate()
+            .any(|(index, seed)| seeds[..index].contains(seed));
+        if duplicate || seeds.iter().any(|seed| !choices.contains(seed)) {
+            events.push(GameEvent::InputRejected {
+                action,
+                reason: InputRejectReason::InvalidSeedChoice,
+            });
+            return;
+        }
+        self.state.board.set_seed_packets(&seeds);
+        self.state.board.selected_seed = None;
+        self.state.board.selected_usable_seed = None;
+        self.state.scene = self.state.level_scene;
+        events.push(GameEvent::StateChanged);
+    }
+
     fn has_conveyor_seed_bank(&self) -> bool {
-        self.state.mode == ModeKind::MiniGame && is_conveyor_challenge(self.state.challenge.kind)
+        (self.state.mode == ModeKind::MiniGame && is_conveyor_challenge(self.state.challenge.kind))
+            || (self.state.adventure_configured
+                && self.state.mode == ModeKind::Adventure
+                && adventure_level_is_conveyor(self.state.level))
     }
 
     fn add_conveyor_seed(&mut self, plant_type: PlantType) {
@@ -5083,7 +5615,11 @@ impl Game {
 
         let seed_count = self.state.board.seed_packets.len();
         self.state.challenge.conveyor_countdown = conveyor_interval(kind, seed_count);
-        let pool = conveyor_seed_pool(self.state.level);
+        let pool = if self.state.mode == ModeKind::Adventure {
+            adventure_conveyor_seed_pool(self.state.level)
+        } else {
+            conveyor_seed_pool(self.state.level)
+        };
         if pool.is_empty() {
             return;
         }
@@ -5157,13 +5693,295 @@ impl Game {
         }
     }
 
+    fn portal_target(&self, index: usize) -> Option<(u8, u8)> {
+        let (_, _, square) = *self.state.board.portals.get(index)?;
+        self.state.board.portals.iter().enumerate().find_map(
+            |(other_index, (row, column, other_square))| {
+                (other_index != index && *other_square == square).then_some((*row, *column))
+            },
+        )
+    }
+
+    fn portal_at(
+        &self,
+        row: u8,
+        position_x: i64,
+        tolerance: i64,
+        last_portal_column: u32,
+    ) -> Option<usize> {
+        self.state
+            .board
+            .portals
+            .iter()
+            .position(|(portal_row, portal_column, _)| {
+                *portal_row == row
+                    && u32::from(*portal_column) + 1 != last_portal_column
+                    && (position_x - grid_x(*portal_column)).abs() <= tolerance
+            })
+    }
+
+    fn portal_targeting_enabled(&self, plant_type: PlantType) -> bool {
+        self.state.challenge.kind == ChallengeKind::PortalCombat
+            && matches!(plant_type.slot(), 0 | 7 | 26)
+    }
+
+    fn can_target_zombie_with_portals(
+        &self,
+        plant_row: u8,
+        plant_column: u8,
+        zombie: &ZombieState,
+    ) -> bool {
+        let mut row = plant_row;
+        let mut column = plant_column;
+        for _ in 0..3 {
+            let portal_index = self
+                .state
+                .board
+                .portals
+                .iter()
+                .enumerate()
+                .filter(|(_, (portal_row, portal_column, _))| {
+                    *portal_row == row && *portal_column > column
+                })
+                .min_by_key(|(_, (_, portal_column, _))| *portal_column)
+                .map(|(index, _)| index);
+            let right_column = portal_index
+                .map(|index| self.state.board.portals[index].1)
+                .unwrap_or(10);
+            let left_x = i64::from(column) * 80 * POSITION_SCALE;
+            let right_x = i64::from(right_column) * 80 * POSITION_SCALE;
+            if zombie.row == row && zombie.position_x > left_x && zombie.position_x < right_x {
+                return true;
+            }
+            let Some(portal_index) = portal_index else {
+                return false;
+            };
+            let Some((target_row, target_column)) = self.portal_target(portal_index) else {
+                return false;
+            };
+            row = target_row;
+            column = target_column;
+        }
+        false
+    }
+
+    fn portal_distance_to_mower(&self, row: u8) -> u8 {
+        let mut column: u8 = 10;
+        let mut current_row = row;
+        let mut distance: u8 = 0;
+        while distance < 40 {
+            let portal = self
+                .state
+                .board
+                .portals
+                .iter()
+                .enumerate()
+                .filter(|(_, (portal_row, portal_column, _))| {
+                    *portal_row == current_row && *portal_column < column
+                })
+                .max_by_key(|(_, (_, portal_column, _))| *portal_column)
+                .map(|(index, _)| index);
+            let Some(index) = portal else {
+                return distance.saturating_add(column);
+            };
+            let (_, portal_column, _) = self.state.board.portals[index];
+            distance = distance.saturating_add(column - portal_column);
+            let Some((target_row, target_column)) = self.portal_target(index) else {
+                return distance;
+            };
+            current_row = target_row;
+            column = target_column;
+        }
+        distance
+    }
+
+    fn portal_row_spawn_weight(&self, row: u8) -> u32 {
+        if self.portal_distance_to_mower(row) < 5 {
+            1
+        } else if self
+            .state
+            .board
+            .portals
+            .iter()
+            .any(|(portal_row, _, _)| *portal_row == row)
+        {
+            100
+        } else {
+            20
+        }
+    }
+
+    fn update_portal_projectiles(&mut self) {
+        let projectile_count = self.state.board.projectiles.len();
+        for index in 0..projectile_count {
+            let (row, position_x, motion, last_portal_column) = {
+                let projectile = &self.state.board.projectiles[index];
+                (
+                    projectile.row,
+                    projectile.position_x,
+                    projectile.motion,
+                    projectile.last_portal_column,
+                )
+            };
+            if motion != ProjectileMotion::Straight {
+                continue;
+            }
+            let Some(portal_index) =
+                self.portal_at(row, position_x, 40 * POSITION_SCALE, last_portal_column)
+            else {
+                continue;
+            };
+            let Some((target_row, target_column)) = self.portal_target(portal_index) else {
+                continue;
+            };
+            let projectile = &mut self.state.board.projectiles[index];
+            projectile.row = target_row;
+            projectile.position_x = grid_x(target_column) + 60 * POSITION_SCALE;
+            projectile.position_y += i64::from(target_row.abs_diff(row))
+                * 100
+                * POSITION_SCALE
+                * if target_row >= row { 1 } else { -1 };
+            projectile.shadow_y = projectile_shadow_y(
+                self.state.scene,
+                target_row,
+                projectile.position_x,
+                projectile.motion,
+                projectile.velocity_y,
+            );
+            projectile.last_portal_column = u32::from(target_column) + 1;
+        }
+    }
+
+    fn update_portal_mowers(&mut self) {
+        let mower_count = self.state.board.mowers.len();
+        for index in 0..mower_count {
+            let (row, position_x, active, last_portal_column) = {
+                let mower = &self.state.board.mowers[index];
+                (
+                    mower.row,
+                    mower.position_x,
+                    mower.active,
+                    mower.last_portal_column,
+                )
+            };
+            if !active {
+                continue;
+            }
+            let Some(portal_index) = self.portal_at(
+                row,
+                position_x + 45 * POSITION_SCALE,
+                20 * POSITION_SCALE,
+                last_portal_column,
+            ) else {
+                continue;
+            };
+            let Some((target_row, target_column)) = self.portal_target(portal_index) else {
+                continue;
+            };
+            let mower = &mut self.state.board.mowers[index];
+            mower.row = target_row;
+            mower.position_x = grid_x(target_column) + 25 * POSITION_SCALE;
+            mower.last_portal_column = u32::from(target_column) + 1;
+        }
+    }
+
+    fn relocate_portal(&mut self, events: &mut Vec<GameEvent>) {
+        if self.state.board.portals.is_empty() {
+            return;
+        }
+        let index = self.rng.range(self.state.board.portals.len() as u32) as usize;
+        let Some((other_row, other_column)) = self.portal_target(index) else {
+            return;
+        };
+        let occupied = self
+            .state
+            .board
+            .portals
+            .iter()
+            .map(|(row, column, _)| (*row, *column))
+            .collect::<Vec<_>>();
+        let free_cells = (0..10)
+            .flat_map(|column| (0..DAY_ROWS).map(move |row| (row, column)))
+            .filter(|(row, column)| {
+                !occupied.contains(&(*row, *column)) && *row != other_row && *column != other_column
+            })
+            .collect::<Vec<_>>();
+        let Some(&(row, column)) = free_cells.get(self.rng.range(free_cells.len() as u32) as usize)
+        else {
+            return;
+        };
+        let square = self.state.board.portals[index].2;
+        self.state.board.portals[index] = (row, column, square);
+        events.push(GameEvent::PortalOpened {
+            row,
+            column,
+            square,
+        });
+    }
+
+    fn update_portal_combat(&mut self, events: &mut Vec<GameEvent>) {
+        self.update_portal_projectiles();
+        self.update_portal_mowers();
+        self.state.challenge.countdown = self.state.challenge.countdown.saturating_sub(1);
+        if self.state.challenge.countdown == 0 {
+            self.state.challenge.countdown = PORTAL_RELOCATION_COUNTDOWN;
+            self.relocate_portal(events);
+        }
+    }
+
     fn update_challenge(&mut self, events: &mut Vec<GameEvent>) {
-        if self.state.mode != ModeKind::MiniGame {
+        let adventure_conveyor = self.state.adventure_configured
+            && self.state.mode == ModeKind::Adventure
+            && adventure_level_is_conveyor(self.state.level);
+        if self.state.mode != ModeKind::MiniGame && !adventure_conveyor {
             return;
         }
         let kind = self.state.challenge.kind;
-        if is_conveyor_challenge(kind) {
+        if kind == ChallengeKind::SlotMachine {
+            if self.state.challenge.slot_machine_countdown > 0 {
+                self.state.challenge.slot_machine_countdown -= 1;
+                if self.state.challenge.slot_machine_countdown == 0 {
+                    self.resolve_slot_machine(events);
+                }
+            }
+            return;
+        }
+        if matches!(
+            kind,
+            ChallengeKind::Beghouled | ChallengeKind::BeghouledTwist
+        ) {
+            if self.state.challenge.twist_state == BeghouledTwistState::Moving {
+                self.state.challenge.twist_counter =
+                    self.state.challenge.twist_counter.saturating_sub(1);
+                if self.state.challenge.twist_counter == 0 {
+                    self.resolve_beghouled_twist(events);
+                }
+            } else if self.state.challenge.twist_state == BeghouledTwistState::Falling {
+                self.state.challenge.twist_counter =
+                    self.state.challenge.twist_counter.saturating_sub(1);
+                if self.state.challenge.twist_counter == 0 {
+                    self.finish_beghouled_twist_fall(events);
+                }
+            } else if self.state.challenge.twist_state == BeghouledTwistState::NoMoves {
+                self.state.challenge.twist_counter =
+                    self.state.challenge.twist_counter.saturating_sub(1);
+                if self.state.challenge.twist_counter == 0 {
+                    self.shuffle_beghouled_twist();
+                }
+            }
+            self.state.challenge.zombie_countdown =
+                self.state.challenge.zombie_countdown.saturating_sub(1);
+            if self.state.challenge.zombie_countdown == 0 {
+                self.state.challenge.zombie_countdown = BEGHOULED_ZOMBIE_COUNTDOWN;
+                let row = self.rng.range(u32::from(BEGHOULED_ROWS)) as u8;
+                self.spawn_normal_zombie(row, 0, None, events);
+            }
+        }
+        if is_conveyor_challenge(kind) || adventure_conveyor {
             self.update_conveyor_belt();
+            if kind == ChallengeKind::PortalCombat {
+                self.update_portal_combat(events);
+            }
             return;
         }
         if self.state.challenge.countdown == 0 {
@@ -5174,7 +5992,9 @@ impl Game {
             let next_countdown = match kind {
                 ChallengeKind::RainingSeeds => 500 + self.rng.range(500),
                 ChallengeKind::WhackAZombie => 200,
-                ChallengeKind::Beghouled => 1_500,
+                ChallengeKind::Beghouled | ChallengeKind::BeghouledTwist => {
+                    BEGHOULED_CHALLENGE_COUNTDOWN
+                }
                 _ => 0,
             };
             self.state.challenge.countdown = next_countdown;
@@ -5274,10 +6094,47 @@ impl Game {
     fn initialize_zombiquarium(&mut self) {
         let mut events = Vec::new();
         for _ in 0..2 {
-            let row = self.rng.range(u32::from(self.state.board.rows)) as u8;
-            let position = self.rng.fixed_range(80, 650) * POSITION_SCALE;
-            self.spawn_normal_zombie(row, 0, Some(position), &mut events);
+            self.spawn_zombiquarium_snorkel(&mut events);
         }
+    }
+
+    fn initialize_portal_combat(&mut self) {
+        let mut events = Vec::new();
+        for &(row, column, square) in &[(0, 2, true), (1, 9, true), (3, 9, false), (4, 2, false)] {
+            self.place_portal(row, column, square, &mut events);
+        }
+    }
+
+    fn spawn_zombiquarium_snorkel(&mut self, events: &mut Vec<GameEvent>) -> EntityId {
+        let position_x = self.rng.fixed_range(50, 650) * POSITION_SCALE;
+        let position_y = self.rng.fixed_range(100, 400) * POSITION_SCALE;
+        let entity = self._spawn_zombie_inner(
+            ZombieType::Snorkel,
+            ZOMBIQUARIUM_START_HEALTH,
+            0,
+            0,
+            Some(position_x),
+            events,
+        );
+        if let Some(zombie) = self
+            .state
+            .board
+            .zombies
+            .iter_mut()
+            .find(|zombie| zombie.id == entity)
+        {
+            zombie.position_y = position_y;
+            zombie.max_health = ZOMBIQUARIUM_MAX_HEALTH;
+            zombie.aquarium_velocity_x = 1_000;
+            zombie.aquarium_velocity_y = 0;
+            zombie.aquarium_speed = ZOMBIQUARIUM_START_SPEED;
+            zombie.aquarium_counter = self.rng.range_inclusive(200, 400);
+            zombie.aquarium_phase = ZOMBIQUARIUM_DRIFT_PHASE;
+            zombie.aquarium_phase_counter = ZOMBIQUARIUM_BITE_TICKS;
+            zombie.snorkel_phase = 0;
+            zombie.in_pool = false;
+        }
+        entity
     }
 
     fn initialize_izombie(&mut self) {
@@ -5482,6 +6339,7 @@ impl Game {
             special_armed: plant_type.is_potato_mine(),
             special_target: None,
             squash_target_x: None,
+            cob_target: None,
             blink_counter: 0,
             asleep: false,
             wake_up_counter: 0,
@@ -5572,7 +6430,16 @@ impl Game {
             InputAction::GardenFeedTree => self.garden_feed_tree(events),
             InputAction::GardenLeave => self.garden_leave(events),
             InputAction::ChallengeSpin => self.challenge_spin(events),
-            InputAction::ChallengeMatch { length } => self.challenge_match(length, events),
+            InputAction::ChallengeSwap {
+                from_column,
+                from_row,
+                to_column,
+                to_row,
+            } => self.challenge_swap(from_column, from_row, to_column, to_row, events),
+            InputAction::ChallengeTwist { column, row } => {
+                self.challenge_twist(column, row, events)
+            }
+            InputAction::ChallengeClearCrater => self.challenge_clear_crater(events),
             InputAction::ChallengeFeed { x, y } => self.challenge_feed(x, y, events),
             InputAction::ChallengeWhack { row, column } => {
                 self.challenge_whack(row, column, events)
@@ -5580,6 +6447,9 @@ impl Game {
             InputAction::CollectSun { entity } => self.collect_sun(entity, events),
             InputAction::CollectCoin { entity } => self.collect_coin(entity, events),
             InputAction::ConfirmSurvivalRepick => self.confirm_survival_repick(events),
+            InputAction::ConfirmAdventureSeeds { seeds } => {
+                self.confirm_adventure_seeds(seeds, events)
+            }
         }
     }
 
@@ -5677,7 +6547,10 @@ impl Game {
     }
 
     fn challenge_spin(&mut self, events: &mut Vec<GameEvent>) {
-        if self.state.challenge.kind != ChallengeKind::SlotMachine || self.state.sun < 25 {
+        if self.state.challenge.kind != ChallengeKind::SlotMachine
+            || self.state.challenge.slot_machine_countdown != 0
+            || self.state.sun < 25
+        {
             events.push(GameEvent::InputRejected {
                 action: InputAction::ChallengeSpin,
                 reason: InputRejectReason::ChallengeUnavailable,
@@ -5685,39 +6558,746 @@ impl Game {
             return;
         }
         self.state.sun -= 25;
-        let symbol = self.rng.range(3);
+        for index in 0..self.state.challenge.slot_machine_next_symbols.len() {
+            self.state.challenge.slot_machine_next_symbols[index] =
+                self.pick_slot_machine_symbol(index);
+        }
+        self.state.challenge.slot_machine_countdown = 300;
+        self.state.challenge.slot_machine_roll_count = self
+            .state
+            .challenge
+            .slot_machine_roll_count
+            .saturating_add(1);
         events.push(GameEvent::ChallengeAction {
             kind: ChallengeKind::SlotMachine,
-            value: symbol,
+            value: self.state.challenge.slot_machine_roll_count,
         });
     }
 
-    fn challenge_match(&mut self, length: u8, events: &mut Vec<GameEvent>) {
-        if self.state.challenge.kind != ChallengeKind::Beghouled || length < 3 {
+    fn pick_slot_machine_symbol(&mut self, index: usize) -> SlotMachineSymbol {
+        let pea_count = self
+            .state
+            .board
+            .plants
+            .iter()
+            .filter(|plant| plant.plant_type == PlantType::Peashooter)
+            .count()
+            .min(5) as u32;
+        let pea_weight = 200 - pea_count * 20;
+        let mut weights = [
+            (SlotMachineSymbol::Sunflower, 100),
+            (SlotMachineSymbol::Peashooter, pea_weight),
+            (SlotMachineSymbol::SnowPea, 100),
+            (SlotMachineSymbol::Wallnut, 100),
+            (SlotMachineSymbol::Sun, 100),
+            (SlotMachineSymbol::Diamond, 30),
+        ];
+        if index == 2 {
+            for (symbol, weight) in &mut weights {
+                if *symbol != SlotMachineSymbol::Diamond
+                    && (self.state.challenge.slot_machine_next_symbols[0] == *symbol
+                        || self.state.challenge.slot_machine_next_symbols[1] == *symbol)
+                {
+                    *weight += *weight / 2;
+                }
+            }
+        }
+        let total_weight = weights.iter().map(|(_, weight)| *weight).sum();
+        let mut pick = self.rng.range(total_weight);
+        for (symbol, weight) in weights {
+            if pick < weight {
+                return symbol;
+            }
+            pick -= weight;
+        }
+        SlotMachineSymbol::Sunflower
+    }
+
+    fn resolve_slot_machine(&mut self, events: &mut Vec<GameEvent>) {
+        self.state.challenge.slot_machine_symbols = self.state.challenge.slot_machine_next_symbols;
+        let symbols = self.state.challenge.slot_machine_symbols;
+        let matching = if symbols[0] == symbols[1] && symbols[1] == symbols[2] {
+            Some((symbols[0], 3))
+        } else if symbols[0] == symbols[1] || symbols[0] == symbols[2] {
+            Some((symbols[0], 2))
+        } else if symbols[1] == symbols[2] {
+            Some((symbols[1], 2))
+        } else {
+            None
+        };
+        let Some((symbol, count)) = matching else {
+            return;
+        };
+        let offsets: &[i64] = match (symbol, count) {
+            (SlotMachineSymbol::Diamond, 2) => &[0],
+            (SlotMachineSymbol::Sun, 2) => &[0, 15, 30, 45],
+            (_, 2) => &[0],
+            (SlotMachineSymbol::Diamond, 3) => &[0, 12, 24, 36, 48],
+            (SlotMachineSymbol::Sun, 3) => &[
+                0, 3, 6, 9, 12, 15, 18, 21, 24, 27, 30, 33, 36, 39, 42, 45, 48, 51, 54, 57,
+            ],
+            (_, 3) => &[
+                0, 20, 40, 60, 80, 100, 120, 140, 160, 180, 200, 220, 240, 260, 280, 300, 320, 340,
+                360, 380,
+            ],
+            _ => &[],
+        };
+        for offset in offsets {
+            let position_x = (320 + *offset) * POSITION_SCALE;
+            match symbol {
+                SlotMachineSymbol::Diamond => {
+                    self.spawn_coin(CoinType::Diamond, position_x, 85 * POSITION_SCALE, events)
+                }
+                SlotMachineSymbol::Sun => {
+                    self.spawn_coin(CoinType::Sun, position_x, 85 * POSITION_SCALE, events)
+                }
+                _ => {
+                    let Some(plant_type) = slot_machine_plant(symbol) else {
+                        continue;
+                    };
+                    self.spawn_coin_with_payload(
+                        CoinType::UsableSeedPacket,
+                        position_x,
+                        85 * POSITION_SCALE,
+                        Some(plant_type),
+                        events,
+                    );
+                }
+            }
+        }
+    }
+
+    fn challenge_swap(
+        &mut self,
+        from_column: u8,
+        from_row: u8,
+        to_column: u8,
+        to_row: u8,
+        events: &mut Vec<GameEvent>,
+    ) {
+        let action = InputAction::ChallengeSwap {
+            from_column,
+            from_row,
+            to_column,
+            to_row,
+        };
+        let adjacent =
+            u16::from(from_column.abs_diff(to_column)) + u16::from(from_row.abs_diff(to_row)) == 1;
+        if self.state.challenge.kind != ChallengeKind::Beghouled
+            || self.state.challenge.twist_state != BeghouledTwistState::Normal
+            || from_column >= BEGHOULED_COLUMNS
+            || to_column >= BEGHOULED_COLUMNS
+            || from_row >= BEGHOULED_ROWS
+            || to_row >= BEGHOULED_ROWS
+            || !adjacent
+            || self.twist_seed_at(from_row, from_column).is_none()
+            || self.twist_seed_at(to_row, to_column).is_none()
+        {
             events.push(GameEvent::InputRejected {
-                action: InputAction::ChallengeMatch { length },
+                action,
                 reason: InputRejectReason::ChallengeUnavailable,
             });
             return;
         }
-        let points = u32::from(length.saturating_sub(2));
+        if !self.swap_move_causes_match(from_column, from_row, to_column, to_row) {
+            events.push(GameEvent::ChallengeAction {
+                kind: ChallengeKind::Beghouled,
+                value: 0,
+            });
+            return;
+        }
+        self.swap_beghouled_plants(from_column, from_row, to_column, to_row);
+        self.state.challenge.twist_state = BeghouledTwistState::Moving;
+        self.state.challenge.twist_counter = BEGHOULED_MOVE_TICKS;
+        self.state.challenge.countdown = BEGHOULED_CHALLENGE_COUNTDOWN;
+    }
+
+    fn initialize_beghouled_twist(&mut self) {
+        self.state.board.plants.clear();
+        let board = [
+            [3, 3, 0, 2, 4, 3, 3, 2],
+            [3, 2, 4, 1, 4, 1, 2, 1],
+            [0, 4, 2, 4, 5, 4, 1, 2],
+            [0, 5, 0, 5, 2, 3, 4, 0],
+            [2, 3, 2, 4, 5, 1, 4, 3],
+        ];
+        for (row, values) in board.into_iter().enumerate() {
+            for (column, seed) in values.into_iter().enumerate() {
+                self.place_beghouled_plant(BEGHOULED_SEED_TYPES[seed], row as u8, column as u8);
+            }
+        }
+        debug_assert!(!self.twist_has_match());
+        debug_assert!(self.has_standard_move());
+        debug_assert!(self.has_twist_move());
+    }
+
+    fn place_beghouled_plant(&mut self, plant_type: PlantType, row: u8, column: u8) {
+        let id = self.state.board.allocate_entity();
+        let max_health = plant_type.max_health();
+        self.state.board.plants.push(PlantState {
+            id,
+            plant_type,
+            imitater_type: None,
+            row,
+            column,
+            health: max_health,
+            max_health,
+            launch_counter: 0,
+            launch_rate: 0,
+            shooting_counter: 0,
+            recently_eaten_counter: 0,
+            firing_directions: 0,
+            kernel_pult_projectile: None,
+            production_age: 0,
+            production_stage: 0,
+            special_counter: 0,
+            special_armed: false,
+            special_target: None,
+            squash_target_x: None,
+            blink_counter: 0,
+            asleep: false,
+            wake_up_counter: 0,
+        });
+    }
+
+    fn twist_seed_at(&self, row: u8, column: u8) -> Option<PlantType> {
+        if self
+            .state
+            .board
+            .craters
+            .iter()
+            .any(|crater| crater.row == row && crater.column == column)
+        {
+            return None;
+        }
+        self.state
+            .board
+            .plants
+            .iter()
+            .find(|plant| plant.row == row && plant.column == column && plant.health > 0)
+            .map(|plant| plant.plant_type)
+    }
+
+    fn twist_has_match(&self) -> bool {
+        (0..BEGHOULED_ROWS).any(|row| {
+            (0..BEGHOULED_COLUMNS.saturating_sub(2)).any(|column| {
+                let Some(seed) = self.twist_seed_at(row, column) else {
+                    return false;
+                };
+                self.twist_seed_at(row, column + 1) == Some(seed)
+                    && self.twist_seed_at(row, column + 2) == Some(seed)
+            })
+        }) || (0..BEGHOULED_COLUMNS).any(|column| {
+            (0..BEGHOULED_ROWS.saturating_sub(2)).any(|row| {
+                let Some(seed) = self.twist_seed_at(row, column) else {
+                    return false;
+                };
+                self.twist_seed_at(row + 1, column) == Some(seed)
+                    && self.twist_seed_at(row + 2, column) == Some(seed)
+            })
+        })
+    }
+
+    fn twist_valid_square(&self, column: u8, row: u8) -> bool {
+        column < BEGHOULED_COLUMNS - 1
+            && row < BEGHOULED_ROWS - 1
+            && self.twist_seed_at(row, column).is_some()
+            && self.twist_seed_at(row, column + 1).is_some()
+            && self.twist_seed_at(row + 1, column).is_some()
+            && self.twist_seed_at(row + 1, column + 1).is_some()
+    }
+
+    fn twist_square_ids(&self, column: u8, row: u8) -> Option<[EntityId; 4]> {
+        if !self.twist_valid_square(column, row) {
+            return None;
+        }
+        let positions = [
+            (row, column),
+            (row, column + 1),
+            (row + 1, column),
+            (row + 1, column + 1),
+        ];
+        positions
+            .map(|(row, column)| {
+                self.state
+                    .board
+                    .plants
+                    .iter()
+                    .find(|plant| plant.row == row && plant.column == column)
+                    .map(|plant| plant.id)
+            })
+            .into_iter()
+            .collect::<Option<Vec<_>>>()?
+            .try_into()
+            .ok()
+    }
+
+    fn rotate_twist_square(&mut self, ids: [EntityId; 4]) {
+        let positions = [
+            (ids[2], 0_u8, 0_u8),
+            (ids[0], 0, 1),
+            (ids[3], 1, 0),
+            (ids[1], 1, 1),
+        ];
+        let Some(top_left) = self
+            .state
+            .board
+            .plants
+            .iter()
+            .find(|plant| plant.id == ids[0])
+            .map(|plant| (plant.row, plant.column))
+        else {
+            return;
+        };
+        for (id, row_offset, column_offset) in positions {
+            if let Some(plant) = self
+                .state
+                .board
+                .plants
+                .iter_mut()
+                .find(|plant| plant.id == id)
+            {
+                plant.row = top_left.0 + row_offset;
+                plant.column = top_left.1 + column_offset;
+            }
+        }
+    }
+
+    fn beghouled_plant_ids(
+        &self,
+        from_column: u8,
+        from_row: u8,
+        to_column: u8,
+        to_row: u8,
+    ) -> Option<[EntityId; 2]> {
+        [(from_row, from_column), (to_row, to_column)]
+            .map(|(row, column)| {
+                self.state
+                    .board
+                    .plants
+                    .iter()
+                    .find(|plant| plant.row == row && plant.column == column)
+                    .map(|plant| plant.id)
+            })
+            .into_iter()
+            .collect::<Option<Vec<_>>>()?
+            .try_into()
+            .ok()
+    }
+
+    fn swap_beghouled_plants(&mut self, from_column: u8, from_row: u8, to_column: u8, to_row: u8) {
+        let Some(ids) = self.beghouled_plant_ids(from_column, from_row, to_column, to_row) else {
+            return;
+        };
+        for (id, row, column) in [(ids[0], to_row, to_column), (ids[1], from_row, from_column)] {
+            if let Some(plant) = self
+                .state
+                .board
+                .plants
+                .iter_mut()
+                .find(|plant| plant.id == id)
+            {
+                plant.row = row;
+                plant.column = column;
+            }
+        }
+    }
+
+    fn swap_move_causes_match(
+        &mut self,
+        from_column: u8,
+        from_row: u8,
+        to_column: u8,
+        to_row: u8,
+    ) -> bool {
+        let Some(ids) = self.beghouled_plant_ids(from_column, from_row, to_column, to_row) else {
+            return false;
+        };
+        self.swap_beghouled_plants(from_column, from_row, to_column, to_row);
+        let has_match = self.twist_has_match();
+        self.swap_beghouled_plants(from_column, from_row, to_column, to_row);
+        debug_assert!(
+            self.beghouled_plant_ids(from_column, from_row, to_column, to_row)
+                .is_some_and(|restored| restored == ids)
+        );
+        has_match
+    }
+
+    fn twist_move_causes_match(&mut self, column: u8, row: u8) -> bool {
+        let Some(ids) = self.twist_square_ids(column, row) else {
+            return false;
+        };
+        let original = ids.map(|id| {
+            self.state
+                .board
+                .plants
+                .iter()
+                .find(|plant| plant.id == id)
+                .map(|plant| (plant.row, plant.column))
+                .expect("validated Twist plant")
+        });
+        self.rotate_twist_square(ids);
+        let has_match = self.twist_has_match();
+        for (id, (row, column)) in ids.into_iter().zip(original) {
+            if let Some(plant) = self
+                .state
+                .board
+                .plants
+                .iter_mut()
+                .find(|plant| plant.id == id)
+            {
+                plant.row = row;
+                plant.column = column;
+            }
+        }
+        has_match
+    }
+
+    fn challenge_twist(&mut self, column: u8, row: u8, events: &mut Vec<GameEvent>) {
+        let action = InputAction::ChallengeTwist { column, row };
+        if self.state.challenge.kind != ChallengeKind::BeghouledTwist
+            || self.state.challenge.twist_state != BeghouledTwistState::Normal
+            || !self.twist_valid_square(column, row)
+        {
+            events.push(GameEvent::InputRejected {
+                action,
+                reason: InputRejectReason::ChallengeUnavailable,
+            });
+            return;
+        }
+        if !self.twist_move_causes_match(column, row) {
+            events.push(GameEvent::ChallengeAction {
+                kind: ChallengeKind::BeghouledTwist,
+                value: 0,
+            });
+            return;
+        }
+        let ids = self
+            .twist_square_ids(column, row)
+            .expect("validated Twist square");
+        self.rotate_twist_square(ids);
+        self.state.challenge.twist_state = BeghouledTwistState::Moving;
+        self.state.challenge.twist_counter = BEGHOULED_MOVE_TICKS;
+        self.state.challenge.countdown = BEGHOULED_CHALLENGE_COUNTDOWN;
+    }
+
+    fn challenge_clear_crater(&mut self, events: &mut Vec<GameEvent>) {
+        if !matches!(
+            self.state.challenge.kind,
+            ChallengeKind::Beghouled | ChallengeKind::BeghouledTwist
+        ) || matches!(
+            self.state.challenge.twist_state,
+            BeghouledTwistState::Moving | BeghouledTwistState::Falling
+        ) || self.state.sun < BEGHOULED_CRATER_COST
+        {
+            events.push(GameEvent::InputRejected {
+                action: InputAction::ChallengeClearCrater,
+                reason: InputRejectReason::ChallengeUnavailable,
+            });
+            return;
+        }
+        let Some(index) = self
+            .state
+            .board
+            .craters
+            .iter()
+            .position(|crater| crater.remaining == u32::MAX)
+        else {
+            events.push(GameEvent::InputRejected {
+                action: InputAction::ChallengeClearCrater,
+                reason: InputRejectReason::ChallengeUnavailable,
+            });
+            return;
+        };
+        self.state.sun -= BEGHOULED_CRATER_COST;
+        self.state.board.craters.remove(index);
+        self.refill_beghouled_twist();
+        self.state.challenge.twist_state = BeghouledTwistState::Falling;
+        self.state.challenge.twist_counter = BEGHOULED_MOVE_TICKS;
+        self.state.challenge.countdown = BEGHOULED_CHALLENGE_COUNTDOWN;
+        events.push(GameEvent::ChallengeAction {
+            kind: self.state.challenge.kind,
+            value: BEGHOULED_CRATER_COST,
+        });
+    }
+
+    fn resolve_beghouled_twist(&mut self, events: &mut Vec<GameEvent>) {
+        let mut removed = Vec::new();
+        let mut rewards = Vec::new();
+        let mut score_lines = 0_u32;
+        for row in 0..BEGHOULED_ROWS {
+            for column in 0..BEGHOULED_COLUMNS {
+                let Some(seed) = self.twist_seed_at(row, column) else {
+                    continue;
+                };
+                let horizontal = column == 0 || self.twist_seed_at(row, column - 1) != Some(seed);
+                let horizontal_len = (column..BEGHOULED_COLUMNS)
+                    .take_while(|&c| self.twist_seed_at(row, c) == Some(seed))
+                    .count();
+                let vertical = row == 0 || self.twist_seed_at(row - 1, column) != Some(seed);
+                let vertical_len = (row..BEGHOULED_ROWS)
+                    .take_while(|&r| self.twist_seed_at(r, column) == Some(seed))
+                    .count();
+                if horizontal && horizontal_len >= 3 {
+                    score_lines += 1;
+                    rewards.push((row, column, horizontal_len));
+                    for offset in 0..horizontal_len {
+                        if !removed.contains(&(row, column + offset as u8)) {
+                            removed.push((row, column + offset as u8));
+                        }
+                    }
+                }
+                if vertical && vertical_len >= 3 {
+                    score_lines += 1;
+                    rewards.push((row, column, vertical_len));
+                    for offset in 0..vertical_len {
+                        if !removed.contains(&(row + offset as u8, column)) {
+                            removed.push((row + offset as u8, column));
+                        }
+                    }
+                }
+            }
+        }
+        if removed.is_empty() {
+            self.state.challenge.twist_state = BeghouledTwistState::Normal;
+            return;
+        }
+        for (row, column) in removed {
+            if let Some(index) = self
+                .state
+                .board
+                .plants
+                .iter()
+                .position(|plant| plant.row == row && plant.column == column)
+            {
+                let entity = self.state.board.plants.remove(index).id;
+                events.push(GameEvent::PlantDied { entity });
+            }
+        }
         self.state.challenge.score = self
             .state
             .challenge
             .score
-            .saturating_add(points)
+            .saturating_add(score_lines)
             .min(self.state.challenge.target);
+        if self.state.challenge.score < self.state.challenge.target {
+            for (match_index, (row, column, length)) in rewards.into_iter().enumerate() {
+                let mut sun_count = u32::try_from(length.saturating_sub(2)).unwrap_or(u32::MAX);
+                sun_count =
+                    sun_count.saturating_add(u32::try_from(match_index).unwrap_or(u32::MAX));
+                if length >= 5 {
+                    sun_count = sun_count.saturating_add(2);
+                }
+                for offset in 0..sun_count.clamp(1, 5) {
+                    self.spawn_coin(
+                        CoinType::Sun,
+                        grid_x(column) + (i64::from(offset) * 20 - 10) * POSITION_SCALE,
+                        grid_y(row),
+                        events,
+                    );
+                }
+            }
+        }
+        self.refill_beghouled_twist();
+        self.state.challenge.twist_state = BeghouledTwistState::Falling;
+        self.state.challenge.twist_counter = BEGHOULED_MOVE_TICKS;
         events.push(GameEvent::ChallengeAction {
-            kind: ChallengeKind::Beghouled,
-            value: points,
+            kind: self.state.challenge.kind,
+            value: score_lines,
         });
+    }
+
+    fn finish_beghouled_twist_fall(&mut self, events: &mut Vec<GameEvent>) {
+        self.state.challenge.countdown = BEGHOULED_CHALLENGE_COUNTDOWN;
+        if self.twist_has_match() {
+            self.resolve_beghouled_twist(events);
+        } else {
+            let has_move = if self.state.challenge.kind == ChallengeKind::Beghouled {
+                self.has_standard_move()
+            } else {
+                self.has_twist_move()
+            };
+            if has_move {
+                self.state.challenge.twist_state = BeghouledTwistState::Normal;
+            } else {
+                self.state.challenge.twist_state = BeghouledTwistState::NoMoves;
+                self.state.challenge.twist_counter = BEGHOULED_NO_MOVES_TICKS;
+            }
+        }
+    }
+
+    fn shuffle_beghouled_twist(&mut self) {
+        // ponytail: 100 bounded random fills cover the pathological no-move shuffle case.
+        for _ in 0..100 {
+            self.state
+                .board
+                .plants
+                .retain(|plant| plant.column >= BEGHOULED_COLUMNS);
+            self.refill_beghouled_twist();
+            let has_move = if self.state.challenge.kind == ChallengeKind::Beghouled {
+                self.has_standard_move()
+            } else {
+                self.has_twist_move()
+            };
+            if has_move {
+                break;
+            }
+        }
+        self.state.challenge.twist_state = BeghouledTwistState::Falling;
+        self.state.challenge.twist_counter = BEGHOULED_MOVE_TICKS;
+        self.state.challenge.countdown = BEGHOULED_CHALLENGE_COUNTDOWN;
+    }
+
+    fn beghouled_cell_has_match(&self, row: u8, column: u8) -> bool {
+        let Some(seed) = self.twist_seed_at(row, column) else {
+            return false;
+        };
+        let mut horizontal = 1;
+        let mut left = column;
+        while left > 0 && self.twist_seed_at(row, left - 1) == Some(seed) {
+            left -= 1;
+            horizontal += 1;
+        }
+        let mut right = column;
+        while right + 1 < BEGHOULED_COLUMNS && self.twist_seed_at(row, right + 1) == Some(seed) {
+            right += 1;
+            horizontal += 1;
+        }
+        let mut vertical = 1;
+        let mut top = row;
+        while top > 0 && self.twist_seed_at(top - 1, column) == Some(seed) {
+            top -= 1;
+            vertical += 1;
+        }
+        let mut bottom = row;
+        while bottom + 1 < BEGHOULED_ROWS && self.twist_seed_at(bottom + 1, column) == Some(seed) {
+            bottom += 1;
+            vertical += 1;
+        }
+        horizontal >= 3 || vertical >= 3
+    }
+
+    fn place_beghouled_refill_seed(&mut self, row: u8, column: u8) {
+        let start = self.rng.range(BEGHOULED_SEED_TYPES.len() as u32) as usize;
+        for offset in 0..BEGHOULED_SEED_TYPES.len() {
+            let seed = BEGHOULED_SEED_TYPES[(start + offset) % BEGHOULED_SEED_TYPES.len()];
+            self.place_beghouled_plant(seed, row, column);
+            if !self.beghouled_cell_has_match(row, column) {
+                return;
+            }
+            self.state.board.plants.pop();
+        }
+        let seed = BEGHOULED_SEED_TYPES[start];
+        self.place_beghouled_plant(seed, row, column);
+    }
+
+    fn refill_beghouled_twist(&mut self) {
+        let old_plants = std::mem::take(&mut self.state.board.plants);
+        let mut columns = (0..BEGHOULED_COLUMNS)
+            .map(|_| Vec::new())
+            .collect::<Vec<Vec<PlantState>>>();
+        let mut other_plants = Vec::new();
+        for plant in old_plants {
+            if plant.column < BEGHOULED_COLUMNS {
+                columns[usize::from(plant.column)].push(plant);
+            } else {
+                other_plants.push(plant);
+            }
+        }
+        self.state.board.plants = other_plants;
+        for column in 0..BEGHOULED_COLUMNS {
+            let column_plants = &mut columns[usize::from(column)];
+            column_plants.sort_by_key(|plant| plant.row);
+            let destinations = (0..BEGHOULED_ROWS)
+                .rev()
+                .filter(|row| {
+                    !self
+                        .state
+                        .board
+                        .craters
+                        .iter()
+                        .any(|crater| crater.row == *row && crater.column == column)
+                })
+                .collect::<Vec<_>>();
+            for row in destinations.iter().copied() {
+                if let Some(mut plant) = column_plants.pop() {
+                    plant.row = row;
+                    plant.column = column;
+                    self.state.board.plants.push(plant);
+                } else {
+                    self.place_beghouled_refill_seed(row, column);
+                }
+            }
+        }
+    }
+
+    fn mark_twist_eaten_plants(
+        &mut self,
+        before: &[(EntityId, u8, u8)],
+        events: &mut Vec<GameEvent>,
+    ) {
+        if !matches!(
+            self.state.challenge.kind,
+            ChallengeKind::Beghouled | ChallengeKind::BeghouledTwist
+        ) {
+            return;
+        }
+        let missing = before
+            .iter()
+            .filter(|(id, _, _)| !self.state.board.plants.iter().any(|plant| plant.id == *id));
+        for (_, row, column) in missing {
+            if !self
+                .state
+                .board
+                .craters
+                .iter()
+                .any(|crater| crater.row == *row && crater.column == *column)
+            {
+                self.state.board.craters.push(CraterState {
+                    row: *row,
+                    column: *column,
+                    remaining: u32::MAX,
+                    persistent: true,
+                });
+                events.push(GameEvent::CraterCreated {
+                    row: *row,
+                    column: *column,
+                    duration: u32::MAX,
+                });
+            }
+        }
+    }
+
+    fn has_twist_move(&mut self) -> bool {
+        (0..BEGHOULED_ROWS - 1).any(|row| {
+            (0..BEGHOULED_COLUMNS - 1).any(|column| self.twist_move_causes_match(column, row))
+        })
+    }
+
+    fn has_standard_move(&mut self) -> bool {
+        (0..BEGHOULED_ROWS).any(|row| {
+            (0..BEGHOULED_COLUMNS).any(|column| {
+                (column + 1 < BEGHOULED_COLUMNS
+                    && self.swap_move_causes_match(column, row, column + 1, row))
+                    || (row + 1 < BEGHOULED_ROWS
+                        && self.swap_move_causes_match(column, row, column, row + 1))
+            })
+        })
     }
 
     fn challenge_feed(&mut self, x: u16, y: u16, events: &mut Vec<GameEvent>) {
         if self.state.challenge.kind != ChallengeKind::Zombiquarium
             || !(80..=720).contains(&x)
             || !(90..=430).contains(&y)
-            || self.state.sun < 5
+            || self.state.sun < ZOMBIQUARIUM_BRAIN_COST
+            || self
+                .state
+                .board
+                .brains
+                .iter()
+                .filter(|brain| !brain.squished && brain.position_x != 0)
+                .count()
+                >= ZOMBIQUARIUM_MAX_BRAINS
         {
             events.push(GameEvent::InputRejected {
                 action: InputAction::ChallengeFeed { x, y },
@@ -5725,13 +7305,18 @@ impl Game {
             });
             return;
         }
-        self.state.sun -= 5;
-        let row = self.rng.range(u32::from(self.state.board.rows)) as u8;
-        let position = self.rng.fixed_range(80, 650) * POSITION_SCALE;
-        self.spawn_normal_zombie(row, 0, Some(position), events);
+        self.state.sun -= ZOMBIQUARIUM_BRAIN_COST;
+        self.state.board.brains.push(BrainState {
+            row: 0,
+            position_x: i64::from(x) * POSITION_SCALE,
+            position_y: i64::from(y) * POSITION_SCALE,
+            age: 0,
+            remaining: 0,
+            squished: false,
+        });
         events.push(GameEvent::ChallengeAction {
             kind: ChallengeKind::Zombiquarium,
-            value: 5,
+            value: ZOMBIQUARIUM_BRAIN_COST,
         });
     }
 
@@ -5789,6 +7374,11 @@ impl Game {
             self.challenge_spin(events);
             return;
         }
+        let packet_type = packet.plant_type;
+        if self.state.challenge.kind == ChallengeKind::Zombiquarium {
+            self.challenge_zombiquarium_packet(packet_type, events);
+            return;
+        }
         if packet.refresh_remaining != 0 {
             events.push(GameEvent::InputRejected {
                 action,
@@ -5809,6 +7399,67 @@ impl Game {
         events.push(GameEvent::SeedSelected {
             slot,
             plant_type: packet.plant_type,
+        });
+    }
+
+    fn challenge_zombiquarium_packet(
+        &mut self,
+        packet_type: PlantType,
+        events: &mut Vec<GameEvent>,
+    ) {
+        let cost = match packet_type {
+            PlantType::ZombiquariumSnorkel => ZOMBIQUARIUM_SNORKEL_COST,
+            PlantType::ZombiquariumTrophy => ZOMBIQUARIUM_TROPHY_COST,
+            _ => {
+                events.push(GameEvent::InputRejected {
+                    action: InputAction::SelectSeed {
+                        slot: packet_type.slot(),
+                    },
+                    reason: InputRejectReason::InvalidSlot,
+                });
+                return;
+            }
+        };
+        if self.state.sun < cost {
+            events.push(GameEvent::InputRejected {
+                action: InputAction::SelectSeed {
+                    slot: packet_type.slot(),
+                },
+                reason: InputRejectReason::NotEnoughSun,
+            });
+            return;
+        }
+        if packet_type == PlantType::ZombiquariumSnorkel
+            && self.state.board.zombies.len() > ZOMBIQUARIUM_MAX_ZOMBIES
+        {
+            events.push(GameEvent::InputRejected {
+                action: InputAction::SelectSeed {
+                    slot: packet_type.slot(),
+                },
+                reason: InputRejectReason::ChallengeUnavailable,
+            });
+            return;
+        }
+
+        self.state.sun -= cost;
+        match packet_type {
+            PlantType::ZombiquariumSnorkel => {
+                self.spawn_zombiquarium_snorkel(events);
+            }
+            PlantType::ZombiquariumTrophy => {
+                self.spawn_pickup(CoinType::Trophy, grid_x(2), grid_y(0), events);
+                let trophy = self.state.board.coins.last().map(|coin| coin.id);
+                if let Some(trophy) = trophy {
+                    self.collect_coin(trophy, events);
+                }
+                self.state.scene = SceneKind::Complete;
+                events.push(GameEvent::GameWon);
+            }
+            _ => unreachable!(),
+        }
+        events.push(GameEvent::ChallengeAction {
+            kind: ChallengeKind::Zombiquarium,
+            value: cost,
         });
     }
 
@@ -5957,6 +7608,14 @@ impl Game {
 
     fn plant_cob_cannon(&mut self, row: u8, column: u8, events: &mut Vec<GameEvent>) {
         let action = InputAction::Plant { row, column };
+        if self.state.challenge.kind == ChallengeKind::SeeingStars && seeing_stars_cell(row, column)
+        {
+            events.push(GameEvent::InputRejected {
+                action,
+                reason: InputRejectReason::NotOnArt,
+            });
+            return;
+        }
         let Some(right_column) = column.checked_add(1) else {
             events.push(GameEvent::InputRejected {
                 action,
@@ -6148,18 +7807,12 @@ impl Game {
             });
             return;
         }
-        let source_row = self.state.board.plants[index].row;
-        let source_column = self.state.board.plants[index].column;
         self.state.board.plants[index].special_armed = false;
+        // Source CobCannonFire (Plant.cpp:4502-4516) stores the target and the
+        // 206-tick firing counter; the Cob projectile is created only at the
+        // UpdateShooting launch boundary.
         self.state.board.plants[index].special_counter = COB_RELOAD_TICKS;
-        self.fire_cob_projectile(
-            entity,
-            source_row,
-            source_column,
-            target_row,
-            target_column,
-            events,
-        );
+        self.state.board.plants[index].cob_target = Some((target_row, target_column));
         events.push(GameEvent::CobCannonFired {
             entity,
             target_row,
@@ -6181,6 +7834,16 @@ impl Game {
             events.push(GameEvent::InputRejected {
                 action,
                 reason: InputRejectReason::OutsideBoard,
+            });
+            return;
+        }
+        if self.state.challenge.kind == ChallengeKind::SeeingStars
+            && seeing_stars_cell(row, column)
+            && !matches!(plant_type.slot(), 16 | 29 | 30)
+        {
+            events.push(GameEvent::InputRejected {
+                action,
+                reason: InputRejectReason::NotOnArt,
             });
             return;
         }
@@ -6237,19 +7900,20 @@ impl Game {
                 && plant.column == column
                 && !matches!(plant.plant_type.slot(), 16 | 33)
         });
-        let coffee_target = self
-            .state
-            .board
-            .plants
-            .iter()
-            .rfind(|plant| {
-                plant.row == row
-                    && plant.column == column
-                    && !matches!(plant.plant_type.slot(), 16 | 33)
-            })
-            .is_some_and(|plant| {
-                plant.plant_type.is_nocturnal() && plant.asleep && plant.wake_up_counter == 0
-            });
+        // Source Board::GetTopPlantAt resolves Coffee through the normal plant
+        // layer only: support (Lily Pad/Flower Pot), Pumpkin, and another
+        // flying Coffee are separate slots and never reject a valid overlay.
+        let coffee_target = self.state.board.plants.iter().any(|plant| {
+            plant.row == row
+                && plant.column == column
+                && !matches!(plant.plant_type.slot(), 16 | 30 | 33 | 35)
+                && plant.plant_type.is_nocturnal()
+                && plant.asleep
+                && plant.wake_up_counter == 0
+        });
+        let coffee_already_present = self.state.board.plants.iter().any(|plant| {
+            plant.row == row && plant.column == column && plant.plant_type.slot() == 35
+        });
         let pumpkin_already_present = self.state.board.plants.iter().any(|plant| {
             plant.row == row && plant.column == column && plant.plant_type.slot() == 30
         });
@@ -6266,7 +7930,7 @@ impl Game {
             });
             return;
         }
-        if effective_type.slot() == 35 && !coffee_target {
+        if effective_type.slot() == 35 && (coffee_already_present || !coffee_target) {
             events.push(GameEvent::InputRejected {
                 action,
                 reason: InputRejectReason::Occupied,
@@ -6407,6 +8071,7 @@ impl Game {
             special_armed,
             special_target: None,
             squash_target_x: None,
+            cob_target: None,
             blink_counter,
             asleep,
             wake_up_counter: 0,
@@ -6482,6 +8147,13 @@ impl Game {
 
     fn shovel(&mut self, row: u8, column: u8, events: &mut Vec<GameEvent>) {
         let action = InputAction::Shovel { row, column };
+        if self.state.challenge.kind == ChallengeKind::BeghouledTwist {
+            events.push(GameEvent::InputRejected {
+                action,
+                reason: InputRejectReason::ChallengeUnavailable,
+            });
+            return;
+        }
         let Some(index) = self
             .state
             .board
@@ -6778,6 +8450,9 @@ impl Game {
                 if balloon_is_airborne(zombie) && (!balloon_is_flying(zombie) || !targets_fliers) {
                     return false;
                 }
+                if self.portal_targeting_enabled(plant_type) {
+                    return self.can_target_zombie_with_portals(row, column, zombie);
+                }
                 let row_distance = zombie.row.abs_diff(row);
                 let target_row = if zombie.zombie_type == ZombieType::Boss {
                     row
@@ -6915,11 +8590,20 @@ impl Game {
             let mut squash_hum_started = false;
             let mut firing_projectile = None;
             let mut fired_directions = 0;
+            let mut cob_launch = None;
             {
                 let plant = &mut self.state.board.plants[index];
                 if plant_type.is_cob_cannon() {
                     plant.special_counter = plant.special_counter.saturating_sub(1);
-                    if plant.special_counter == 0 {
+                    if plant.special_counter == 1
+                        && let Some((target_row, target_column)) = plant.cob_target
+                    {
+                        // Source UpdateShooting creates the Cob projectile only
+                        // at the launch boundary (Plant.cpp:3234-3340).
+                        plant.cob_target = None;
+                        cob_launch =
+                            Some((plant.id, plant.row, plant.column, target_row, target_column));
+                    } else if plant.special_counter == 0 {
                         plant.special_armed = true;
                     }
                 } else if plant_type.is_gold_magnet() {
@@ -7136,6 +8820,17 @@ impl Game {
                     variant: self.rng.range(3) as u8,
                 });
             }
+            if let Some((source, source_row, source_column, target_row, target_column)) = cob_launch
+            {
+                self.fire_cob_projectile(
+                    source,
+                    source_row,
+                    source_column,
+                    target_row,
+                    target_column,
+                    events,
+                );
+            }
             if fire {
                 self.fire_projectiles(
                     id,
@@ -7293,16 +8988,16 @@ impl Game {
                 .board
                 .plants
                 .iter()
-                .rfind(|plant| {
+                .find(|plant| {
                     plant.id != plant_id
                         && plant.row == row
                         && plant.column == column
-                        && !matches!(plant.plant_type.slot(), 16 | 33)
+                        && !matches!(plant.plant_type.slot(), 16 | 30 | 33 | 35)
+                        && plant.plant_type.is_nocturnal()
+                        && plant.asleep
+                        && plant.wake_up_counter == 0
                 })
-                .and_then(|plant| {
-                    (plant.plant_type.is_nocturnal() && plant.asleep && plant.wake_up_counter == 0)
-                        .then_some(plant.id)
-                });
+                .map(|plant| plant.id);
             if let Some(target_id) = target_id
                 && let Some(target) = self
                     .state
@@ -7407,6 +9102,7 @@ impl Game {
                 row,
                 column,
                 remaining: DOOM_CRATER_TICKS,
+                persistent: false,
             });
             events.push(GameEvent::CraterCreated {
                 row,
@@ -7434,9 +9130,6 @@ impl Game {
                 .board
                 .zombies
                 .iter()
-                .filter(|zombie| {
-                    plant_damage_can_hit_zombie(zombie) && !zombie_rejects_ground_damage(zombie)
-                })
                 .map(|zombie| zombie.id)
                 .collect::<Vec<_>>();
 
@@ -7451,24 +9144,47 @@ impl Game {
                     continue;
                 };
 
-                let (had_debuff, can_freeze) = {
-                    let zombie = &mut self.state.board.zombies[zombie_index];
-                    let had_debuff = zombie.frozen_counter != 0 || zombie.chilled_counter != 0;
-                    zombie.chilled_counter = zombie.chilled_counter.max(ICE_SHROOM_CHILL_TICKS);
-                    events.push(GameEvent::ZombieChilled {
-                        entity: zombie_id,
-                        duration: ICE_SHROOM_CHILL_TICKS,
-                    });
+                // Source HitIceTrap: fully excluded states get no chill, no
+                // freeze, and no Ice-shroom damage.
+                if !zombie_can_be_chilled(&self.state.board.zombies[zombie_index]) {
+                    continue;
+                }
 
-                    // Keep the current freeze eligibility explicit.
-                    (had_debuff, matches!(zombie.zombie_type, ZombieType::Normal))
+                // Read the pre-chill debuff state and freeze eligibility before
+                // applying the chill.
+                let (cold, can_freeze) = {
+                    let zombie = &self.state.board.zombies[zombie_index];
+                    (
+                        zombie.frozen_counter != 0 || zombie.chilled_counter != 0,
+                        zombie_can_be_frozen(zombie),
+                    )
                 };
-                if can_freeze {
-                    let duration = if had_debuff {
-                        ICE_SHROOM_REFRESH_FREEZE_TICKS
+                let duration = if can_freeze {
+                    if self.state.board.zombies[zombie_index].in_pool {
+                        ICE_SHROOM_POOL_FREEZE_TICKS
+                    } else if cold {
+                        self.rng
+                            .range_inclusive(ICE_SHROOM_COLD_FREEZE_MIN, ICE_SHROOM_COLD_FREEZE_MAX)
                     } else {
-                        ICE_SHROOM_INITIAL_FREEZE_TICKS
-                    };
+                        self.rng.range_inclusive(
+                            ICE_SHROOM_FRESH_FREEZE_MIN,
+                            ICE_SHROOM_FRESH_FREEZE_MAX,
+                        )
+                    }
+                } else {
+                    0
+                };
+
+                self.state.board.zombies[zombie_index].chilled_counter = self.state.board.zombies
+                    [zombie_index]
+                    .chilled_counter
+                    .max(ICE_SHROOM_CHILL_TICKS);
+                events.push(GameEvent::ZombieChilled {
+                    entity: zombie_id,
+                    duration: ICE_SHROOM_CHILL_TICKS,
+                });
+
+                if can_freeze {
                     let frozen_counter = self.state.board.zombies[zombie_index].frozen_counter;
                     self.state.board.zombies[zombie_index].frozen_counter =
                         frozen_counter.max(duration);
@@ -7762,6 +9478,12 @@ impl Game {
     }
 
     fn eat_brain(&mut self, zombie_index: usize, row: u8, events: &mut Vec<GameEvent>) -> bool {
+        let chew = self
+            .state
+            .board
+            .zombies
+            .get(zombie_index)
+            .map(|zombie| (zombie.id, zombie.variant));
         let Some(brain_index) = self
             .state
             .board
@@ -7771,6 +9493,14 @@ impl Game {
         else {
             return false;
         };
+        if let Some((entity, variant)) = chew {
+            events.push(GameEvent::ZombieChew {
+                entity,
+                target: None,
+                soft: false,
+                variant,
+            });
+        }
         let remaining = self.state.board.brains[brain_index]
             .remaining
             .saturating_sub(1);
@@ -7809,7 +9539,243 @@ impl Game {
         true
     }
 
+    fn update_zombiquarium_brains(&mut self) {
+        for brain in &mut self.state.board.brains {
+            if brain.position_x != 0 && !brain.squished {
+                brain.age = brain.age.saturating_add(1);
+                brain.position_y += 150_000;
+                if brain.position_y >= 515 * POSITION_SCALE {
+                    brain.squished = true;
+                }
+            }
+        }
+    }
+
+    fn update_zombiquarium_zombie(&mut self, zombie_index: usize, events: &mut Vec<GameEvent>) {
+        let (entity, mut health, position_x, position_y, age, phase, phase_counter) = {
+            let zombie = &mut self.state.board.zombies[zombie_index];
+            zombie.age = zombie.age.saturating_add(1);
+            (
+                zombie.id,
+                zombie.health,
+                zombie.position_x,
+                zombie.position_y,
+                zombie.age,
+                zombie.aquarium_phase,
+                zombie.aquarium_phase_counter,
+            )
+        };
+
+        if age % ZOMBIQUARIUM_DAMAGE_TICKS == 0 {
+            let health_remaining = self.state.board.zombies[zombie_index]
+                .health
+                .saturating_sub(ZOMBIQUARIUM_DAMAGE);
+            self.state.board.zombies[zombie_index].health = health_remaining;
+            health = health_remaining;
+            events.push(GameEvent::ZombieDamaged {
+                entity,
+                damage: ZOMBIQUARIUM_DAMAGE,
+                health_remaining,
+                attacker: None,
+            });
+            if health_remaining <= 0 {
+                self.emit_zombie_died(entity, events);
+                self.state.board.zombies[zombie_index].departed = true;
+                if self
+                    .state
+                    .board
+                    .zombies
+                    .iter()
+                    .all(|zombie| zombie.id == entity || zombie.departed || zombie.health <= 0)
+                {
+                    self.state.scene = SceneKind::GameOver;
+                    events.push(GameEvent::GameLost { zombie: entity });
+                }
+                return;
+            }
+        }
+
+        let mut spawn_sun = false;
+        {
+            let zombie = &mut self.state.board.zombies[zombie_index];
+            if zombie.aquarium_counter > 0 {
+                zombie.aquarium_counter -= 1;
+            } else {
+                zombie.aquarium_counter = self.rng.range_inclusive(1_000, 1_500);
+                spawn_sun = true;
+            }
+        }
+        if spawn_sun {
+            self.spawn_sun_value(
+                SunSource::Plant(entity),
+                NORMAL_SUN_VALUE,
+                position_x + 50 * POSITION_SCALE,
+                position_y + 40 * POSITION_SCALE,
+                events,
+            );
+        }
+
+        if phase == ZOMBIQUARIUM_BITE_PHASE {
+            let zombie = &mut self.state.board.zombies[zombie_index];
+            zombie.aquarium_phase_counter = phase_counter.saturating_sub(1);
+            if zombie.aquarium_phase_counter == 0 {
+                zombie.aquarium_phase = ZOMBIQUARIUM_DRIFT_PHASE;
+                zombie.aquarium_speed = ZOMBIQUARIUM_DRIFT_SPEED;
+            }
+            return;
+        }
+
+        let zombie_center_x = position_x + 50 * POSITION_SCALE;
+        let zombie_center_y = position_y + 40 * POSITION_SCALE;
+        let target = if health <= 150 {
+            self.state
+                .board
+                .brains
+                .iter()
+                .enumerate()
+                .filter(|(_, brain)| {
+                    brain.position_x != 0
+                        && !brain.squished
+                        && brain.age >= ZOMBIQUARIUM_BRAIN_ARM_TICKS
+                })
+                .map(|(index, brain)| {
+                    let dx = brain.position_x - zombie_center_x;
+                    let dy = brain.position_y - zombie_center_y;
+                    (index, brain.position_x, brain.position_y, dx * dx + dy * dy)
+                })
+                .min_by_key(|(_, _, _, distance)| *distance)
+        } else {
+            None
+        };
+
+        if let Some((brain_index, target_x, target_y, distance)) = target {
+            if distance <= (50 * POSITION_SCALE) * (50 * POSITION_SCALE) {
+                let brain_row = self.state.board.brains[brain_index].row;
+                self.state.board.brains[brain_index].squished = true;
+                let zombie = &mut self.state.board.zombies[zombie_index];
+                zombie.health = (zombie.health + ZOMBIQUARIUM_HEAL).min(zombie.max_health);
+                zombie.aquarium_phase = ZOMBIQUARIUM_BITE_PHASE;
+                zombie.aquarium_phase_counter = ZOMBIQUARIUM_BITE_TICKS;
+                zombie.aquarium_speed = 0;
+                zombie.aquarium_velocity_x = 0;
+                zombie.aquarium_velocity_y = 0;
+                let brains_remaining = self
+                    .state
+                    .board
+                    .brains
+                    .iter()
+                    .filter(|brain| brain.position_x != 0 && !brain.squished)
+                    .count()
+                    .try_into()
+                    .unwrap_or(u8::MAX);
+                events.push(GameEvent::BrainEaten {
+                    zombie: entity,
+                    row: brain_row,
+                    brains_remaining,
+                });
+                return;
+            }
+
+            let dx = target_x - zombie_center_x;
+            let dy = target_y - zombie_center_y;
+            let distance = dx.abs().max(dy.abs());
+            let speed = {
+                let zombie = &mut self.state.board.zombies[zombie_index];
+                zombie.aquarium_phase = ZOMBIQUARIUM_ACCEL_PHASE;
+                zombie.aquarium_speed = (zombie.aquarium_speed + ZOMBIQUARIUM_ACCELERATION)
+                    .min(ZOMBIQUARIUM_BRAIN_SPEED);
+                zombie.aquarium_speed
+            };
+            if distance > 0 {
+                let zombie = &mut self.state.board.zombies[zombie_index];
+                zombie.position_x += dx * speed / distance;
+                zombie.position_y += dy * speed / distance;
+            }
+            self.clamp_zombiquarium_position(zombie_index);
+            return;
+        }
+
+        let choose_direction = {
+            let zombie = &mut self.state.board.zombies[zombie_index];
+            if zombie.aquarium_phase_counter == 0 {
+                zombie.aquarium_phase_counter = 300 + self.rng.range(701);
+                zombie.aquarium_phase = if self.rng.range(2) == 0 {
+                    ZOMBIQUARIUM_ACCEL_PHASE
+                } else {
+                    ZOMBIQUARIUM_BACK_AND_FORTH_PHASE
+                };
+                true
+            } else {
+                false
+            }
+        };
+        if choose_direction {
+            let directions = [
+                (1_000, 0),
+                (-1_000, 0),
+                (0, 1_000),
+                (0, -1_000),
+                (1_000, 1_000),
+                (-1_000, 1_000),
+                (1_000, -1_000),
+                (-1_000, -1_000),
+            ];
+            let (velocity_x, velocity_y) = directions[self.rng.range(8) as usize];
+            let zombie = &mut self.state.board.zombies[zombie_index];
+            zombie.aquarium_velocity_x = velocity_x;
+            zombie.aquarium_velocity_y = velocity_y;
+        } else {
+            self.state.board.zombies[zombie_index].aquarium_phase_counter =
+                phase_counter.saturating_sub(1);
+        }
+
+        let (velocity_x, velocity_y, speed_cap) = {
+            let zombie = &mut self.state.board.zombies[zombie_index];
+            let speed_cap = match zombie.aquarium_phase {
+                ZOMBIQUARIUM_DRIFT_PHASE => ZOMBIQUARIUM_DRIFT_SPEED,
+                ZOMBIQUARIUM_BACK_AND_FORTH_PHASE => 300_000,
+                _ => ZOMBIQUARIUM_MAX_SPEED,
+            };
+            zombie.aquarium_speed =
+                (zombie.aquarium_speed + ZOMBIQUARIUM_ACCELERATION).min(speed_cap);
+            (
+                zombie.aquarium_velocity_x,
+                zombie.aquarium_velocity_y,
+                zombie.aquarium_speed,
+            )
+        };
+        let zombie = &mut self.state.board.zombies[zombie_index];
+        zombie.position_x += velocity_x * speed_cap / 1_000;
+        zombie.position_y += velocity_y * speed_cap / 1_000;
+        self.clamp_zombiquarium_position(zombie_index);
+    }
+
+    fn clamp_zombiquarium_position(&mut self, zombie_index: usize) {
+        let zombie = &mut self.state.board.zombies[zombie_index];
+        if zombie.position_x <= ZOMBIQUARIUM_MIN_X || zombie.position_x >= ZOMBIQUARIUM_MAX_X {
+            zombie.aquarium_velocity_x = -zombie.aquarium_velocity_x;
+            zombie.aquarium_phase_counter = zombie.aquarium_phase_counter.min(100);
+        }
+        if zombie.position_y <= ZOMBIQUARIUM_MIN_Y || zombie.position_y >= ZOMBIQUARIUM_MAX_Y {
+            zombie.aquarium_velocity_y = -zombie.aquarium_velocity_y;
+            zombie.aquarium_phase_counter = zombie.aquarium_phase_counter.min(100);
+        }
+        zombie.position_x = zombie
+            .position_x
+            .clamp(ZOMBIQUARIUM_MIN_X, ZOMBIQUARIUM_MAX_X);
+        zombie.position_y = zombie
+            .position_y
+            .clamp(ZOMBIQUARIUM_MIN_Y, ZOMBIQUARIUM_MAX_Y);
+    }
+
     fn emit_zombie_died(&mut self, entity: EntityId, events: &mut Vec<GameEvent>) {
+        let zombie_type = self
+            .state
+            .board
+            .zombies
+            .iter()
+            .find(|zombie| zombie.id == entity)
+            .map(|zombie| zombie.zombie_type);
         let loot_position = self
             .state
             .board
@@ -7833,6 +9799,12 @@ impl Game {
                     events,
                 );
             }
+        }
+        if let Some(zombie_type) = zombie_type {
+            events.push(GameEvent::ZombieDeathSound {
+                entity,
+                zombie_type,
+            });
         }
         events.push(GameEvent::ZombieDied { entity });
     }
@@ -7924,7 +9896,6 @@ impl Game {
                         zombie.position_x -= 70 * POSITION_SCALE;
                         zombie.dolphin_phase = DOLPHIN_RIDING_PHASE;
                         zombie.in_pool = true;
-                        zombie.speed = DOLPHIN_RIDE_SPEED;
                         suppress_attack = true;
                     }
                 }
@@ -8026,7 +9997,6 @@ impl Game {
                     if zombie.snorkel_counter == 0 {
                         zombie.snorkel_phase = SNORKEL_WALKING_IN_POOL_PHASE;
                         zombie.in_pool = true;
-                        zombie.speed = SNORKEL_POOL_SPEED;
                     }
                 }
                 SNORKEL_WALKING_IN_POOL_PHASE => {
@@ -8040,7 +10010,9 @@ impl Game {
                         } else {
                             -15 * POSITION_SCALE
                         };
-                        zombie.speed = 0;
+                        // Source StartWalkAnim -> PickRandomSpeed re-picks 0.66..0.68
+                        // and the zombie keeps walking while it rises out of the pool.
+                        zombie.speed = self.rng.fixed_range(660_000, 680_000);
                         zombie.eating = false;
                     } else if zombie.eating {
                         zombie.snorkel_phase = SNORKEL_UP_TO_EAT_PHASE;
@@ -8072,16 +10044,15 @@ impl Game {
                     zombie.snorkel_counter = zombie.snorkel_counter.saturating_sub(1);
                     if zombie.snorkel_counter == 0 {
                         zombie.snorkel_phase = SNORKEL_WALKING_IN_POOL_PHASE;
-                        zombie.speed = SNORKEL_POOL_SPEED;
+                        // Source PickRandomSpeed re-picks 0.66..0.68 for every Snorkel.
+                        zombie.speed = self.rng.fixed_range(660_000, 680_000);
                     }
                 }
                 SNORKEL_OUT_OF_POOL_PHASE => {
-                    zombie.speed = 0;
                     zombie.snorkel_counter = zombie.snorkel_counter.saturating_sub(1);
                     if zombie.snorkel_counter == 0 {
                         zombie.snorkel_phase = SNORKEL_WALKING_PHASE;
                         zombie.in_pool = false;
-                        zombie.speed = SNORKEL_ENTRY_SPEED;
                     }
                 }
                 _ => {}
@@ -9119,6 +11090,10 @@ impl Game {
     }
 
     fn update_zombies(&mut self, events: &mut Vec<GameEvent>) {
+        let zombiquarium = self.state.challenge.kind == ChallengeKind::Zombiquarium;
+        if zombiquarium {
+            self.update_zombiquarium_brains();
+        }
         let zombie_count = self.state.board.zombies.len() as u32;
         for zombie_index in 0..self.state.board.zombies.len() {
             if self.state.board.zombies[zombie_index].departed {
@@ -9127,6 +11102,10 @@ impl Game {
             if self.state.board.zombies[zombie_index].health <= 0 {
                 // Zombie_UpdateJack only detonates when the pop phase finishes;
                 // a Jack killed by damage never explodes.
+                continue;
+            }
+            if zombiquarium {
+                self.update_zombiquarium_zombie(zombie_index, events);
                 continue;
             }
             self.update_balloon_state(zombie_index);
@@ -9307,8 +11286,20 @@ impl Game {
                     variant: self.rng.range(2) as u8,
                 });
             }
-            let dolphin_suppress_attack = self.update_dolphin_state(zombie_index, events);
-            self.update_snorkel_state(zombie_index, events);
+            // Source UpdatePlaying decrements the ice/butter counter before
+            // dispatching phase actions, so a still-immobilized Dolphin or
+            // Snorkel must not advance entry, splash, eating, descent, or exit
+            // progress. The pre-decrement value decides: counters 0..=1 are
+            // running or on the exact thaw tick, counters above 1 are paused.
+            let immobilized = self.state.board.zombies[zombie_index].frozen_counter > 1;
+            let dolphin_suppress_attack = if immobilized {
+                false
+            } else {
+                self.update_dolphin_state(zombie_index, events)
+            };
+            if !immobilized {
+                self.update_snorkel_state(zombie_index, events);
+            }
             self.update_zamboni_state(zombie_index);
             let garlic_active = self.advance_garlic_state(zombie_index, events);
             if self.update_special_zombie_state(zombie_index, events) {
@@ -9429,10 +11420,20 @@ impl Game {
                 zombie.groan_counter -= 1;
                 zombie.frozen_counter = zombie.frozen_counter.saturating_sub(1);
                 zombie.chilled_counter = zombie.chilled_counter.saturating_sub(1);
+                // Source UpdateZombieRiseFromGrave advances only when the
+                // ice/butter counter has cleared; a frozen riser pauses.
+                if zombie.rise_counter > 0 && zombie.frozen_counter == 0 {
+                    zombie.rise_counter -= 1;
+                }
                 if zombie.zombie_type == ZombieType::PeaHead {
                     zombie.pea_head_counter = zombie.pea_head_counter.saturating_sub(1);
                 }
                 if zombie.groan_counter == 0 && self.rng.range(zombie_count) == 0 {
+                    events.push(GameEvent::ZombieGroaned {
+                        entity: zombie.id,
+                        zombie_type: zombie.zombie_type,
+                        variant: zombie.variant,
+                    });
                     zombie.groan_counter = (self.rng.range(1_000) + 500) as i32;
                 }
                 let frozen = zombie.frozen_counter != 0;
@@ -9454,6 +11455,7 @@ impl Game {
                     || (zombie.zombie_type == ZombieType::Digger
                         && (zombie.digger_underground || zombie.digger_counter > 0))
                     || snorkel_blocks_movement(zombie)
+                    || zombie.rise_counter > 0
                     || (zombie.zombie_type == ZombieType::Balloon
                         && zombie.balloon_phase == BALLOON_POPPING_PHASE)
                     || zombie.zombie_type == ZombieType::Bungee)
@@ -9612,6 +11614,13 @@ impl Game {
                             self.state.board.zombies[zombie_index].garlic_target = Some(plant_id);
                         } else {
                             let plant_type = self.state.board.plants[plant_index].plant_type;
+                            let soft = matches!(plant_type.slot(), 3 | 23 | 30);
+                            events.push(GameEvent::ZombieChew {
+                                entity,
+                                target: Some(plant_id),
+                                soft,
+                                variant: self.state.board.zombies[zombie_index].variant,
+                            });
                             self.state.board.plants[plant_index].health -= ZOMBIE_BITE_DAMAGE;
                             self.state.board.plants[plant_index].recently_eaten_counter =
                                 RECENTLY_EATEN_TICKS;
@@ -9752,24 +11761,17 @@ impl Game {
             // GridItem portals: a zombie reaching a portal cell teleports to
             // the next portal in the pair cycle.
             {
-                let cooldown = self.state.board.zombies[zombie_index].portal_cooldown;
-                if cooldown > 0 {
-                    self.state.board.zombies[zombie_index].portal_cooldown = cooldown - 1;
-                } else if self.state.board.portals.len() >= 2 {
-                    let hit = self.state.board.portals.iter().position(
-                        |(portal_row, portal_column, _)| {
-                            *portal_row == row
-                                && (position_x - grid_x(*portal_column)).abs()
-                                    <= 10 * POSITION_SCALE
-                        },
-                    );
-                    if let Some(index) = hit {
-                        let (target_row, target_column, _) =
-                            self.state.board.portals[(index + 1) % self.state.board.portals.len()];
+                let last_portal_column = self.state.board.zombies[zombie_index].last_portal_column;
+                if self.state.board.portals.len() >= 2
+                    && let Some(index) =
+                        self.portal_at(row, position_x, 10 * POSITION_SCALE, last_portal_column)
+                {
+                    let target = self.portal_target(index);
+                    if let Some((target_row, target_column)) = target {
                         let zombie = &mut self.state.board.zombies[zombie_index];
                         zombie.row = target_row;
                         zombie.position_x = grid_x(target_column);
-                        zombie.portal_cooldown = 100;
+                        zombie.last_portal_column = u32::from(target_column) + 1;
                         events.push(GameEvent::ZombieTeleported {
                             entity,
                             row: target_row,
@@ -10636,12 +12638,14 @@ impl Game {
 
     fn update_craters(&mut self) {
         for crater in &mut self.state.board.craters {
-            crater.remaining = crater.remaining.saturating_sub(1);
+            if !crater.persistent && crater.remaining != u32::MAX {
+                crater.remaining = crater.remaining.saturating_sub(1);
+            }
         }
         self.state
             .board
             .craters
-            .retain(|crater| crater.remaining != 0);
+            .retain(|crater| crater.persistent || crater.remaining != 0);
     }
 
     fn update_sun_spawning(&mut self, events: &mut Vec<GameEvent>) {
@@ -10741,9 +12745,10 @@ impl Game {
         }
         let adventure =
             self.state.mode == ModeKind::Adventure && (1..=50).contains(&self.state.level);
+        let column = self.state.challenge.kind == ChallengeKind::Column;
         // The huge-wave banner freezes the spawn clock for 750 ticks, then
         // the wave releases immediately.
-        if adventure && self.state.board.huge_wave_countdown > 0 {
+        if (adventure || column) && self.state.board.huge_wave_countdown > 0 {
             self.state.board.huge_wave_countdown -= 1;
             if self.state.board.huge_wave_countdown == 725 {
                 events.push(GameEvent::HugeWaveSound {
@@ -10764,10 +12769,12 @@ impl Game {
         {
             self.state.board.wave.countdown = 200;
         }
-        if adventure
-            && self.state.board.wave.countdown == 5
-            && adventure_is_flag_wave(self.state.level, false, self.state.board.wave.current)
-        {
+        let flag_wave = if adventure {
+            adventure_is_flag_wave(self.state.level, false, self.state.board.wave.current)
+        } else {
+            column && self.state.board.wave.current % 10 == 9
+        };
+        if (adventure || column) && self.state.board.wave.countdown == 5 && flag_wave {
             self.state.board.huge_wave_countdown = 750;
             return;
         }
@@ -10777,10 +12784,14 @@ impl Game {
 
         let wave = self.state.board.wave.current;
         events.push(GameEvent::WaveStarted { wave });
-        if adventure && adventure_is_flag_wave(self.state.level, false, wave) {
+        if (adventure || column) && flag_wave {
             events.push(GameEvent::FlagWaveSound { wave });
         }
-        let row = self.rng.range(u32::from(self.state.board.rows)) as u8;
+        let row = if column {
+            0
+        } else {
+            self.rng.range(u32::from(self.state.board.rows)) as u8
+        };
         match self.state.challenge.kind {
             ChallengeKind::BobsledBonanza => {
                 // Bobsleds only spawn on iced rows; the source wave list leads
@@ -10822,6 +12833,18 @@ impl Game {
                     self.spawn_tallnut_head_zombie(row, wave, None, events);
                 }
             },
+            ChallengeKind::Column => {
+                let plan = self
+                    .state
+                    .board
+                    .wave_plan
+                    .get(wave as usize)
+                    .cloned()
+                    .unwrap_or_default();
+                for zombie_type in plan {
+                    self.spawn_adventure_zombie(zombie_type, wave, events);
+                }
+            }
             _ => {
                 if self.state.mode == ModeKind::Adventure && (1..=50).contains(&self.state.level) {
                     if self.state.board.wave_plan.is_empty() {
@@ -10851,18 +12874,21 @@ impl Game {
         }
         self.state.board.wave.current += 1;
         self.state.board.wave.countdown_start = 0;
-        if self.state.mode == ModeKind::Adventure
-            && (1..=50).contains(&self.state.level)
-            && self.state.board.wave.current < self.state.board.wave.total
-        {
-            let countdown = ZOMBIE_NEXT_WAVE_COUNTDOWN + self.rng.range(ZOMBIE_NEXT_WAVE_RANGE);
+        if self.state.board.wave.current < self.state.board.wave.total && (adventure || column) {
+            let countdown = if column {
+                COLUMN_WAVE_COUNTDOWN
+            } else {
+                ZOMBIE_NEXT_WAVE_COUNTDOWN + self.rng.range(ZOMBIE_NEXT_WAVE_RANGE)
+            };
             self.state.board.wave.countdown = countdown;
             self.state.board.wave.countdown_start = countdown;
-            // Board::UpdateZombieSpawning: the next wave releases early once
-            // this wave's health falls to a random 50-65% of its start.
-            let start_health = self.current_wave_health();
-            let percent = 50 + self.rng.range(16) as i32;
-            self.state.board.wave_health_threshold = start_health * percent / 100;
+            if adventure {
+                // Board::UpdateZombieSpawning: the next wave releases early once
+                // this wave's health falls to a random 50-65% of its start.
+                let start_health = self.current_wave_health();
+                let percent = 50 + self.rng.range(16) as i32;
+                self.state.board.wave_health_threshold = start_health * percent / 100;
+            }
         }
         // The final wave schedules the scene-routed rise 210 ticks later:
         // gravestones on night boards, pool emerges, or the roof sky drop.
@@ -10904,7 +12930,25 @@ impl Game {
             _ => 270,
         };
         let position = grid_x(column) - 25 * POSITION_SCALE;
-        self._spawn_zombie_inner(zombie_type, health, row, wave, Some(position), events);
+        let zombie_id =
+            self._spawn_zombie_inner(zombie_type, health, row, wave, Some(position), events);
+        if let Some(zombie) = self
+            .state
+            .board
+            .zombies
+            .iter_mut()
+            .find(|candidate| candidate.id == zombie_id)
+        {
+            // Source RiseFromGrave (Zombie.cpp:8130-8160): a 150-tick rise on
+            // land, or a 50-tick rise from the pool with mInPool set. The
+            // zombie is off-ground and stationary until the rise completes.
+            if self.state.scene == SceneKind::Pool {
+                zombie.rise_counter = GRAVE_RISE_POOL_TICKS;
+                zombie.in_pool = true;
+            } else {
+                zombie.rise_counter = GRAVE_RISE_LAND_TICKS;
+            }
+        }
     }
 
     /// TotalZombiesHealthInWave for the most recently spawned wave: body plus
@@ -11382,6 +13426,7 @@ impl Game {
             target_row: Some(target_row),
             lob_height: 0,
             lob_velocity: -8,
+            last_portal_column: 0,
         });
         events.push(GameEvent::ProjectileFired {
             entity: id,
@@ -11512,6 +13557,7 @@ impl Game {
             lob_height: 0,
             lob_velocity: ((range_y * PULT_LOB_SCALE) / (120 * POSITION_SCALE) - 7 * PULT_LOB_SCALE)
                 as i32,
+            last_portal_column: 0,
         });
         events.push(GameEvent::ProjectileFired {
             entity: id,
@@ -11561,6 +13607,7 @@ impl Game {
             lob_velocity: (((target_y - origin_y) * PULT_LOB_SCALE)
                 / (CATAPULT_LOB_FLIGHT_UPDATES * POSITION_SCALE)
                 - 7 * PULT_LOB_SCALE) as i32,
+            last_portal_column: 0,
         });
         events.push(GameEvent::ProjectileFired {
             entity: id,
@@ -11790,6 +13837,7 @@ impl Game {
             target_row: None,
             lob_height: 0,
             lob_velocity: 0,
+            last_portal_column: 0,
         });
         events.push(GameEvent::ProjectileFired {
             entity: id,
@@ -11842,7 +13890,25 @@ impl Game {
         position_y: i64,
         events: &mut Vec<GameEvent>,
     ) {
-        self.spawn_pickup(coin_type, position_x, position_y, events);
+        self.spawn_coin_with_payload(coin_type, position_x, position_y, None, events);
+    }
+
+    fn spawn_coin_with_payload(
+        &mut self,
+        coin_type: CoinType,
+        position_x: i64,
+        position_y: i64,
+        usable_seed_type: Option<PlantType>,
+        events: &mut Vec<GameEvent>,
+    ) {
+        self.spawn_pickup_with_payload(
+            coin_type,
+            position_x,
+            position_y,
+            None,
+            usable_seed_type,
+            events,
+        );
         // COIN_MOTION_COIN (Coin.cpp:306): dropped coins pop up in the
         // -1.7..-3.4 band and fall back under the 0.15 gravity.
         let launch_y = self.rng.next();
@@ -12782,6 +14848,25 @@ impl Game {
     }
 
     fn pick_spawn_row(&mut self, zombie_type: ZombieType, wave: u32) -> u8 {
+        if self.state.challenge.kind == ChallengeKind::PortalCombat {
+            let rows = (0..self.state.board.rows)
+                .filter(|&row| self.row_can_have_zombie_type(row, zombie_type, wave))
+                .collect::<Vec<_>>();
+            let total_weight = rows
+                .iter()
+                .map(|row| self.portal_row_spawn_weight(*row))
+                .sum();
+            if total_weight != 0 {
+                let mut roll = self.rng.range(total_weight);
+                for row in rows {
+                    let weight = self.portal_row_spawn_weight(row);
+                    if roll < weight {
+                        return row;
+                    }
+                    roll -= weight;
+                }
+            }
+        }
         for _ in 0..16 {
             let row = self.rng.range(u32::from(self.state.board.rows)) as u8;
             if self.row_can_have_zombie_type(row, zombie_type, wave) {
@@ -12868,6 +14953,75 @@ impl Game {
             waves.push(wave);
         }
         waves
+    }
+
+    /// Board::PickZombieWaves for Column As You See 'Em: the normal,
+    /// Conehead, Buckethead, Football pool has a six-times point budget and
+    /// fixed ladder, Jack-in-the-Box, and Gargantuar inserts.
+    fn pick_column_waves(&mut self) -> Vec<Vec<ZombieType>> {
+        let mut waves = Vec::with_capacity(30);
+        for wave_index in 0..30 {
+            let mut wave = Vec::new();
+            let flag_wave = wave_index % 10 == 9;
+            let mut points = (wave_index / 3 + 1) as i32;
+            if flag_wave {
+                let plain = points.min(8);
+                points = (points as f32 * 2.5) as i32;
+                for _ in 0..plain {
+                    put_zombie_in_wave(&mut wave, &mut points, ZombieType::Normal);
+                }
+                put_zombie_in_wave(&mut wave, &mut points, ZombieType::Flag);
+            }
+            points *= 6;
+
+            match wave_index % 10 {
+                5 => {
+                    for _ in 0..10 {
+                        put_zombie_in_wave(&mut wave, &mut points, ZombieType::Ladder);
+                    }
+                }
+                8 => {
+                    for _ in 0..10 {
+                        put_zombie_in_wave(&mut wave, &mut points, ZombieType::Jackbox);
+                    }
+                }
+                _ => {}
+            }
+            let gargantuars = match wave_index {
+                19 => 3,
+                29 => 5,
+                _ => 0,
+            };
+            for _ in 0..gargantuars {
+                put_zombie_in_wave(&mut wave, &mut points, ZombieType::Gargantuar);
+            }
+            while points > 0 && wave.len() < 50 {
+                let zombie_type = self.pick_column_wave_type(wave_index, points);
+                put_zombie_in_wave(&mut wave, &mut points, zombie_type);
+            }
+            waves.push(wave);
+        }
+        waves
+    }
+
+    fn pick_column_wave_type(&mut self, wave_index: u32, points: i32) -> ZombieType {
+        let mut candidates = Vec::new();
+        let mut total = 0;
+        for zombie_type in COLUMN_PICK_ORDER {
+            let (value, _, first_allowed_wave, weight) = zombie_wave_stats(zombie_type);
+            if wave_index + 1 >= first_allowed_wave && points >= value as i32 {
+                candidates.push((zombie_type, weight));
+                total += weight;
+            }
+        }
+        let mut roll = self.rng.range(total) as i64;
+        for (zombie_type, weight) in candidates {
+            roll -= i64::from(weight);
+            if roll < 0 {
+                return zombie_type;
+            }
+        }
+        ZombieType::Normal
     }
 
     /// SpawnZombieWave: composed entries spawn on smooth-picked legal rows;
@@ -13089,9 +15243,11 @@ impl Game {
     ) -> EntityId {
         let id = self.state.board.allocate_entity();
         // ponytail: preserve the source RNG stream now; store the visual variant when rendering uses it.
-        if pick_variant {
-            let _variant = self.rng.range(5) == 0;
-        }
+        let variant = if pick_variant {
+            u8::from(self.rng.range(5) == 0)
+        } else {
+            0
+        };
         let position_x = if zombie_type == ZombieType::Bobsled {
             let _initial_position = self.rng.range(40);
             position_override.unwrap_or(880 * POSITION_SCALE)
@@ -13171,11 +15327,13 @@ impl Game {
             zombie_type,
             row,
             position_x,
+            position_y: 0,
             speed,
             health,
             max_health: health,
             age: 0,
             groan_counter,
+            variant,
             frozen_counter: 0,
             chilled_counter: 0,
             eating: false,
@@ -13255,6 +15413,7 @@ impl Game {
             blowing_away: false,
             departed: false,
             in_pool: false,
+            rise_counter: 0,
             armor_intact: matches!(
                 zombie_type,
                 ZombieType::Buckethead
@@ -13264,7 +15423,7 @@ impl Game {
                     | ZombieType::Newspaper
                     | ZombieType::Ladder
             ),
-            portal_cooldown: 0,
+            last_portal_column: 0,
             bungee_held: false,
             imp_thrown: false,
             imp_flight_ticks: 0,
@@ -13309,6 +15468,12 @@ impl Game {
             },
             special_phase: 0,
             special_target: None,
+            aquarium_velocity_x: 0,
+            aquarium_velocity_y: 0,
+            aquarium_speed: 0,
+            aquarium_counter: 0,
+            aquarium_phase: 0,
+            aquarium_phase_counter: 0,
         });
         events.push(GameEvent::ZombieSpawned {
             entity: id,
@@ -13316,6 +15481,12 @@ impl Game {
             row,
             wave,
         });
+        if matches!(zombie_type, ZombieType::Jackbox | ZombieType::Digger) {
+            events.push(GameEvent::ZombieSongStarted {
+                entity: id,
+                zombie_type,
+            });
+        }
         id
     }
 }
@@ -13332,6 +15503,16 @@ fn spikeweed_hits(zombie_x: i64, column: u8) -> bool {
 
 fn grid_x(column: u8) -> i64 {
     i64::from(column) * 80 * POSITION_SCALE + 40 * POSITION_SCALE
+}
+
+fn slot_machine_plant(symbol: SlotMachineSymbol) -> Option<PlantType> {
+    match symbol {
+        SlotMachineSymbol::Sunflower => Some(PlantType::Sunflower),
+        SlotMachineSymbol::Peashooter => Some(PlantType::Peashooter),
+        SlotMachineSymbol::SnowPea => Some(PlantType::Other(5)),
+        SlotMachineSymbol::Wallnut => Some(PlantType::Other(21)),
+        SlotMachineSymbol::Sun | SlotMachineSymbol::Diamond => None,
+    }
 }
 
 fn scene_row_y(scene: SceneKind, row: u8, position_x: i64) -> i64 {
@@ -13779,6 +15960,19 @@ fn projectile_can_hit_zombie(zombie: &ZombieState, projectile_type: ProjectileTy
     if !plant_damage_can_hit_zombie(zombie) || zombie_rejects_ground_damage(zombie) {
         return false;
     }
+    // The source EffectedByDamage treats Dolphin pool-entry and jump as
+    // off-ground windows: only weapons carrying DAMAGES_OFF_GROUND may hit,
+    // and among projectiles only CobCannon (GetDamageRangeFlags 127) carries
+    // it. Ordinary Pea/Butter ground shots pass through both phases.
+    if zombie.zombie_type == ZombieType::DolphinRider
+        && matches!(
+            zombie.dolphin_phase,
+            DOLPHIN_INTO_POOL_PHASE | DOLPHIN_IN_JUMP_PHASE
+        )
+        && projectile_type != ProjectileType::Cob
+    {
+        return false;
+    }
     if zombie.zombie_type == ZombieType::Bobsled && zombie.bobsled_sliding && !zombie.bobsled_leader
     {
         return false;
@@ -13788,22 +15982,22 @@ fn projectile_can_hit_zombie(zombie: &ZombieState, projectile_type: ProjectileTy
     {
         return false;
     }
-    if zombie.zombie_type == ZombieType::Snorkel
-        && matches!(
-            zombie.snorkel_phase,
-            SNORKEL_INTO_POOL_PHASE
-                | SNORKEL_UP_TO_EAT_PHASE
-                | SNORKEL_DOWN_FROM_EAT_PHASE
-                | SNORKEL_OUT_OF_POOL_PHASE
-        )
-    {
-        return false;
-    }
-    if zombie.zombie_type == ZombieType::Snorkel
-        && zombie.snorkel_phase == SNORKEL_WALKING_IN_POOL_PHASE
-        && !projectile_type.is_pult()
-    {
-        return false;
+    if zombie.zombie_type == ZombieType::Snorkel {
+        if zombie.snorkel_phase == SNORKEL_INTO_POOL_PHASE {
+            // Source EffectedByDamage: the pool-entry phase is an off-ground
+            // window, so only DAMAGES_OFF_GROUND weapons hit; among projectiles
+            // only CobCannon carries it (GetDamageRangeFlags 127).
+            if projectile_type != ProjectileType::Cob {
+                return false;
+            }
+        } else if zombie.in_pool && !zombie.eating {
+            // Submerged Snorkel: only DAMAGES_SUBMERGED weapons hit. The source
+            // pult family carries it (GetDamageRangeFlags 13); ordinary ground
+            // shots pass over while Cattail (11) also lacks the bit.
+            if !projectile_type.is_pult() {
+                return false;
+            }
+        }
     }
     // Only Cactus/Cattail spikes carry the flying damage-range flag; airborne
     // balloons and mid-flight thrown imps reject every other projectile.
@@ -13825,8 +16019,83 @@ fn plant_damage_can_hit_zombie(zombie: &ZombieState) -> bool {
             || (zombie.zombie_type == ZombieType::Bungee && zombie.special_phase > 0))
 }
 
+// Zombie::CanBeChilled (1.0.0.1051 Zombie.cpp:7983-8008): Zamboni, a sledded
+// Bobsled team, dead/dying, hidden/rising Digger, a rising Backup Dancer,
+// mind-controlled, and the Boss (no exposed-head phases are modeled yet) are
+// excluded from chill, freeze, and the Ice-shroom's 20 damage.
+fn zombie_can_be_chilled(zombie: &ZombieState) -> bool {
+    if zombie.zombie_type == ZombieType::Zamboni {
+        return false;
+    }
+    if zombie.zombie_type == ZombieType::Bobsled && zombie.bobsled_sliding {
+        return false;
+    }
+    if zombie.health <= 0 {
+        return false;
+    }
+    if zombie.zombie_type == ZombieType::Digger
+        && (zombie.digger_underground || zombie.digger_counter > 0)
+    {
+        return false;
+    }
+    if zombie.zombie_type == ZombieType::BackupDancer && zombie.dancer_phase == DANCER_RISE_PHASE {
+        return false;
+    }
+    if zombie.hypnotized || zombie.zombie_type == ZombieType::Boss {
+        return false;
+    }
+    true
+}
+
+// Zombie::CanBeFrozen (1.0.0.1051 Zombie.cpp:8010-8032): chill-only classes.
+// Frozen eligibility is rejected for vaulting Pole Vaulters, Dolphin entry and
+// jump, Snorkel entry, flying Balloons, thrown/landing Imps, SquashHead
+// rise/fall, bouncing Pogo zombies, and Bungee zombies outside their brief
+// bottom phase (which is not separately modeled).
+fn zombie_can_be_frozen(zombie: &ZombieState) -> bool {
+    if !zombie_can_be_chilled(zombie) {
+        return false;
+    }
+    if zombie.zombie_type == ZombieType::PoleVaulter
+        && zombie.special_phase == POLE_VAULT_IN_VAULT_PHASE
+    {
+        return false;
+    }
+    if zombie.zombie_type == ZombieType::DolphinRider
+        && matches!(
+            zombie.dolphin_phase,
+            DOLPHIN_INTO_POOL_PHASE | DOLPHIN_IN_JUMP_PHASE
+        )
+    {
+        return false;
+    }
+    if zombie.zombie_type == ZombieType::Snorkel && zombie.snorkel_phase == SNORKEL_INTO_POOL_PHASE
+    {
+        return false;
+    }
+    if balloon_is_flying(zombie) {
+        return false;
+    }
+    if zombie.zombie_type == ZombieType::Imp && (zombie.imp_thrown || zombie.imp_flight_ticks > 0) {
+        return false;
+    }
+    if zombie.zombie_type == ZombieType::SquashHead && zombie.special_phase != 0 {
+        return false;
+    }
+    if zombie.zombie_type == ZombieType::Pogo && (zombie.pogo_counter > 0 || zombie.pogo_phase != 0)
+    {
+        return false;
+    }
+    if zombie.zombie_type == ZombieType::Bungee {
+        return false;
+    }
+    true
+}
+
 fn zombie_rejects_ground_damage(zombie: &ZombieState) -> bool {
-    (zombie.zombie_type == ZombieType::BackupDancer && zombie.dancer_phase == DANCER_RISE_PHASE)
+    zombie.rise_counter > 0
+        || (zombie.zombie_type == ZombieType::BackupDancer
+            && zombie.dancer_phase == DANCER_RISE_PHASE)
         || (zombie.zombie_type == ZombieType::Digger
             && (zombie.digger_underground || zombie.digger_counter > 0))
 }
@@ -13835,10 +16104,7 @@ fn snorkel_blocks_movement(zombie: &ZombieState) -> bool {
     zombie.zombie_type == ZombieType::Snorkel
         && matches!(
             zombie.snorkel_phase,
-            SNORKEL_UP_TO_EAT_PHASE
-                | SNORKEL_EATING_IN_POOL_PHASE
-                | SNORKEL_DOWN_FROM_EAT_PHASE
-                | SNORKEL_OUT_OF_POOL_PHASE
+            SNORKEL_UP_TO_EAT_PHASE | SNORKEL_EATING_IN_POOL_PHASE | SNORKEL_DOWN_FROM_EAT_PHASE
         )
 }
 
@@ -13917,6 +16183,7 @@ mod tests {
             special_armed: false,
             special_target: None,
             squash_target_x: None,
+            cob_target: None,
             blink_counter: 0,
             asleep: false,
             wake_up_counter: 0,
@@ -14060,6 +16327,87 @@ mod tests {
         )));
         assert_eq!(game.state.board.plants.len(), 1);
         assert_eq!(game.state.board.plants[0].id, sunflower);
+    }
+
+    #[test]
+    fn zombie_audio_boundaries_emit_song_groan_chew_and_death_events() {
+        let mut game = Game::new(0, SceneKind::Day);
+        let mut setup = Vec::new();
+        let jack = game.spawn_jackbox_zombie(2, 0, Some(780 * POSITION_SCALE), &mut setup);
+        assert!(setup.iter().any(|event| matches!(
+            event,
+            GameEvent::ZombieSongStarted {
+                entity,
+                zombie_type: ZombieType::Jackbox,
+            } if *entity == jack
+        )));
+
+        let mut digger_setup = Vec::new();
+        let digger = game.spawn_digger_zombie(2, 0, Some(780 * POSITION_SCALE), &mut digger_setup);
+        assert!(digger_setup.iter().any(|event| matches!(
+            event,
+            GameEvent::ZombieSongStarted {
+                entity,
+                zombie_type: ZombieType::Digger,
+            } if *entity == digger
+        )));
+
+        let mut death_setup = Vec::new();
+        let gargantuar =
+            game.spawn_gargantuar_zombie(2, 0, Some(490 * POSITION_SCALE), &mut death_setup);
+        game.emit_zombie_died(gargantuar, &mut death_setup);
+        assert!(death_setup.iter().any(|event| matches!(
+            event,
+            GameEvent::ZombieDeathSound {
+                entity,
+                zombie_type: ZombieType::Gargantuar,
+            } if *entity == gargantuar
+        )));
+
+        let mut groan_game = Game::new(0, SceneKind::Day);
+        groan_game.rng = Mt19937::new(1);
+        let mut groan_setup = Vec::new();
+        let groaner =
+            groan_game.spawn_normal_zombie(2, 0, Some(780 * POSITION_SCALE), &mut groan_setup);
+        groan_game
+            .state
+            .board
+            .zombies
+            .iter_mut()
+            .for_each(|zombie| {
+                zombie.groan_counter = 1;
+                zombie.speed = 0;
+            });
+        let groan_events = groan_game.advance(InputFrame::default());
+        assert!(groan_events.iter().any(|event| matches!(
+            event,
+            GameEvent::ZombieGroaned {
+                entity,
+                ..
+            } if *entity == groaner
+        )));
+
+        let mut chew_game = Game::new(7, SceneKind::Day);
+        chew_game.state.sun = 500;
+        chew_game.advance(InputFrame {
+            actions: vec![
+                InputAction::SelectSeed { slot: 1 },
+                InputAction::Plant { row: 2, column: 2 },
+            ],
+        });
+        let mut chew_setup = Vec::new();
+        chew_game.spawn_normal_zombie(2, 0, Some(grid_x(2) + 30 * POSITION_SCALE), &mut chew_setup);
+        let chew_events = (0..5)
+            .flat_map(|_| chew_game.advance(InputFrame::default()))
+            .collect::<Vec<_>>();
+        assert!(chew_events.iter().any(|event| matches!(
+            event,
+            GameEvent::ZombieChew {
+                target: Some(_),
+                soft: false,
+                ..
+            }
+        )));
     }
 
     #[test]
@@ -15808,80 +18156,145 @@ mod tests {
     }
 
     #[test]
-    fn ice_shroom_freezes_every_normal_zombie_and_applies_target_damage() {
+    fn ice_shroom_applies_source_chill_freeze_and_damage_classes() {
+        let trigger = |game: &mut Game| {
+            game.state.sun = 200;
+            game.advance(InputFrame {
+                actions: vec![
+                    InputAction::SelectSeed { slot: 14 },
+                    InputAction::Plant { row: 2, column: 2 },
+                ],
+            });
+            game.state.board.plants[0].special_counter = 1;
+            game.advance(InputFrame::default())
+        };
+
+        // Fresh ordinary zombie: chill + 400..=600 freeze + 20 damage.
         let mut game = Game::new(7, SceneKind::Night);
-        game.state.sun = 200;
-        game.advance(InputFrame {
-            actions: vec![
-                InputAction::SelectSeed { slot: 14 },
-                InputAction::Plant { row: 2, column: 2 },
-            ],
-        });
-        game.state.board.plants[0].special_counter = 1;
-        let center = grid_x(2);
-        let mut setup_events = Vec::new();
-        let first = game.spawn_normal_zombie(0, 0, Some(center), &mut setup_events);
-        let second = game.spawn_normal_zombie(4, 0, Some(center), &mut setup_events);
-        game.state.board.zombies[1].chilled_counter = 1;
-
-        let events = game.advance(InputFrame::default());
-
-        assert_eq!(game.state.board.ice_counter, BOARD_ICE_TICKS - 1);
-        assert!(game.state.board.plants.is_empty());
+        let mut setup = Vec::new();
+        let fresh = game.spawn_normal_zombie(0, 0, Some(grid_x(2)), &mut setup);
+        let events = trigger(&mut game);
         assert!(events.iter().any(|event| matches!(
             event,
-            GameEvent::PlantSpecialTriggered {
-                plant_type: PlantType::Other(14),
-                ..
-            }
-        )));
-        assert_eq!(
-            events
-                .iter()
-                .filter(|event| matches!(
-                    event,
-                    GameEvent::ZombieChilled {
-                        duration: ICE_SHROOM_CHILL_TICKS,
-                        ..
-                    }
-                ))
-                .count(),
-            2
-        );
-        assert!(events.iter().any(|event| matches!(
-            event,
-            GameEvent::ZombieFrozen {
+            GameEvent::ZombieChilled {
                 entity,
-                duration: ICE_SHROOM_INITIAL_FREEZE_TICKS,
-            } if *entity == first
+                duration: ICE_SHROOM_CHILL_TICKS,
+            } if *entity == fresh
         )));
-        assert!(events.iter().any(|event| matches!(
-            event,
-            GameEvent::ZombieFrozen {
-                entity,
-                duration: ICE_SHROOM_REFRESH_FREEZE_TICKS,
-            } if *entity == second
-        )));
-        assert_eq!(
-            events
-                .iter()
-                .filter(|event| matches!(
-                    event,
-                    GameEvent::PlantSpecialHit {
-                        damage: ICE_SHROOM_DAMAGE,
-                        ..
-                    }
-                ))
-                .count(),
-            2
-        );
+        let fresh_frozen = events
+            .iter()
+            .find_map(|event| match event {
+                GameEvent::ZombieFrozen { entity, duration } if *entity == fresh => Some(*duration),
+                _ => None,
+            })
+            .expect("a fresh zombie must be frozen");
         assert!(
-            game.state
+            (ICE_SHROOM_FRESH_FREEZE_MIN..=ICE_SHROOM_FRESH_FREEZE_MAX).contains(&fresh_frozen)
+        );
+        assert!(events.iter().any(|event| matches!(
+            event,
+            GameEvent::PlantSpecialHit {
+                zombie,
+                damage: ICE_SHROOM_DAMAGE,
+                ..
+            } if *zombie == fresh
+        )));
+
+        // Already-cold zombie: chill + 300..=400 freeze + 20 damage.
+        let mut game = Game::new(7, SceneKind::Night);
+        let mut setup = Vec::new();
+        let cold = game.spawn_normal_zombie(0, 0, Some(grid_x(2)), &mut setup);
+        game.state.board.zombies[0].chilled_counter = 100;
+        let events = trigger(&mut game);
+        let cold_frozen = events
+            .iter()
+            .find_map(|event| match event {
+                GameEvent::ZombieFrozen { entity, duration } if *entity == cold => Some(*duration),
+                _ => None,
+            })
+            .expect("an already-cold zombie must be frozen");
+        assert!((ICE_SHROOM_COLD_FREEZE_MIN..=ICE_SHROOM_COLD_FREEZE_MAX).contains(&cold_frozen));
+
+        // In-pool zombie: chill + exactly 300 freeze + 20 damage.
+        let mut game = Game::new(7, SceneKind::Night);
+        let mut setup = Vec::new();
+        let pool_zombie = game.spawn_normal_zombie(0, 0, Some(grid_x(2)), &mut setup);
+        game.state.board.zombies[0].in_pool = true;
+        let events = trigger(&mut game);
+        assert!(events.iter().any(|event| matches!(
+            event,
+            GameEvent::ZombieFrozen {
+                entity,
+                duration: ICE_SHROOM_POOL_FREEZE_TICKS,
+            } if *entity == pool_zombie
+        )));
+        assert!(events.iter().any(|event| matches!(
+            event,
+            GameEvent::PlantSpecialHit {
+                zombie,
+                damage: ICE_SHROOM_DAMAGE,
+                ..
+            } if *zombie == pool_zombie
+        )));
+
+        // Chill-only class: a bouncing Pogo is chilled but not frozen or damaged.
+        let mut game = Game::new(7, SceneKind::Night);
+        let mut setup = Vec::new();
+        let pogo = game.spawn_pogo_zombie(0, 0, Some(grid_x(2)), &mut setup);
+        {
+            let zombie = game
+                .state
                 .board
                 .zombies
-                .iter()
-                .all(|zombie| zombie.health == 270 - ICE_SHROOM_DAMAGE)
-        );
+                .iter_mut()
+                .find(|candidate| candidate.id == pogo)
+                .unwrap();
+            zombie.pogo_counter = 10;
+            zombie.pogo_phase = 1;
+        }
+        let events = trigger(&mut game);
+        assert!(events.iter().any(|event| matches!(
+            event,
+            GameEvent::ZombieChilled { entity, .. } if *entity == pogo
+        )));
+        assert!(!events.iter().any(|event| matches!(
+            event,
+            GameEvent::ZombieFrozen { entity, .. } if *entity == pogo
+        )));
+        assert!(!events.iter().any(|event| matches!(
+            event,
+            GameEvent::PlantSpecialHit { zombie, .. } if *zombie == pogo
+        )));
+        let pogo_state = game
+            .state
+            .board
+            .zombies
+            .iter()
+            .find(|candidate| candidate.id == pogo)
+            .unwrap();
+        assert_eq!(pogo_state.health, 500);
+        assert_eq!(pogo_state.frozen_counter, 0);
+
+        // Excluded class: a Zamboni receives no chill, freeze, or damage.
+        let mut game = Game::new(7, SceneKind::Night);
+        let mut setup = Vec::new();
+        let zamboni = game.spawn_zamboni_zombie(0, 0, Some(grid_x(2)), &mut setup);
+        let zamboni_health = game.state.board.zombies[0].health;
+        let events = trigger(&mut game);
+        assert!(!events.iter().any(|event| matches!(
+            event,
+            GameEvent::ZombieChilled { entity, .. } if *entity == zamboni
+        )));
+        assert!(!events.iter().any(|event| matches!(
+            event,
+            GameEvent::ZombieFrozen { entity, .. } if *entity == zamboni
+        )));
+        assert!(!events.iter().any(|event| matches!(
+            event,
+            GameEvent::PlantSpecialHit { zombie, .. } if *zombie == zamboni
+        )));
+        assert_eq!(game.state.board.zombies[0].health, zamboni_health);
+        assert_eq!(game.state.board.zombies[0].frozen_counter, 0);
     }
 
     #[test]
@@ -18084,7 +20497,7 @@ mod tests {
             .unwrap();
         assert_eq!(dolphin_state.dolphin_phase, DOLPHIN_RIDING_PHASE);
         assert_eq!(dolphin_state.dolphin_counter, 0);
-        assert_eq!(dolphin_state.speed, DOLPHIN_RIDE_SPEED);
+        assert_eq!(dolphin_state.speed, DOLPHIN_WALK_SPEED);
         assert!(dolphin_state.in_pool);
 
         game.place_izombie_plant(PlantType::Sunflower, 2, 2);
@@ -18143,8 +20556,9 @@ mod tests {
                 .dolphin_counter,
             DOLPHIN_JUMP_TIME
         );
+        let mut settling_events = Vec::new();
         for _ in 0..10 {
-            game.advance(InputFrame::default());
+            settling_events.extend(game.advance(InputFrame::default()));
         }
         assert!(
             game.state
@@ -18291,6 +20705,116 @@ mod tests {
     }
 
     #[test]
+    fn ground_projectiles_cannot_hit_a_dolphin_during_entry_or_jump() {
+        for phase in [DOLPHIN_INTO_POOL_PHASE, DOLPHIN_IN_JUMP_PHASE] {
+            let mut game = Game::new(7, SceneKind::Pool);
+            let mut setup = Vec::new();
+            let dolphin =
+                game.spawn_dolphin_rider_zombie(2, 0, Some(700 * POSITION_SCALE), &mut setup);
+            {
+                let dolphin_state = game
+                    .state
+                    .board
+                    .zombies
+                    .iter_mut()
+                    .find(|candidate| candidate.id == dolphin)
+                    .unwrap();
+                dolphin_state.dolphin_phase = phase;
+                dolphin_state.dolphin_counter = DOLPHIN_ENTRY_TICKS / 2;
+                dolphin_state.speed = 0;
+                dolphin_state.age = 3;
+            }
+            let dolphin_x = game
+                .state
+                .board
+                .zombies
+                .iter()
+                .find(|candidate| candidate.id == dolphin)
+                .unwrap()
+                .position_x;
+            for projectile_type in [ProjectileType::Pea, ProjectileType::Butter] {
+                let mut setup_events = Vec::new();
+                game.fire_projectile(
+                    0,
+                    projectile_type,
+                    2,
+                    ProjectileTrajectory {
+                        motion: ProjectileMotion::Straight,
+                        position_x: dolphin_x,
+                        position_y: grid_y(2),
+                        velocity_x: 0,
+                        velocity_y: 0,
+                    },
+                    &mut setup_events,
+                );
+                let events = game.advance(InputFrame::default());
+                let hit_or_chilled = events.iter().any(|event| match event {
+                    GameEvent::ProjectileHit { zombie, .. } => *zombie == dolphin,
+                    GameEvent::ZombieChilled { entity, .. } => *entity == dolphin,
+                    _ => false,
+                });
+                assert!(
+                    !hit_or_chilled,
+                    "{projectile_type:?} must not hit or chill a dolphin in phase {phase}"
+                );
+            }
+            let dolphin_state = game
+                .state
+                .board
+                .zombies
+                .iter()
+                .find(|candidate| candidate.id == dolphin)
+                .unwrap();
+            assert_eq!(dolphin_state.health, 500);
+            assert_eq!(dolphin_state.frozen_counter, 0);
+        }
+
+        // The same ground projectile still hits a walking dolphin.
+        let mut game = Game::new(7, SceneKind::Pool);
+        let mut setup = Vec::new();
+        let dolphin = game.spawn_dolphin_rider_zombie(2, 0, Some(700 * POSITION_SCALE), &mut setup);
+        {
+            let dolphin_state = game
+                .state
+                .board
+                .zombies
+                .iter_mut()
+                .find(|candidate| candidate.id == dolphin)
+                .unwrap();
+            dolphin_state.dolphin_phase = DOLPHIN_WALKING_PHASE;
+            dolphin_state.speed = 0;
+            dolphin_state.age = 3;
+        }
+        let dolphin_x = game
+            .state
+            .board
+            .zombies
+            .iter()
+            .find(|candidate| candidate.id == dolphin)
+            .unwrap()
+            .position_x;
+        let mut setup_events = Vec::new();
+        game.fire_projectile(
+            0,
+            ProjectileType::Pea,
+            2,
+            ProjectileTrajectory {
+                motion: ProjectileMotion::Straight,
+                position_x: dolphin_x,
+                position_y: grid_y(2),
+                velocity_x: 0,
+                velocity_y: 0,
+            },
+            &mut setup_events,
+        );
+        let events = game.advance(InputFrame::default());
+        assert!(events.iter().any(|event| matches!(
+            event,
+            GameEvent::ProjectileHit { zombie, .. } if *zombie == dolphin
+        )));
+    }
+
+    #[test]
     fn dolphin_rider_does_not_jump_while_tanglekelp_targets_it() {
         let mut game = Game::new(7, SceneKind::Pool);
         game.place_izombie_plant(PlantType::Other(19), 2, 2);
@@ -18420,7 +20944,7 @@ mod tests {
             .unwrap();
         assert_eq!(state.snorkel_phase, SNORKEL_WALKING_IN_POOL_PHASE);
         assert!(state.in_pool);
-        assert_eq!(state.speed, SNORKEL_POOL_SPEED);
+        assert_eq!(state.speed, SNORKEL_ENTRY_SPEED);
 
         let snorkel_position = {
             let snorkel_state = game
@@ -18552,7 +21076,7 @@ mod tests {
             .unwrap();
         assert_eq!(snorkel_state.snorkel_phase, SNORKEL_WALKING_IN_POOL_PHASE);
         assert!(snorkel_state.in_pool);
-        assert_eq!(snorkel_state.speed, SNORKEL_POOL_SPEED);
+        assert!((660_000..=680_000).contains(&snorkel_state.speed));
 
         let snorkel_index = game
             .state
@@ -18622,6 +21146,243 @@ mod tests {
             SNORKEL_WALKING_PHASE
         );
         assert!(!backwards.state.board.zombies[backwards_index].in_pool);
+    }
+
+    #[test]
+    fn snorkel_keeps_walking_while_surfacing_from_the_pool() {
+        let mut game = Game::new(7, SceneKind::Pool);
+        let mut setup = Vec::new();
+        let snorkel =
+            game.spawn_snorkel_zombie(2, 0, Some(grid_x(2) + 20 * POSITION_SCALE), &mut setup);
+        let exit_x = 25 * POSITION_SCALE;
+        {
+            let state = game
+                .state
+                .board
+                .zombies
+                .iter_mut()
+                .find(|candidate| candidate.id == snorkel)
+                .unwrap();
+            state.snorkel_phase = SNORKEL_WALKING_IN_POOL_PHASE;
+            state.snorkel_counter = 0;
+            state.position_x = exit_x;
+            state.in_pool = true;
+            state.age = 3;
+        }
+        let mut saw_rise_movement = false;
+        let mut last_rise_x = None;
+        for _ in 0..SNORKEL_EXIT_TICKS {
+            game.advance(InputFrame::default());
+            let Some(state) = game
+                .state
+                .board
+                .zombies
+                .iter()
+                .find(|candidate| candidate.id == snorkel)
+            else {
+                // A surfacing Snorkel can walk into the pool cleaner; the
+                // movement-during-rise check is already proven by then.
+                break;
+            };
+            if state.snorkel_phase == SNORKEL_OUT_OF_POOL_PHASE {
+                assert!((660_000..=680_000).contains(&state.speed));
+                assert!(state.in_pool);
+                match last_rise_x {
+                    Some(previous) => assert!(
+                        state.position_x < previous,
+                        "a surfacing snorkel must keep walking during the rise"
+                    ),
+                    None => assert!(state.position_x < exit_x),
+                }
+                last_rise_x = Some(state.position_x);
+                saw_rise_movement = true;
+            }
+        }
+        assert!(saw_rise_movement);
+    }
+
+    #[test]
+    fn submerged_snorkel_takes_pult_but_not_pea_damage() {
+        for phase in [SNORKEL_DOWN_FROM_EAT_PHASE, SNORKEL_OUT_OF_POOL_PHASE] {
+            let mut game = Game::new(7, SceneKind::Pool);
+            let mut setup = Vec::new();
+            let snorkel =
+                game.spawn_snorkel_zombie(2, 0, Some(grid_x(2) + 20 * POSITION_SCALE), &mut setup);
+            let snorkel_x = {
+                let state = game
+                    .state
+                    .board
+                    .zombies
+                    .iter_mut()
+                    .find(|candidate| candidate.id == snorkel)
+                    .unwrap();
+                state.snorkel_phase = phase;
+                state.snorkel_counter = SNORKEL_EAT_TRANSITION_TICKS / 2;
+                state.in_pool = true;
+                state.eating = false;
+                state.speed = 0;
+                state.age = 3;
+                state.position_x
+            };
+            let mut pea_events = Vec::new();
+            game.fire_projectile(
+                0,
+                ProjectileType::Pea,
+                2,
+                ProjectileTrajectory {
+                    motion: ProjectileMotion::Straight,
+                    position_x: snorkel_x,
+                    position_y: grid_y(2),
+                    velocity_x: 0,
+                    velocity_y: 0,
+                },
+                &mut pea_events,
+            );
+            let events = game.advance(InputFrame::default());
+            assert!(
+                !events.iter().any(|event| matches!(
+                    event,
+                    GameEvent::ProjectileHit { zombie, .. } if *zombie == snorkel
+                )),
+                "a pea must pass over a submerged snorkel in phase {phase}"
+            );
+
+            game.state.board.projectiles.clear();
+            let mut melon_events = Vec::new();
+            game.fire_projectile(
+                0,
+                ProjectileType::Melon,
+                2,
+                ProjectileTrajectory {
+                    motion: ProjectileMotion::Straight,
+                    position_x: snorkel_x,
+                    position_y: grid_y(2),
+                    velocity_x: 0,
+                    velocity_y: 0,
+                },
+                &mut melon_events,
+            );
+            let events = game.advance(InputFrame::default());
+            assert!(
+                events.iter().any(|event| matches!(
+                    event,
+                    GameEvent::ProjectileHit { zombie, .. } if *zombie == snorkel
+                )),
+                "a pult lob must hit a submerged snorkel in phase {phase}"
+            );
+        }
+    }
+
+    #[test]
+    fn dolphin_phases_pause_while_immobilized_and_resume_on_thaw() {
+        let mut game = Game::new(7, SceneKind::Pool);
+        let mut setup = Vec::new();
+        let dolphin = game.spawn_dolphin_rider_zombie(2, 0, Some(720 * POSITION_SCALE), &mut setup);
+        {
+            let state = game
+                .state
+                .board
+                .zombies
+                .iter_mut()
+                .find(|candidate| candidate.id == dolphin)
+                .unwrap();
+            state.dolphin_phase = DOLPHIN_INTO_POOL_PHASE;
+            state.dolphin_counter = DOLPHIN_ENTRY_TICKS;
+            state.frozen_counter = 5;
+            state.age = 3;
+        }
+        let events = game.advance(InputFrame::default());
+        let state = game
+            .state
+            .board
+            .zombies
+            .iter()
+            .find(|candidate| candidate.id == dolphin)
+            .unwrap();
+        assert_eq!(state.dolphin_counter, DOLPHIN_ENTRY_TICKS);
+        assert_eq!(state.frozen_counter, 4);
+        assert!(!events.iter().any(|event| matches!(
+            event,
+            GameEvent::ZombieEnteredPool { entity, .. } if *entity == dolphin
+        )));
+        for _ in 0..3 {
+            game.advance(InputFrame::default());
+        }
+        let state = game
+            .state
+            .board
+            .zombies
+            .iter()
+            .find(|candidate| candidate.id == dolphin)
+            .unwrap();
+        assert_eq!(state.dolphin_counter, DOLPHIN_ENTRY_TICKS);
+        assert_eq!(state.frozen_counter, 1);
+        game.advance(InputFrame::default());
+        let state = game
+            .state
+            .board
+            .zombies
+            .iter()
+            .find(|candidate| candidate.id == dolphin)
+            .unwrap();
+        assert_eq!(state.frozen_counter, 0);
+        assert_eq!(state.dolphin_counter, DOLPHIN_ENTRY_TICKS - 1);
+    }
+
+    #[test]
+    fn snorkel_phases_pause_while_immobilized_and_resume_on_thaw() {
+        let mut game = Game::new(7, SceneKind::Pool);
+        let mut setup = Vec::new();
+        let snorkel = game.spawn_snorkel_zombie(2, 0, Some(720 * POSITION_SCALE), &mut setup);
+        {
+            let state = game
+                .state
+                .board
+                .zombies
+                .iter_mut()
+                .find(|candidate| candidate.id == snorkel)
+                .unwrap();
+            state.snorkel_phase = SNORKEL_INTO_POOL_PHASE;
+            state.snorkel_counter = SNORKEL_ENTRY_TICKS;
+            state.frozen_counter = 5;
+            state.age = 3;
+        }
+        let events = game.advance(InputFrame::default());
+        let state = game
+            .state
+            .board
+            .zombies
+            .iter()
+            .find(|candidate| candidate.id == snorkel)
+            .unwrap();
+        assert_eq!(state.snorkel_counter, SNORKEL_ENTRY_TICKS);
+        assert_eq!(state.frozen_counter, 4);
+        assert!(!events.iter().any(|event| matches!(
+            event,
+            GameEvent::ZombieEnteredPool { entity, .. } if *entity == snorkel
+        )));
+        for _ in 0..3 {
+            game.advance(InputFrame::default());
+        }
+        let state = game
+            .state
+            .board
+            .zombies
+            .iter()
+            .find(|candidate| candidate.id == snorkel)
+            .unwrap();
+        assert_eq!(state.snorkel_counter, SNORKEL_ENTRY_TICKS);
+        assert_eq!(state.frozen_counter, 1);
+        game.advance(InputFrame::default());
+        let state = game
+            .state
+            .board
+            .zombies
+            .iter()
+            .find(|candidate| candidate.id == snorkel)
+            .unwrap();
+        assert_eq!(state.frozen_counter, 0);
+        assert_eq!(state.snorkel_counter, SNORKEL_ENTRY_TICKS - 1);
     }
 
     #[test]
@@ -19810,6 +22571,7 @@ mod tests {
             target_row: None,
             lob_height: 0,
             lob_velocity: 0,
+            last_portal_column: 0,
         });
         let events = game.advance(InputFrame::default());
         assert!(events.iter().any(|event| matches!(
@@ -19836,6 +22598,7 @@ mod tests {
             target_row: None,
             lob_height: 0,
             lob_velocity: 0,
+            last_portal_column: 0,
         });
         let events = game.advance(InputFrame::default());
         assert!(events.iter().any(|event| matches!(
@@ -20325,6 +23088,7 @@ mod tests {
             position_x: -80 * POSITION_SCALE,
             active: false,
             spent: false,
+            last_portal_column: 0,
         });
         {
             let boss = &mut game.state.board.zombies[boss_index];
@@ -20769,6 +23533,84 @@ mod tests {
     }
 
     #[test]
+    fn rising_zombies_are_off_ground_until_the_source_timer_elapses() {
+        // Night grave rise: a 150-tick stationary, off-ground window.
+        let mut game = Game::new(7, SceneKind::Night);
+        let mut setup = Vec::new();
+        game.spawn_rising_zombie(ZombieType::Normal, 2, 2, 0, &mut setup);
+        let riser = game.state.board.zombies[0].id;
+        assert_eq!(
+            game.state.board.zombies[0].rise_counter,
+            GRAVE_RISE_LAND_TICKS
+        );
+        let rise_x = game.state.board.zombies[0].position_x;
+        let mut pea_events = Vec::new();
+        game.fire_projectile(
+            0,
+            ProjectileType::Pea,
+            2,
+            ProjectileTrajectory {
+                motion: ProjectileMotion::Straight,
+                position_x: rise_x,
+                position_y: grid_y(2),
+                velocity_x: 0,
+                velocity_y: 0,
+            },
+            &mut pea_events,
+        );
+        let events = game.advance(InputFrame::default());
+        assert!(!events.iter().any(|event| matches!(
+            event,
+            GameEvent::ProjectileHit { zombie, .. } if *zombie == riser
+        )));
+        assert_eq!(
+            game.state.board.zombies[0].rise_counter,
+            GRAVE_RISE_LAND_TICKS - 1
+        );
+        assert_eq!(game.state.board.zombies[0].position_x, rise_x);
+
+        for _ in 1..GRAVE_RISE_LAND_TICKS {
+            game.advance(InputFrame::default());
+        }
+        assert_eq!(game.state.board.zombies[0].rise_counter, 0);
+        let rise_x = game.state.board.zombies[0].position_x;
+        let mut pea_events = Vec::new();
+        game.fire_projectile(
+            0,
+            ProjectileType::Pea,
+            2,
+            ProjectileTrajectory {
+                motion: ProjectileMotion::Straight,
+                position_x: rise_x,
+                position_y: grid_y(2),
+                velocity_x: 0,
+                velocity_y: 0,
+            },
+            &mut pea_events,
+        );
+        let events = game.advance(InputFrame::default());
+        assert!(events.iter().any(|event| matches!(
+            event,
+            GameEvent::ProjectileHit { zombie, .. } if *zombie == riser
+        )));
+
+        // Pool rise: a 50-tick submerged emerge that keeps the pool flag.
+        let mut pool = Game::new(7, SceneKind::Pool);
+        let mut setup = Vec::new();
+        pool.spawn_rising_zombie(ZombieType::Normal, 2, 2, 0, &mut setup);
+        assert_eq!(
+            pool.state.board.zombies[0].rise_counter,
+            GRAVE_RISE_POOL_TICKS
+        );
+        assert!(pool.state.board.zombies[0].in_pool);
+        for _ in 0..GRAVE_RISE_POOL_TICKS {
+            pool.advance(InputFrame::default());
+        }
+        assert_eq!(pool.state.board.zombies[0].rise_counter, 0);
+        assert!(pool.state.board.zombies[0].in_pool);
+    }
+
+    #[test]
     fn adventure_night_boards_place_source_graves_and_sun() {
         let game = Game::new_mode(7, ModeKind::Adventure, 11);
         assert_eq!(game.state().board.graves.len(), 4);
@@ -20968,6 +23810,7 @@ mod tests {
                 target_row: Some(2),
                 lob_height: 61 * PULT_LOB_SCALE as i32,
                 lob_velocity: 0,
+                last_portal_column: 0,
             };
             game.state.board.projectiles.push(projectile.clone());
 
@@ -21056,7 +23899,7 @@ mod tests {
         let mut game = Game::new(7, SceneKind::Day);
         let mut setup = Vec::new();
         game.place_portal(1, 4, false, &mut setup);
-        game.place_portal(3, 7, true, &mut setup);
+        game.place_portal(3, 7, false, &mut setup);
         assert_eq!(
             setup
                 .iter()
@@ -21090,8 +23933,188 @@ mod tests {
             .unwrap();
         assert_eq!(state.row, 3);
         assert!(
-            state.portal_cooldown > 0,
-            "teleports carry a re-entry cooldown"
+            state.last_portal_column > 0,
+            "teleports carry the destination portal column"
+        );
+        assert_eq!(state.last_portal_column, 8);
+    }
+
+    #[test]
+    fn portal_combat_uses_source_pairs_timers_and_row_weights() {
+        let mut game = Game::new_mode(7, ModeKind::MiniGame, 10);
+        assert_eq!(game.state.scene, SceneKind::Night);
+        assert_eq!(
+            game.state.board.portals,
+            vec![(0, 2, true), (1, 9, true), (3, 9, false), (4, 2, false)]
+        );
+        assert_eq!(game.state.board.wave.countdown, PORTAL_INITIAL_COUNTDOWN);
+        assert_eq!(
+            game.state.challenge.conveyor_countdown,
+            PORTAL_INITIAL_COUNTDOWN
+        );
+        assert_eq!(
+            game.state.challenge.countdown,
+            PORTAL_INITIAL_STATE_COUNTDOWN
+        );
+        assert_eq!(
+            game.state
+                .board
+                .seed_packets
+                .iter()
+                .map(|packet| packet.plant_type)
+                .collect::<Vec<_>>(),
+            vec![
+                PlantType::Peashooter,
+                PlantType::Other(7),
+                PlantType::Other(22),
+                PlantType::Other(26),
+                PlantType::Other(3),
+                PlantType::Other(2),
+            ]
+        );
+        assert_eq!(
+            (0..DAY_ROWS)
+                .map(|row| game.portal_row_spawn_weight(row))
+                .collect::<Vec<_>>(),
+            vec![100, 1, 20, 1, 100]
+        );
+
+        let before = game.state.board.portals.clone();
+        game.state.challenge.countdown = 1;
+        let events = game.advance(InputFrame::default());
+        assert_eq!(game.state.challenge.countdown, PORTAL_RELOCATION_COUNTDOWN);
+        assert_eq!(game.state.board.portals.len(), 4);
+        assert_eq!(
+            before
+                .iter()
+                .zip(&game.state.board.portals)
+                .filter(|(old, new)| old != new)
+                .count(),
+            1
+        );
+        let (moved_index, (old_portal, _new_portal)) = before
+            .iter()
+            .zip(&game.state.board.portals)
+            .enumerate()
+            .find(|(_, (old, new))| old != new)
+            .expect("one portal relocates");
+        let moved_square = old_portal.2;
+        let (_, paired_portal) = before
+            .iter()
+            .enumerate()
+            .find(|(index, (_, _, square))| *index != moved_index && *square == moved_square)
+            .expect("relocated portal has a pair");
+        let (paired_row, paired_column, _) = *paired_portal;
+        let (moved_row, moved_column, _) = game.state.board.portals[moved_index];
+        assert_ne!(moved_row, paired_row);
+        assert_ne!(moved_column, paired_column);
+        assert!(
+            events
+                .iter()
+                .any(|event| matches!(event, GameEvent::PortalOpened { .. }))
+        );
+    }
+
+    #[test]
+    fn portal_combat_shooters_target_zombies_across_portal_rows() {
+        for plant_type in [
+            PlantType::Peashooter,
+            PlantType::Other(7),
+            PlantType::Other(26),
+        ] {
+            let mut game = Game::new_mode(7, ModeKind::MiniGame, 10);
+            game.state.board.plants.clear();
+            game.state.board.zombies.clear();
+            game.state
+                .board
+                .plants
+                .push(test_plant(100, plant_type, 0, 0));
+            game.state.board.plants[0].launch_counter = 1;
+            let mut setup = Vec::new();
+            game.spawn_normal_zombie(1, 0, Some(730 * POSITION_SCALE), &mut setup);
+            game.state.board.zombies[0].speed = 0;
+
+            let mut fired = false;
+            for _ in 0..40 {
+                fired |= game
+                    .advance(InputFrame::default())
+                    .iter()
+                    .any(|event| matches!(event, GameEvent::PlantFired { .. }));
+                if fired {
+                    break;
+                }
+            }
+            assert!(fired, "{plant_type:?} can fire through the portal path");
+        }
+    }
+
+    #[test]
+    fn portal_combat_transfers_paired_entities() {
+        let mut game = Game::new_mode(7, ModeKind::MiniGame, 10);
+        let mut setup = Vec::new();
+        let zombie =
+            game.spawn_normal_zombie(3, 0, Some(grid_x(9) + 5 * POSITION_SCALE), &mut setup);
+        let projectile = game.state.board.allocate_entity();
+        game.state.board.projectiles.push(ProjectileState {
+            id: projectile,
+            projectile_type: ProjectileType::Pea,
+            motion: ProjectileMotion::Straight,
+            row: 3,
+            position_x: grid_x(9),
+            position_y: grid_y(3),
+            velocity_x: 0,
+            velocity_y: 0,
+            shadow_y: grid_y(3),
+            damage: ProjectileType::Pea.damage(),
+            age: 0,
+            target_x: None,
+            target_row: None,
+            lob_height: 0,
+            lob_velocity: 0,
+            last_portal_column: 0,
+        });
+        let events = game.advance(InputFrame::default());
+        let zombie = game
+            .state
+            .board
+            .zombies
+            .iter()
+            .find(|candidate| candidate.id == zombie)
+            .expect("portal-transferred zombie");
+        assert_eq!((zombie.row, zombie.position_x), (4, grid_x(2)));
+        let projectile = game
+            .state
+            .board
+            .projectiles
+            .iter()
+            .find(|candidate| candidate.id == projectile)
+            .expect("portal-transferred projectile");
+        assert_eq!(projectile.row, 4);
+        assert_eq!(projectile.last_portal_column, 3);
+        assert!(events.iter().any(|event| matches!(
+            event,
+            GameEvent::ZombieTeleported { entity, row: 4, column: 2 } if *entity == zombie.id
+        )));
+
+        let mut mower_game = Game::new_mode(7, ModeKind::MiniGame, 10);
+        mower_game.state.board.mowers.push(MowerState {
+            row: 3,
+            position_x: grid_x(9) - 45 * POSITION_SCALE,
+            active: true,
+            spent: false,
+            last_portal_column: 0,
+        });
+        mower_game.advance(InputFrame::default());
+        assert_eq!(
+            mower_game
+                .state
+                .board
+                .mowers
+                .iter()
+                .find(|mower| mower.active)
+                .expect("portal-transferred mower")
+                .row,
+            4
         );
     }
 
@@ -23177,6 +26200,101 @@ mod tests {
     }
 
     #[test]
+    fn coffee_wakes_a_sleeping_mushroom_beneath_a_pumpkin_shell() {
+        let mut game = Game::new(7, SceneKind::Day);
+        game.state.sun = 500;
+        game.state.board.set_seed_packets(&[
+            PlantType::Other(8),
+            PlantType::Other(30),
+            PlantType::Other(35),
+        ]);
+        game.advance(InputFrame {
+            actions: vec![
+                InputAction::SelectSeed { slot: 0 },
+                InputAction::Plant { row: 2, column: 2 },
+                InputAction::SelectSeed { slot: 1 },
+                InputAction::Plant { row: 2, column: 2 },
+                InputAction::SelectSeed { slot: 2 },
+                InputAction::Plant { row: 2, column: 2 },
+            ],
+        });
+
+        let mushroom = game
+            .state
+            .board
+            .plants
+            .iter()
+            .find(|plant| plant.plant_type.slot() == 8)
+            .unwrap()
+            .id;
+        let coffee = game
+            .state
+            .board
+            .plants
+            .iter()
+            .find(|plant| plant.plant_type.slot() == 35)
+            .unwrap()
+            .id;
+        assert!(
+            game.state
+                .board
+                .plants
+                .iter()
+                .find(|plant| plant.id == mushroom)
+                .unwrap()
+                .asleep
+        );
+        assert!(
+            game.state
+                .board
+                .plants
+                .iter()
+                .any(|plant| plant.plant_type.slot() == 30),
+            "the pumpkin shell must be accepted over the mushroom"
+        );
+
+        let mut wake_counter = 0;
+        for _ in 0..COFFEE_WAKE_TICKS {
+            let events = game.advance(InputFrame::default());
+            if events.iter().any(|event| {
+                matches!(
+                    event,
+                    GameEvent::PlantSpecialTriggered {
+                        entity,
+                        plant_type: PlantType::Other(35),
+                    } if *entity == coffee
+                )
+            }) {
+                wake_counter = game
+                    .state
+                    .board
+                    .plants
+                    .iter()
+                    .find(|plant| plant.id == mushroom)
+                    .unwrap()
+                    .wake_up_counter;
+                break;
+            }
+        }
+        assert_eq!(wake_counter, COFFEE_WAKE_TICKS);
+        assert!(
+            game.state
+                .board
+                .plants
+                .iter()
+                .all(|plant| plant.id != coffee)
+        );
+        let mushroom_state = game
+            .state
+            .board
+            .plants
+            .iter()
+            .find(|plant| plant.id == mushroom)
+            .unwrap();
+        assert!(mushroom_state.asleep);
+    }
+
+    #[test]
     fn restart_restores_the_terminal_scene_and_clears_progress() {
         let mut game = Game::new(7, SceneKind::Night);
         game.advance(InputFrame {
@@ -23540,6 +26658,7 @@ mod tests {
             target_row: None,
             lob_height: 0,
             lob_velocity: 0,
+            last_portal_column: 0,
         };
         let mut setup = Vec::new();
         let cone = game.spawn_conehead_zombie(2, 0, Some(500 * POSITION_SCALE), &mut setup);
@@ -23760,7 +26879,28 @@ mod tests {
         game.state.level = 2;
         game.update_profile(&mut profile);
         assert_eq!(profile.inventory.coins, 225);
+        assert_eq!(profile.adventure_level, 3);
         assert_eq!(profile.mode_completion[0].completed_levels, 3);
+    }
+
+    #[test]
+    fn adventure_first_run_rules_survive_between_levels() {
+        let mut profile = SaveProfile::new("first-run");
+        let mut level_one = Game::new_adventure(0, 1, true, 0);
+        level_one.state.scene = SceneKind::Complete;
+        level_one.update_profile(&mut profile);
+
+        assert_eq!(profile.adventure_level, 2);
+        assert_eq!(profile.adventure_rounds, 0);
+
+        let level_two = Game::new_adventure(
+            0,
+            profile.adventure_level,
+            profile.adventure_rounds == 0,
+            profile.packet_upgrades,
+        );
+        assert!(level_two.state.adventure_first_time);
+        assert_eq!(adventure_seed_slots(2, true, 0), 2);
     }
 
     #[test]
@@ -23831,6 +26971,11 @@ mod tests {
             .find(|zombie| zombie.id == immune)
             .unwrap()
             .hypnotized = true;
+        // Keep the targets stationary during the 206-tick firing animation so
+        // the launch-and-impact behavior is what is under test.
+        for zombie in &mut game.state.board.zombies {
+            zombie.speed = 0;
+        }
         let fire_events = game.advance(InputFrame {
             actions: vec![InputAction::FireCobCannon {
                 entity: cannon,
@@ -23847,9 +26992,17 @@ mod tests {
             } if *entity == cannon
         )));
         let mut impact_events = Vec::new();
-        for _ in 0..250 {
-            impact_events.extend(game.advance(InputFrame::default()));
-            if game.state.board.projectiles.is_empty() {
+        // The Cob is deferred until the 206-tick firing counter elapses, then
+        // takes a lobbed flight to the target.
+        for _ in 0..(COB_RELOAD_TICKS + 250) {
+            let events = game.advance(InputFrame::default());
+            impact_events.extend(events.iter().cloned());
+            if events.iter().any(|event| {
+                matches!(
+                    event,
+                    GameEvent::ProjectileHit { zombie, .. } if *zombie == primary
+                )
+            }) {
                 break;
             }
         }
@@ -23884,6 +27037,68 @@ mod tests {
             1
         );
         assert_eq!(game.state.board.zombies.len(), 1);
+    }
+
+    #[test]
+    fn cob_cannon_defers_launch_until_the_firing_counter_elapses() {
+        let mut game = Game::new(7, SceneKind::Day);
+        game.state.sun = 1_000;
+        game.advance(InputFrame {
+            actions: vec![
+                InputAction::SelectSeed { slot: 34 },
+                InputAction::Plant { row: 2, column: 1 },
+            ],
+        });
+        game.state.board.seed_packets[34].refresh_remaining = 0;
+        game.advance(InputFrame {
+            actions: vec![
+                InputAction::SelectSeed { slot: 34 },
+                InputAction::Plant { row: 2, column: 2 },
+            ],
+        });
+        game.advance(InputFrame {
+            actions: vec![
+                InputAction::SelectSeed { slot: 47 },
+                InputAction::Plant { row: 2, column: 1 },
+            ],
+        });
+        let cannon = game.state.board.plants[0].id;
+        for _ in 0..COB_ARM_TICKS {
+            game.advance(InputFrame::default());
+        }
+        assert!(game.state.board.plants[0].special_armed);
+
+        game.advance(InputFrame {
+            actions: vec![InputAction::FireCobCannon {
+                entity: cannon,
+                row: 2,
+                column: 4,
+            }],
+        });
+        let mut counter = game.state.board.plants[0].special_counter;
+        assert!(
+            counter < COB_RELOAD_TICKS,
+            "the firing animation starts at the 206-tick counter"
+        );
+        assert!(game.state.board.projectiles.is_empty());
+        assert_eq!(game.state.board.plants[0].cob_target, Some((2, 4)));
+
+        // The Cob must not exist anywhere before the launch boundary.
+        while counter > 2 {
+            game.advance(InputFrame::default());
+            counter = game.state.board.plants[0].special_counter;
+            assert!(
+                game.state.board.projectiles.is_empty(),
+                "no Cob projectile may exist before the firing counter reaches 1"
+            );
+        }
+        game.advance(InputFrame::default());
+        assert_eq!(game.state.board.plants[0].special_counter, 1);
+        assert_eq!(game.state.board.projectiles.len(), 1);
+        assert_eq!(
+            game.state.board.projectiles[0].projectile_type,
+            ProjectileType::Cob
+        );
     }
 
     #[test]
@@ -23996,20 +27211,39 @@ mod tests {
             event,
             GameEvent::ChallengeAction {
                 kind: ChallengeKind::SlotMachine,
-                value: 0..=2
+                value: 1
             }
         )));
 
         let mut beghouled = Game::new_mode(7, ModeKind::MiniGame, 4);
+        assert_eq!(beghouled.state().board.rows, 5);
+        assert_eq!(beghouled.state().board.columns, 8);
+        assert_eq!(beghouled.state().board.plants.len(), 40);
+        assert_eq!(beghouled.state().sun, 0);
+        assert!(beghouled.state().board.mowers.is_empty());
         beghouled.state.challenge.score = 74;
         let events = beghouled.advance(InputFrame {
-            actions: vec![InputAction::ChallengeMatch { length: 3 }],
+            actions: vec![InputAction::ChallengeSwap {
+                from_column: 2,
+                from_row: 1,
+                to_column: 2,
+                to_row: 2,
+            }],
         });
+        assert_eq!(
+            beghouled.state().challenge.twist_state,
+            BeghouledTwistState::Moving
+        );
+        let mut settling_events = Vec::new();
+        for _ in 0..99 {
+            settling_events.extend(beghouled.advance(InputFrame::default()));
+        }
         assert_eq!(beghouled.state().challenge.score, 75);
         assert_eq!(beghouled.state().scene, SceneKind::Complete);
         assert!(
             events
                 .iter()
+                .chain(&settling_events)
                 .any(|event| matches!(event, GameEvent::GameWon))
         );
 
@@ -24019,7 +27253,17 @@ mod tests {
             actions: vec![InputAction::ChallengeFeed { x: 400, y: 250 }],
         });
         assert_eq!(aquarium.state().sun, 45);
-        assert_eq!(aquarium.state().board.zombies.len(), before + 1);
+        assert_eq!(aquarium.state().board.zombies.len(), before);
+        assert_eq!(
+            aquarium
+                .state()
+                .board
+                .brains
+                .iter()
+                .filter(|brain| !brain.squished)
+                .count(),
+            1
+        );
         assert!(events.iter().any(|event| matches!(
             event,
             GameEvent::ChallengeAction {
@@ -24040,6 +27284,619 @@ mod tests {
                 .iter()
                 .any(|event| matches!(event, GameEvent::ZombieDied { .. }))
         );
+    }
+
+    #[test]
+    fn zombiquarium_uses_snorkels_and_brain_bait() {
+        let mut game = Game::new_mode(7, ModeKind::MiniGame, 7);
+        assert_eq!(game.state().board.zombies.len(), 2);
+        assert!(game.state().board.zombies.iter().all(|zombie| {
+            zombie.zombie_type == ZombieType::Snorkel
+                && zombie.health == ZOMBIQUARIUM_START_HEALTH
+                && zombie.max_health == ZOMBIQUARIUM_MAX_HEALTH
+                && (50 * POSITION_SCALE..=650 * POSITION_SCALE).contains(&zombie.position_x)
+                && (100 * POSITION_SCALE..=400 * POSITION_SCALE).contains(&zombie.position_y)
+        }));
+        assert!(game.state().board.brains.is_empty());
+
+        game.state.sun = ZOMBIQUARIUM_BRAIN_COST * 3;
+        for (x, y) in [(200, 160), (400, 250), (600, 340)] {
+            game.advance(InputFrame {
+                actions: vec![InputAction::ChallengeFeed { x, y }],
+            });
+        }
+        assert_eq!(game.state().sun, 0);
+        assert_eq!(
+            game.state()
+                .board
+                .brains
+                .iter()
+                .filter(|brain| !brain.squished)
+                .count(),
+            ZOMBIQUARIUM_MAX_BRAINS
+        );
+
+        game.state.sun = ZOMBIQUARIUM_BRAIN_COST;
+        let rejected = game.advance(InputFrame {
+            actions: vec![InputAction::ChallengeFeed { x: 300, y: 220 }],
+        });
+        assert!(rejected.iter().any(|event| matches!(
+            event,
+            GameEvent::InputRejected {
+                action: InputAction::ChallengeFeed { x: 300, y: 220 },
+                reason: InputRejectReason::ChallengeUnavailable
+            }
+        )));
+        assert_eq!(
+            game.state()
+                .board
+                .brains
+                .iter()
+                .filter(|brain| !brain.squished)
+                .count(),
+            ZOMBIQUARIUM_MAX_BRAINS
+        );
+
+        for brain in &mut game.state.board.brains {
+            brain.squished = true;
+        }
+        let zombie = &mut game.state.board.zombies[0];
+        zombie.health = 150;
+        zombie.position_x = 200 * POSITION_SCALE;
+        zombie.position_y = 200 * POSITION_SCALE;
+        zombie.aquarium_speed = 0;
+        zombie.aquarium_phase_counter = 100;
+        let brain = &mut game.state.board.brains[0];
+        brain.squished = false;
+        brain.age = ZOMBIQUARIUM_BRAIN_ARM_TICKS;
+        brain.position_x = zombie.position_x + 50 * POSITION_SCALE;
+        brain.position_y = zombie.position_y + 40 * POSITION_SCALE;
+
+        let events = game.advance(InputFrame::default());
+        assert!(events.iter().any(|event| matches!(
+            event,
+            GameEvent::BrainEaten { zombie: entity, .. }
+                if *entity == game.state().board.zombies[0].id
+        )));
+        assert!(game.state().board.brains[0].squished);
+        assert_eq!(
+            game.state().board.zombies[0].health,
+            ZOMBIQUARIUM_MAX_HEALTH
+        );
+
+        game.state.sun = ZOMBIQUARIUM_SNORKEL_COST;
+        let events = game.advance(InputFrame {
+            actions: vec![InputAction::SelectSeed { slot: 0 }],
+        });
+        assert_eq!(game.state().board.zombies.len(), 3);
+        assert_eq!(game.state().sun, 0);
+        assert!(events.iter().any(|event| matches!(
+            event,
+            GameEvent::ZombieSpawned {
+                zombie_type: ZombieType::Snorkel,
+                ..
+            }
+        )));
+        assert!(events.iter().any(|event| matches!(
+            event,
+            GameEvent::ChallengeAction {
+                kind: ChallengeKind::Zombiquarium,
+                value: ZOMBIQUARIUM_SNORKEL_COST
+            }
+        )));
+    }
+
+    #[test]
+    fn zombiquarium_brains_sink_and_expire() {
+        let mut game = Game::new_mode(7, ModeKind::MiniGame, 7);
+        game.state.sun = ZOMBIQUARIUM_BRAIN_COST;
+        game.advance(InputFrame {
+            actions: vec![InputAction::ChallengeFeed { x: 400, y: 430 }],
+        });
+        for zombie in &mut game.state.board.zombies {
+            zombie.health = ZOMBIQUARIUM_MAX_HEALTH;
+        }
+        for _ in 0..600 {
+            game.advance(InputFrame::default());
+        }
+        assert!(game.state.board.brains[0].squished);
+        assert!(game.state.board.brains[0].age > ZOMBIQUARIUM_BRAIN_ARM_TICKS);
+    }
+
+    #[test]
+    fn zombiquarium_trophy_completes_without_waiting_for_zombies() {
+        let mut game = Game::new_mode(7, ModeKind::MiniGame, 7);
+        game.state.sun = ZOMBIQUARIUM_TROPHY_COST;
+        let events = game.advance(InputFrame {
+            actions: vec![InputAction::SelectSeed { slot: 1 }],
+        });
+        assert_eq!(game.state.scene, SceneKind::Complete);
+        assert!(
+            events
+                .iter()
+                .any(|event| matches!(event, GameEvent::GameWon))
+        );
+        assert!(game.state.pickup_inventory.contains(&CoinType::Trophy));
+        assert_eq!(game.state.board.zombies.len(), 2);
+    }
+
+    #[test]
+    fn zombiquarium_loses_when_every_snorkel_dies() {
+        let mut game = Game::new_mode(7, ModeKind::MiniGame, 7);
+        for zombie in &mut game.state.board.zombies {
+            zombie.age = ZOMBIQUARIUM_DAMAGE_TICKS - 1;
+            zombie.health = ZOMBIQUARIUM_DAMAGE;
+        }
+        let events = game.advance(InputFrame::default());
+        assert_eq!(game.state.scene, SceneKind::GameOver);
+        assert!(
+            events
+                .iter()
+                .any(|event| matches!(event, GameEvent::GameLost { .. }))
+        );
+    }
+
+    #[test]
+    fn slot_machine_legacy_state_defaults_to_source_start_symbols() {
+        let mut value = serde_json::to_value(initial_challenge_state(ModeKind::MiniGame, 2))
+            .expect("slot machine state serializes");
+        let object = value
+            .as_object_mut()
+            .expect("slot machine state is an object");
+        object.remove("slot_machine_symbols");
+        object.remove("slot_machine_next_symbols");
+
+        let restored: ChallengeState =
+            serde_json::from_value(value).expect("legacy slot machine state deserializes");
+        assert_eq!(restored.slot_machine_symbols, SLOT_MACHINE_START_SYMBOLS);
+        assert_eq!(
+            restored.slot_machine_next_symbols,
+            SLOT_MACHINE_START_SYMBOLS
+        );
+    }
+
+    #[test]
+    fn slot_machine_rolls_three_reels_and_rejects_locked_or_empty_spins() {
+        let mut game = Game::new_mode(7, ModeKind::MiniGame, 2);
+        game.state.sun = 25;
+        let events = game.advance(InputFrame {
+            actions: vec![InputAction::ChallengeSpin],
+        });
+        assert_eq!(game.state.sun, 0);
+        assert_eq!(game.state.challenge.slot_machine_countdown, 299);
+        assert_eq!(game.state.challenge.slot_machine_roll_count, 1);
+        assert!(events.iter().any(|event| matches!(
+            event,
+            GameEvent::ChallengeAction {
+                kind: ChallengeKind::SlotMachine,
+                value: 1
+            }
+        )));
+
+        let rejected = game.advance(InputFrame {
+            actions: vec![InputAction::ChallengeSpin],
+        });
+        assert!(rejected.iter().any(|event| matches!(
+            event,
+            GameEvent::InputRejected {
+                action: InputAction::ChallengeSpin,
+                reason: InputRejectReason::ChallengeUnavailable
+            }
+        )));
+        assert_eq!(game.state.challenge.slot_machine_roll_count, 1);
+
+        for _ in 0..299 {
+            game.advance(InputFrame::default());
+        }
+        assert_eq!(game.state.challenge.slot_machine_countdown, 0);
+        assert!(
+            game.state
+                .challenge
+                .slot_machine_symbols
+                .iter()
+                .all(|symbol| matches!(
+                    symbol,
+                    SlotMachineSymbol::Sunflower
+                        | SlotMachineSymbol::Peashooter
+                        | SlotMachineSymbol::SnowPea
+                        | SlotMachineSymbol::Wallnut
+                        | SlotMachineSymbol::Sun
+                        | SlotMachineSymbol::Diamond
+                ))
+        );
+
+        game.state.sun = 24;
+        let rejected = game.advance(InputFrame {
+            actions: vec![InputAction::ChallengeSpin],
+        });
+        assert!(rejected.iter().any(|event| matches!(
+            event,
+            GameEvent::InputRejected {
+                action: InputAction::ChallengeSpin,
+                reason: InputRejectReason::ChallengeUnavailable
+            }
+        )));
+    }
+
+    #[test]
+    fn slot_machine_resolves_each_source_payout_class() {
+        let cases = [
+            (
+                [
+                    SlotMachineSymbol::Diamond,
+                    SlotMachineSymbol::Diamond,
+                    SlotMachineSymbol::Sunflower,
+                ],
+                CoinType::Diamond,
+                None,
+                1,
+            ),
+            (
+                [
+                    SlotMachineSymbol::Sun,
+                    SlotMachineSymbol::Sun,
+                    SlotMachineSymbol::Wallnut,
+                ],
+                CoinType::Sun,
+                None,
+                4,
+            ),
+            (
+                [
+                    SlotMachineSymbol::Peashooter,
+                    SlotMachineSymbol::Peashooter,
+                    SlotMachineSymbol::Sunflower,
+                ],
+                CoinType::UsableSeedPacket,
+                Some(PlantType::Peashooter),
+                1,
+            ),
+            ([SlotMachineSymbol::Diamond; 3], CoinType::Diamond, None, 5),
+            ([SlotMachineSymbol::Sun; 3], CoinType::Sun, None, 20),
+            (
+                [SlotMachineSymbol::Wallnut; 3],
+                CoinType::UsableSeedPacket,
+                Some(PlantType::Other(21)),
+                20,
+            ),
+        ];
+        for (symbols, coin_type, usable_seed_type, count) in cases {
+            let mut game = Game::new_mode(7, ModeKind::MiniGame, 2);
+            game.advance(InputFrame {
+                actions: vec![InputAction::ChallengeSpin],
+            });
+            game.state.challenge.slot_machine_next_symbols = symbols;
+            for _ in 0..299 {
+                game.advance(InputFrame::default());
+            }
+            assert_eq!(game.state.challenge.slot_machine_symbols, symbols);
+            assert_eq!(
+                game.state
+                    .board
+                    .coins
+                    .iter()
+                    .filter(|coin| coin.coin_type == coin_type)
+                    .count(),
+                count
+            );
+            assert!(game.state.board.coins.iter().all(|coin| {
+                coin.coin_type != coin_type
+                    || usable_seed_type
+                        .is_none_or(|plant_type| coin.usable_seed_type == Some(plant_type))
+            }));
+        }
+    }
+
+    #[test]
+    fn slot_machine_sun_jackpot_can_reach_the_source_completion_path() {
+        let mut game = Game::new_mode(7, ModeKind::MiniGame, 2);
+        game.state.sun = 1_975;
+        game.advance(InputFrame {
+            actions: vec![InputAction::ChallengeSpin],
+        });
+        game.state.challenge.slot_machine_next_symbols = [SlotMachineSymbol::Sun; 3];
+        for _ in 0..299 {
+            game.advance(InputFrame::default());
+        }
+        let actions = game
+            .state
+            .board
+            .coins
+            .iter()
+            .map(|coin| InputAction::CollectCoin { entity: coin.id })
+            .collect();
+        let events = game.advance(InputFrame { actions });
+        assert_eq!(game.state.sun, 2_450);
+        assert_eq!(game.state.scene, SceneKind::Complete);
+        assert!(
+            events
+                .iter()
+                .any(|event| matches!(event, GameEvent::GameWon))
+        );
+    }
+
+    #[test]
+    fn beghouled_twist_initializes_board_and_needs_a_match() {
+        let mut game = Game::new_mode(7, ModeKind::MiniGame, 8);
+        assert_eq!(game.state().challenge.kind, ChallengeKind::BeghouledTwist);
+        assert_eq!(game.state().board.rows, 5);
+        assert_eq!(game.state().board.columns, 8);
+        assert_eq!(game.state().board.plants.len(), 40);
+        assert_eq!(game.state().challenge.target, 75);
+        assert_eq!(game.state().challenge.zombie_countdown, 200);
+        let events = game.advance(InputFrame::default());
+        assert_ne!(game.state().scene, SceneKind::Complete);
+        assert!(
+            !events
+                .iter()
+                .any(|event| matches!(event, GameEvent::GameWon))
+        );
+    }
+
+    #[test]
+    fn beghouled_twist_validates_rotation_and_refills_matches() {
+        let mut game = Game::new_mode(7, ModeKind::MiniGame, 8);
+        let before = game
+            .state()
+            .board
+            .plants
+            .iter()
+            .map(|plant| (plant.id, plant.row, plant.column))
+            .collect::<Vec<_>>();
+        let rejected = game.advance(InputFrame {
+            actions: vec![InputAction::ChallengeTwist { column: 7, row: 4 }],
+        });
+        assert!(rejected.iter().any(|event| matches!(
+            event,
+            GameEvent::InputRejected {
+                action: InputAction::ChallengeTwist { column: 7, row: 4 },
+                reason: InputRejectReason::ChallengeUnavailable
+            }
+        )));
+        let events = game.advance(InputFrame {
+            actions: vec![InputAction::ChallengeTwist { column: 3, row: 0 }],
+        });
+        assert_eq!(game.state().board.plants.len(), 40);
+        assert_eq!(game.state().challenge.score, 0);
+        assert_eq!(
+            game.state().challenge.twist_state,
+            BeghouledTwistState::Moving
+        );
+        let mut settling_events = Vec::new();
+        for _ in 0..99 {
+            settling_events.extend(game.advance(InputFrame::default()));
+        }
+        assert_eq!(game.state().challenge.score, 1);
+        assert!(events.iter().chain(&settling_events).any(|event| matches!(
+            event,
+            GameEvent::ChallengeAction {
+                kind: ChallengeKind::BeghouledTwist,
+                value: 1
+            }
+        )));
+        assert_eq!(
+            game.state().challenge.twist_state,
+            BeghouledTwistState::Falling
+        );
+        assert!(game.state().board.plants.iter().any(|plant| {
+            before.iter().any(|(id, old_row, old_column)| {
+                *id == plant.id && (*old_row != plant.row || *old_column != plant.column)
+            })
+        }));
+    }
+
+    #[test]
+    fn beghouled_twist_score_can_complete_level() {
+        let mut game = Game::new_mode(7, ModeKind::MiniGame, 8);
+        game.state.challenge.score = 74;
+        game.advance(InputFrame {
+            actions: vec![InputAction::ChallengeTwist { column: 3, row: 0 }],
+        });
+        for _ in 0..99 {
+            game.advance(InputFrame::default());
+        }
+        assert_eq!(game.state().challenge.score, 75);
+        assert_eq!(game.state().scene, SceneKind::Complete);
+    }
+
+    #[test]
+    fn beghouled_twist_crater_is_persistent_until_paid_clear() {
+        let mut game = Game::new_mode(7, ModeKind::MiniGame, 8);
+        game.state.board.craters.push(CraterState {
+            row: 2,
+            column: 3,
+            remaining: u32::MAX,
+            persistent: true,
+        });
+        game.state.sun = BEGHOULED_CRATER_COST;
+        for _ in 0..10 {
+            game.advance(InputFrame::default());
+        }
+        assert!(
+            game.state
+                .board
+                .craters
+                .iter()
+                .any(|crater| crater.row == 2 && crater.column == 3)
+        );
+        let events = game.advance(InputFrame {
+            actions: vec![InputAction::ChallengeClearCrater],
+        });
+        assert!(events.iter().any(|event| matches!(
+            event,
+            GameEvent::ChallengeAction {
+                kind: ChallengeKind::BeghouledTwist,
+                value: BEGHOULED_CRATER_COST
+            }
+        )));
+        assert!(
+            !game
+                .state
+                .board
+                .craters
+                .iter()
+                .any(|crater| crater.row == 2 && crater.column == 3)
+        );
+    }
+
+    #[test]
+    fn beghouled_standard_rejects_bad_swaps_and_resolves_a_match() {
+        let mut game = Game::new_mode(7, ModeKind::MiniGame, 4);
+        assert!(!game.twist_has_match());
+        assert!(game.has_standard_move());
+        let rejected = game.advance(InputFrame {
+            actions: vec![InputAction::ChallengeSwap {
+                from_column: 0,
+                from_row: 0,
+                to_column: 2,
+                to_row: 0,
+            }],
+        });
+        assert!(rejected.iter().any(|event| matches!(
+            event,
+            GameEvent::InputRejected {
+                action: InputAction::ChallengeSwap {
+                    from_column: 0,
+                    from_row: 0,
+                    to_column: 2,
+                    to_row: 0,
+                },
+                reason: InputRejectReason::ChallengeUnavailable
+            }
+        )));
+        let rejected = game.advance(InputFrame {
+            actions: vec![InputAction::ChallengeSwap {
+                from_column: 0,
+                from_row: 0,
+                to_column: 1,
+                to_row: 0,
+            }],
+        });
+        assert!(rejected.iter().any(|event| matches!(
+            event,
+            GameEvent::ChallengeAction {
+                kind: ChallengeKind::Beghouled,
+                value: 0
+            }
+        )));
+        let events = game.advance(InputFrame {
+            actions: vec![InputAction::ChallengeSwap {
+                from_column: 2,
+                from_row: 1,
+                to_column: 2,
+                to_row: 2,
+            }],
+        });
+        assert!(
+            events.is_empty()
+                || events
+                    .iter()
+                    .all(|event| { !matches!(event, GameEvent::ChallengeAction { value: 1, .. }) })
+        );
+        for _ in 0..99 {
+            game.advance(InputFrame::default());
+        }
+        assert_eq!(game.state().challenge.score, 1);
+        assert_eq!(game.state().board.plants.len(), 40);
+        assert_eq!(
+            game.state()
+                .board
+                .coins
+                .iter()
+                .filter(|coin| coin.coin_type == CoinType::Sun)
+                .count(),
+            1
+        );
+        assert_eq!(
+            game.state().challenge.twist_state,
+            BeghouledTwistState::Falling
+        );
+    }
+
+    #[test]
+    fn beghouled_standard_eaten_cells_are_craters_until_cleared() {
+        let mut game = Game::new_mode(7, ModeKind::MiniGame, 4);
+        let plant = game
+            .state
+            .board
+            .plants
+            .iter_mut()
+            .find(|plant| plant.row == 0 && plant.column == 0)
+            .expect("standard Beghouled plant");
+        plant.health = ZOMBIE_BITE_DAMAGE;
+        let mut setup = Vec::new();
+        let zombie =
+            game.spawn_normal_zombie(0, 0, Some(grid_x(0) - 10 * POSITION_SCALE), &mut setup);
+        game.state
+            .board
+            .zombies
+            .iter_mut()
+            .find(|candidate| candidate.id == zombie)
+            .expect("standard Beghouled zombie")
+            .speed = 0;
+        for _ in 0..4 {
+            game.advance(InputFrame::default());
+        }
+        assert!(
+            game.state()
+                .board
+                .craters
+                .iter()
+                .any(|crater| crater.row == 0 && crater.column == 0 && crater.persistent)
+        );
+        game.state.sun = BEGHOULED_CRATER_COST;
+        let events = game.advance(InputFrame {
+            actions: vec![InputAction::ChallengeClearCrater],
+        });
+        assert!(events.iter().any(|event| matches!(
+            event,
+            GameEvent::ChallengeAction {
+                kind: ChallengeKind::Beghouled,
+                value: BEGHOULED_CRATER_COST
+            }
+        )));
+        assert!(
+            !game
+                .state()
+                .board
+                .craters
+                .iter()
+                .any(|crater| crater.row == 0 && crater.column == 0)
+        );
+        assert_eq!(game.state().board.plants.len(), 40);
+    }
+
+    #[test]
+    fn beghouled_standard_shuffles_after_500_ticks_without_a_move() {
+        let mut game = Game::new_mode(7, ModeKind::MiniGame, 4);
+        for plant in &mut game.state.board.plants {
+            plant.plant_type = BEGHOULED_SEED_TYPES[usize::from((plant.row + plant.column) % 3)];
+        }
+        game.state.challenge.zombie_countdown = u32::MAX;
+        assert!(!game.has_standard_move());
+        game.state.challenge.twist_state = BeghouledTwistState::Falling;
+        game.state.challenge.twist_counter = 1;
+        game.advance(InputFrame::default());
+        assert_eq!(
+            game.state().challenge.twist_state,
+            BeghouledTwistState::NoMoves
+        );
+        for _ in 0..500 {
+            game.advance(InputFrame::default());
+        }
+        assert_eq!(
+            game.state().challenge.twist_state,
+            BeghouledTwistState::Falling
+        );
+        for _ in 0..100 {
+            game.advance(InputFrame::default());
+        }
+        assert_eq!(
+            game.state().challenge.twist_state,
+            BeghouledTwistState::Normal
+        );
+        assert!(!game.twist_has_match());
+        assert!(game.has_standard_move());
     }
 
     #[test]
@@ -24109,7 +27966,7 @@ mod tests {
             event,
             GameEvent::ChallengeAction {
                 kind: ChallengeKind::SlotMachine,
-                value: 0..=2
+                value: 1
             }
         )));
 
@@ -24120,7 +27977,7 @@ mod tests {
         assert!(events.iter().any(|event| matches!(
             event,
             GameEvent::InputRejected {
-                reason: InputRejectReason::InvalidSlot,
+                reason: InputRejectReason::NotEnoughSun,
                 ..
             }
         )));
@@ -24268,6 +28125,231 @@ mod tests {
                 ..
             }
         )));
+    }
+
+    #[test]
+    fn column_challenge_uses_the_source_wave_offset_and_injections() {
+        let mut column = Game::new_mode(7, ModeKind::MiniGame, 11);
+        assert_eq!(column.state().scene, SceneKind::Roof);
+        assert_eq!(column.state().challenge.kind, ChallengeKind::Column);
+        assert_eq!(column.state().board.wave.total, 30);
+        assert_eq!(column.state().board.wave.current, 9);
+        assert_eq!(column.state().board.wave.countdown, 2_400);
+        assert_eq!(
+            column.state().board.wave.countdown_start,
+            FIRST_WAVE_COUNTDOWN
+        );
+        assert_eq!(column.state().challenge.conveyor_countdown, 1_000);
+        assert_eq!(
+            column
+                .state()
+                .board
+                .seed_packets
+                .iter()
+                .map(|packet| packet.plant_type)
+                .collect::<Vec<_>>(),
+            vec![
+                PlantType::Other(4),
+                PlantType::Other(23),
+                PlantType::Other(39),
+                PlantType::Other(31),
+                PlantType::Other(35),
+                PlantType::Other(39),
+            ]
+        );
+
+        let plan = &column.state().board.wave_plan;
+        assert_eq!(plan.len(), 30);
+        for wave in [5, 15, 25] {
+            assert_eq!(
+                plan[wave]
+                    .iter()
+                    .filter(|zombie| **zombie == ZombieType::Ladder)
+                    .count(),
+                10,
+                "wave {wave} has ten fixed ladders"
+            );
+        }
+        for wave in [8, 18, 28] {
+            assert_eq!(
+                plan[wave]
+                    .iter()
+                    .filter(|zombie| **zombie == ZombieType::Jackbox)
+                    .count(),
+                10,
+                "wave {wave} has ten fixed Jack-in-the-Boxes"
+            );
+        }
+        assert_eq!(
+            plan[19]
+                .iter()
+                .filter(|zombie| **zombie == ZombieType::Gargantuar)
+                .count(),
+            3
+        );
+        assert_eq!(
+            plan[29]
+                .iter()
+                .filter(|zombie| **zombie == ZombieType::Gargantuar)
+                .count(),
+            5
+        );
+        assert!(
+            plan[29].len() >= 21,
+            "the final wave retains its six-times budget"
+        );
+        assert!(
+            plan.iter().flatten().all(|zombie| matches!(
+                zombie,
+                ZombieType::Normal
+                    | ZombieType::Conehead
+                    | ZombieType::Buckethead
+                    | ZombieType::Football
+                    | ZombieType::Flag
+                    | ZombieType::Ladder
+                    | ZombieType::Jackbox
+                    | ZombieType::Gargantuar
+            )),
+            "Column only draws from its local pool plus fixed inserts"
+        );
+
+        let expected = plan[9].clone();
+        column.state.board.wave.countdown = 1;
+        let events = column.advance(InputFrame::default());
+        let spawned = events
+            .iter()
+            .filter_map(|event| match event {
+                GameEvent::ZombieSpawned {
+                    zombie_type,
+                    wave: 9,
+                    ..
+                } => Some(*zombie_type),
+                _ => None,
+            })
+            .collect::<Vec<_>>();
+        assert_eq!(spawned, expected);
+        assert_eq!(column.state().board.wave.current, 10);
+        assert_eq!(column.state().board.wave.countdown, COLUMN_WAVE_COUNTDOWN);
+        assert_eq!(
+            column.state().board.wave.countdown_start,
+            COLUMN_WAVE_COUNTDOWN
+        );
+    }
+
+    #[test]
+    fn seeing_stars_uses_the_source_pattern_and_completion() {
+        assert_eq!(
+            SEEING_STARS_STARFRUIT_CELLS,
+            [
+                (0, 3),
+                (1, 3),
+                (1, 4),
+                (2, 1),
+                (2, 2),
+                (2, 3),
+                (2, 4),
+                (2, 5),
+                (2, 6),
+                (3, 3),
+                (3, 4),
+                (3, 5),
+                (4, 3),
+                (4, 6),
+            ]
+        );
+
+        let mut game = Game::new_mode(7, ModeKind::MiniGame, 6);
+        assert_eq!(game.state().challenge.kind, ChallengeKind::SeeingStars);
+        assert_eq!(game.state().board.wave.total, 40);
+        game.state.sun = 9_990;
+
+        let rejected = game.advance(InputFrame {
+            actions: vec![
+                InputAction::SelectSeed { slot: 0 },
+                InputAction::Plant { row: 0, column: 3 },
+            ],
+        });
+        assert!(rejected.iter().any(|event| matches!(
+            event,
+            GameEvent::InputRejected {
+                reason: InputRejectReason::NotOnArt,
+                ..
+            }
+        )));
+        assert_eq!(game.state().sun, 9_990);
+        assert_eq!(game.state().board.seed_packets[0].refresh_remaining, 0);
+        assert!(game.state().board.plants.is_empty());
+
+        game.state.scene = SceneKind::Pool;
+        let lily_pad = game.advance(InputFrame {
+            actions: vec![
+                InputAction::SelectSeed { slot: 16 },
+                InputAction::Plant { row: 2, column: 1 },
+            ],
+        });
+        assert!(lily_pad.iter().any(|event| matches!(
+            event,
+            GameEvent::PlantPlaced {
+                plant_type: PlantType::Other(16),
+                row: 2,
+                column: 1,
+                ..
+            }
+        )));
+        game.state.scene = SceneKind::Day;
+
+        for &(row, column) in &SEEING_STARS_STARFRUIT_CELLS {
+            game.state
+                .board
+                .seed_packets
+                .iter_mut()
+                .find(|packet| packet.slot == 29)
+                .unwrap()
+                .refresh_remaining = 0;
+            let events = game.advance(InputFrame {
+                actions: vec![
+                    InputAction::SelectSeed { slot: 29 },
+                    InputAction::Plant { row, column },
+                ],
+            });
+            assert!(events.iter().any(|event| matches!(
+                event,
+                GameEvent::PlantPlaced {
+                    plant_type: PlantType::Other(29),
+                    row: placed_row,
+                    column: placed_column,
+                    ..
+                } if *placed_row == row && *placed_column == column
+            )));
+
+            if (row, column) == (0, 3) {
+                let pumpkin = game.advance(InputFrame {
+                    actions: vec![
+                        InputAction::SelectSeed { slot: 30 },
+                        InputAction::Plant { row, column },
+                    ],
+                });
+                assert!(pumpkin.iter().any(|event| matches!(
+                    event,
+                    GameEvent::PlantPlaced {
+                        plant_type: PlantType::Other(30),
+                        row: 0,
+                        column: 3,
+                        ..
+                    }
+                )));
+            }
+        }
+
+        assert_eq!(game.state().scene, SceneKind::Complete);
+        assert!(game.state().board.wave.current < game.state().board.wave.total);
+        assert!(
+            game.state()
+                .board
+                .coins
+                .iter()
+                .any(|coin| coin.coin_type == CoinType::Trophy)
+        );
     }
 
     #[test]
@@ -24488,7 +28570,18 @@ mod tests {
             (1, vec![PlantType::Other(3)], 400),
             (5, vec![PlantType::Peashooter, PlantType::Other(14)], 1_000),
             (9, Vec::new(), 200),
-            (10, Vec::new(), 0),
+            (
+                10,
+                vec![
+                    PlantType::Peashooter,
+                    PlantType::Other(7),
+                    PlantType::Other(22),
+                    PlantType::Other(26),
+                    PlantType::Other(3),
+                    PlantType::Other(2),
+                ],
+                200,
+            ),
             (
                 11,
                 vec![
@@ -25428,6 +29521,7 @@ mod tests {
             target_row: Some(2),
             lob_height: 61 * PULT_LOB_SCALE as i32,
             lob_velocity: 1,
+            last_portal_column: 0,
         };
         assert_eq!(
             game.find_catapult_collision_target(&projectile)
