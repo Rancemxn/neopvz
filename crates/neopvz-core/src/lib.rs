@@ -11418,11 +11418,14 @@ impl Game {
                 let zombie = &mut self.state.board.zombies[zombie_index];
                 zombie.age = zombie.age.saturating_add(1);
                 zombie.groan_counter -= 1;
+                // Source Zombie::Update (0x52AE60) gates the phase-counter
+                // decrement on IsImmobilizied() evaluated BEFORE the ice/butter
+                // counters are decremented, so a riser pauses through the exact
+                // thaw tick and resumes on the following tick.
+                let riser_immobilized = zombie.frozen_counter > 0;
                 zombie.frozen_counter = zombie.frozen_counter.saturating_sub(1);
                 zombie.chilled_counter = zombie.chilled_counter.saturating_sub(1);
-                // Source UpdateZombieRiseFromGrave advances only when the
-                // ice/butter counter has cleared; a frozen riser pauses.
-                if zombie.rise_counter > 0 && zombie.frozen_counter == 0 {
+                if zombie.rise_counter > 0 && !riser_immobilized {
                     zombie.rise_counter -= 1;
                 }
                 if zombie.zombie_type == ZombieType::PeaHead {
@@ -23454,6 +23457,33 @@ mod tests {
         }
         assert_eq!(pool.state.board.zombies[0].rise_counter, 0);
         assert!(pool.state.board.zombies[0].in_pool);
+    }
+
+    #[test]
+    fn frozen_risers_pause_through_the_thaw_tick_and_resume_after() {
+        // Source Zombie::Update decrements mPhaseCounter only when
+        // IsImmobilizied() is false before the ice/butter counter decrements,
+        // so a frozen riser holds its counter on the exact thaw tick (1 -> 0)
+        // and resumes on the following tick.
+        let mut game = Game::new(7, SceneKind::Night);
+        let mut setup = Vec::new();
+        game.spawn_rising_zombie(ZombieType::Normal, 2, 2, 0, &mut setup);
+        game.state.board.zombies[0].rise_counter = 3;
+        game.state.board.zombies[0].frozen_counter = 2;
+
+        // Still-immobilized tick: counter 2 -> 1, rise holds.
+        game.advance(InputFrame::default());
+        assert_eq!(game.state.board.zombies[0].frozen_counter, 1);
+        assert_eq!(game.state.board.zombies[0].rise_counter, 3);
+
+        // Exact thaw tick: counter 1 -> 0, the rise still holds.
+        game.advance(InputFrame::default());
+        assert_eq!(game.state.board.zombies[0].frozen_counter, 0);
+        assert_eq!(game.state.board.zombies[0].rise_counter, 3);
+
+        // Post-thaw tick: the rise resumes.
+        game.advance(InputFrame::default());
+        assert_eq!(game.state.board.zombies[0].rise_counter, 2);
     }
 
     #[test]
