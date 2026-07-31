@@ -12470,21 +12470,48 @@ impl Game {
         let Some(row) = projectile_row(projectile.position_y, self.state.board.rows) else {
             return;
         };
-        let splash_damage = projectile.projectile_type.splash_damage();
+        let is_fireball = projectile.projectile_type == ProjectileType::Fireball;
         let target_ids = self
             .state
             .board
             .zombies
             .iter()
             .filter(|zombie| {
-                zombie.id != primary_zombie
-                    && zombie.health > 0
-                    && projectile_can_hit_zombie(zombie, projectile.projectile_type)
-                    && zombie.row.abs_diff(row) <= 1
-                    && projectile_hits(projectile.position_x, zombie.position_x)
+                if zombie.id == primary_zombie || zombie.health <= 0 {
+                    return false;
+                }
+                if !projectile_can_hit_zombie(zombie, projectile.projectile_type) {
+                    return false;
+                }
+                if is_fireball {
+                    // Source IsZombieHitBySplash: Fireball splash is same-row,
+                    // rejects fire-resistant zombies, and uses a width-100 rect.
+                    !zombie_is_fire_resistant(zombie)
+                        && zombie.row == row
+                        && projectile_hits_fireball(projectile.position_x, zombie.position_x)
+                } else {
+                    zombie.row.abs_diff(row) <= 1
+                        && projectile_hits(projectile.position_x, zombie.position_x)
+                }
             })
             .map(|zombie| zombie.id)
             .collect::<Vec<_>>();
+
+        // Source DoSplashDamage caps Fireball's aggregate splash at the
+        // original damage before applying per-target damage.
+        let original_damage = projectile.damage;
+        let splash_base = projectile.projectile_type.splash_damage();
+        let splash_total = splash_base.saturating_mul(target_ids.len() as i32);
+        let max_splash = if is_fireball {
+            original_damage
+        } else {
+            splash_base.saturating_mul(7)
+        };
+        let splash_damage = if splash_total > max_splash {
+            (original_damage * max_splash / (splash_total * 3)).max(1)
+        } else {
+            splash_base
+        };
 
         for zombie_id in target_ids {
             let Some(zombie_index) = self
@@ -15879,6 +15906,22 @@ fn projectile_hits(projectile_x: i64, zombie_x: i64) -> bool {
         && projectile_x - 15 * POSITION_SCALE < zombie_x + 78 * POSITION_SCALE
 }
 
+// Source Zombie::IsFireResistant: Catapult, Zamboni, and door/ladder shields
+// take no Fireball splash.
+fn zombie_is_fire_resistant(zombie: &ZombieState) -> bool {
+    matches!(
+        zombie.zombie_type,
+        ZombieType::Catapult | ZombieType::Zamboni | ZombieType::ScreenDoor | ZombieType::Ladder
+    )
+}
+
+// Source IsZombieHitBySplash widens the Fireball rect to 100 units
+// (Projectile.cpp:430-475).
+fn projectile_hits_fireball(projectile_x: i64, zombie_x: i64) -> bool {
+    projectile_x + 100 * POSITION_SCALE > zombie_x + 36 * POSITION_SCALE
+        && projectile_x - 20 * POSITION_SCALE < zombie_x + 78 * POSITION_SCALE
+}
+
 fn projectile_hits_zombie(
     scene: SceneKind,
     projectile: &ProjectileState,
@@ -17113,9 +17156,16 @@ mod tests {
             .launch_counter = 1;
         let mut setup_events = Vec::new();
         game.spawn_normal_zombie(2, 0, Some(500 * POSITION_SCALE), &mut setup_events);
-        game.spawn_normal_zombie(1, 0, Some(500 * POSITION_SCALE), &mut setup_events);
+        game.spawn_normal_zombie(2, 0, Some(540 * POSITION_SCALE), &mut setup_events);
+        let off_row = game.spawn_normal_zombie(1, 0, Some(500 * POSITION_SCALE), &mut setup_events);
         let immune = game.spawn_normal_zombie(3, 0, Some(500 * POSITION_SCALE), &mut setup_events);
-        game.state.board.zombies[2].hypnotized = true;
+        game.state
+            .board
+            .zombies
+            .iter_mut()
+            .find(|zombie| zombie.id == immune)
+            .unwrap()
+            .hypnotized = true;
         for zombie in &mut game.state.board.zombies {
             zombie.speed = 0;
         }
@@ -17125,6 +17175,7 @@ mod tests {
         let mut saw_fireball_hit = false;
         let mut saw_fireball_splash = false;
         let mut immune_hit = false;
+        let mut off_row_hit = false;
         for _ in 0..200 {
             let events = game.advance(InputFrame::default());
             saw_firepea |= events
@@ -17147,6 +17198,14 @@ mod tests {
                         if *zombie == immune
                 )
             });
+            off_row_hit |= events.iter().any(|event| {
+                matches!(
+                    event,
+                    GameEvent::ProjectileHit { zombie, .. }
+                        | GameEvent::ProjectileSplashHit { zombie, .. }
+                        if *zombie == off_row
+                )
+            });
             if saw_fireball && saw_fireball_hit && saw_fireball_splash {
                 break;
             }
@@ -17157,6 +17216,7 @@ mod tests {
         assert!(saw_fireball_hit);
         assert!(saw_fireball_splash);
         assert!(!immune_hit);
+        assert!(!off_row_hit);
         assert_eq!(
             game.state
                 .board
@@ -17166,6 +17226,100 @@ mod tests {
                 .unwrap()
                 .health,
             270
+        );
+    }
+
+    #[test]
+    fn fireball_splash_is_same_row_and_capped() {
+        // Primary takes the full 40, a same-row secondary is splashed for 13,
+        // and adjacent-row plus fire-resistant zombies take no splash.
+        let mut game = Game::new(7, SceneKind::Day);
+        let mut setup = Vec::new();
+        let primary = game.spawn_normal_zombie(2, 0, Some(500 * POSITION_SCALE), &mut setup);
+        let secondary = game.spawn_normal_zombie(2, 0, Some(520 * POSITION_SCALE), &mut setup);
+        let off_row = game.spawn_normal_zombie(1, 0, Some(500 * POSITION_SCALE), &mut setup);
+        let fire_resistant =
+            game.spawn_screen_door_zombie(2, 0, Some(540 * POSITION_SCALE), &mut setup);
+        for zombie in &mut game.state.board.zombies {
+            zombie.speed = 0;
+        }
+        game.fire_projectile(
+            0,
+            ProjectileType::Fireball,
+            2,
+            ProjectileTrajectory {
+                motion: ProjectileMotion::Straight,
+                position_x: 500 * POSITION_SCALE,
+                position_y: grid_y(2),
+                velocity_x: 0,
+                velocity_y: 0,
+            },
+            &mut setup,
+        );
+        let mut events = Vec::new();
+        for _ in 0..20 {
+            events.extend(game.advance(InputFrame::default()));
+        }
+        assert!(events.iter().any(|event| matches!(
+            event,
+            GameEvent::ProjectileHit { zombie, damage: 40, .. } if *zombie == primary
+        )));
+        assert!(events.iter().any(|event| matches!(
+            event,
+            GameEvent::ProjectileSplashHit { zombie, damage: 13, .. } if *zombie == secondary
+        )));
+        assert!(!events.iter().any(|event| matches!(
+            event,
+            GameEvent::ProjectileHit { zombie, .. }
+                | GameEvent::ProjectileSplashHit { zombie, .. }
+                if *zombie == off_row || *zombie == fire_resistant
+        )));
+
+        // Four same-row secondaries scale the splash 13 -> 10 so the aggregate
+        // splash stays capped at the original 40 damage.
+        let mut game = Game::new(7, SceneKind::Day);
+        let mut setup = Vec::new();
+        let primary = game.spawn_normal_zombie(2, 0, Some(500 * POSITION_SCALE), &mut setup);
+        for dx in [10, 20, 30, 40] {
+            game.spawn_normal_zombie(2, 0, Some((500 + dx) * POSITION_SCALE), &mut setup);
+        }
+        for zombie in &mut game.state.board.zombies {
+            zombie.speed = 0;
+        }
+        game.fire_projectile(
+            0,
+            ProjectileType::Fireball,
+            2,
+            ProjectileTrajectory {
+                motion: ProjectileMotion::Straight,
+                position_x: 500 * POSITION_SCALE,
+                position_y: grid_y(2),
+                velocity_x: 0,
+                velocity_y: 0,
+            },
+            &mut setup,
+        );
+        let mut events = Vec::new();
+        for _ in 0..20 {
+            events.extend(game.advance(InputFrame::default()));
+        }
+        assert!(
+            events
+                .iter()
+                .any(|event| matches!(event, GameEvent::ProjectileSplashHit { damage: 10, .. }))
+        );
+        let splash_total: i32 = events
+            .iter()
+            .filter_map(|event| match event {
+                GameEvent::ProjectileSplashHit { zombie, damage, .. } if *zombie != primary => {
+                    Some(*damage)
+                }
+                _ => None,
+            })
+            .sum();
+        assert!(
+            splash_total <= 40,
+            "Fireball aggregate splash must not exceed the original damage"
         );
     }
 
