@@ -4,8 +4,8 @@
 
 ## Verification
 
-- [ ] Full gate passed on GitHub Actions.
-- [ ] No local build or test was run.
+- [ ] Local stable Cargo gate passed (`fmt --check`, locked Clippy, locked workspace tests, locked debug build).
+- [ ] GitHub Actions results recorded when available (supplementary only).
 - [ ] Replay, state hash, screenshot, or manual acceptance evidence is attached when relevant.
 
 ## Repository boundary

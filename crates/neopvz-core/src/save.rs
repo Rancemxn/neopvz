@@ -97,6 +97,16 @@ pub struct SaveProfile {
     pub inventory: SaveInventory,
     pub garden: GardenState,
     pub mode_completion: Vec<ModeCompletion>,
+    #[serde(default = "default_adventure_level")]
+    pub adventure_level: u8,
+    #[serde(default)]
+    pub adventure_rounds: u8,
+    #[serde(default)]
+    pub packet_upgrades: u8,
+}
+
+fn default_adventure_level() -> u8 {
+    1
 }
 
 impl Default for SaveProfile {
@@ -110,6 +120,9 @@ impl Default for SaveProfile {
             inventory: SaveInventory::default(),
             garden: GardenState::default(),
             mode_completion: Vec::new(),
+            adventure_level: 1,
+            adventure_rounds: 0,
+            packet_upgrades: 0,
         }
     }
 }
@@ -156,6 +169,14 @@ impl SaveProfile {
         }
         if self.mode_completion.len() > MAX_MODE_ENTRIES {
             return Err(SaveError::Invalid("too many mode entries".to_owned()));
+        }
+        if !(1..=50).contains(&self.adventure_level) {
+            return Err(SaveError::Invalid(
+                "adventure level is out of range".to_owned(),
+            ));
+        }
+        if self.packet_upgrades > 4 {
+            return Err(SaveError::Invalid("too many packet upgrades".to_owned()));
         }
         let mut modes = BTreeSet::new();
         for entry in &self.mode_completion {
