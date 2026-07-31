@@ -180,6 +180,17 @@ starts the source five-tick triggered phase without plant damage; the remaining
 animation, deterministic, and audio-mapping evidence is recorded in ignored
 `artifacts/umbrella-projectile-interception/verification.md`; Issue `#200`.
 
+Fireball splash now follows the source `IsZombieHitBySplash` and
+`DoSplashDamage` rules: same-row-only targets with a width-100 rect,
+fire-resistant zombies (Catapult, Zamboni, door/ladder shields) excluded, and
+the aggregate splash capped at the original 40 damage before per-target
+application. The primary impact keeps the source shield-and-body flags. Focused
+coverage is `fireball_splash_is_same_row_and_capped`, and the Torchwood test
+now asserts same-row splash with no adjacent-row hit; source evidence is local
+`Projectile.cpp` `GetDamageFlags` (`381-407`), `IsZombieHitBySplash`
+(`430-475`), `DoSplashDamage` (`477-530`), and `Zombie::IsFireResistant`;
+Issue `#235`.
+
 ## Player-Accessible Modes
 
 | Obligation | Mode domain | Accepted | Total | Status | Evidence / owner |
