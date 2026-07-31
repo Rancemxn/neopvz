@@ -180,6 +180,15 @@ starts the source five-tick triggered phase without plant damage; the remaining
 animation, deterministic, and audio-mapping evidence is recorded in ignored
 `artifacts/umbrella-projectile-interception/verification.md`; Issue `#200`.
 
+Final-wave grave and pool risers now use the source `RiseFromGrave` phase: a
+150-tick off-ground rise on land or a 50-tick submerged rise in the pool,
+stationary and rejecting ordinary ground attacks until the counter boundary,
+then joining as normal zombies (pool risers keep their pool flag). Focused
+coverage is `rising_zombies_are_off_ground_until_the_source_timer_elapses`;
+source evidence is local `Zombie.cpp` `RiseFromGrave` (`8130-8160`),
+`UpdateZombieRiseFromGrave` (`3009-3038`), and `EffectedByDamage`
+(`8082-8085`); Issue `#226`.
+
 ## Player-Accessible Modes
 
 | Obligation | Mode domain | Accepted | Total | Status | Evidence / owner |
