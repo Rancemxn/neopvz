@@ -180,6 +180,29 @@ starts the source five-tick triggered phase without plant damage; the remaining
 animation, deterministic, and audio-mapping evidence is recorded in ignored
 `artifacts/umbrella-projectile-interception/verification.md`; Issue `#200`.
 
+The Dolphin Rider and Snorkel phase machines now follow the 1.0.0.1051 source
+profiles. The Rider keeps its 0.89-0.91 walk speed through pool entry and
+riding, applying 0.5 only at jump start; its entry and jump phases are
+off-ground windows that reject ordinary Pea/Butter ground projectiles, with
+only CobCannon (GetDamageRangeFlags 127) carrying DAMAGES_OFF_GROUND. The
+Snorkel keeps its 0.2 entry velocity through the first underwater walk,
+re-picks 0.66..0.68 after eating and on returning to land, keeps walking
+while surfacing, and takes only pult-family (DAMAGES_SUBMERGED) damage while
+submerged (the source Cattail 11-bit range has no submerged bit). Both pause
+phase progress while ice/butter immobilized and resume on the exact thaw tick,
+matching the source pre-decrement ordering. Focused coverage is
+`dolphin_rider_restores_source_pool_and_jump_phases`,
+`ground_projectiles_cannot_hit_a_dolphin_during_entry_or_jump`,
+`dolphin_phases_pause_while_immobilized_and_resume_on_thaw`,
+`snorkel_uses_source_spawn_speed_and_hides_in_pool_until_it_eats`,
+`snorkel_keeps_walking_while_surfacing_from_the_pool`,
+`submerged_snorkel_takes_pult_but_not_pea_damage`, and
+`snorkel_phases_pause_while_immobilized_and_resume_on_thaw`; source evidence is
+local `Zombie.cpp` `PickRandomSpeed`, `UpdateZombieDolphinRider`,
+`UpdateZombieSnorkel`, `EffectedByDamage`, and `CanBeFrozen`, plus
+`Plant.cpp` `GetDamageRangeFlags`; Issues `#183`, `#184`, `#185`, `#188`,
+`#189`, `#190`, `#191`.
+
 ## Player-Accessible Modes
 
 | Obligation | Mode domain | Accepted | Total | Status | Evidence / owner |

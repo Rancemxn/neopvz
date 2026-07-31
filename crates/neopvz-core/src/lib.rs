@@ -355,7 +355,6 @@ const DOLPHIN_POOL_SPEED: i64 = 300_000;
 const DOLPHIN_JUMP_BONK_COUNTER: u32 = 84;
 const DOLPHIN_JUMP_SPLASH_COUNTER: u32 = 61;
 const SNORKEL_ENTRY_SPEED: i64 = 200_000;
-const SNORKEL_POOL_SPEED: i64 = 300_000;
 const SNORKEL_ENTRY_TICKS: u32 = 100;
 // Zombie.cpp emits the water event at animation time 0.83.
 const SNORKEL_SPLASH_TICKS: u32 = 83;
@@ -9851,7 +9850,6 @@ impl Game {
                         zombie.position_x -= 70 * POSITION_SCALE;
                         zombie.dolphin_phase = DOLPHIN_RIDING_PHASE;
                         zombie.in_pool = true;
-                        zombie.speed = DOLPHIN_RIDE_SPEED;
                         suppress_attack = true;
                     }
                 }
@@ -9953,7 +9951,6 @@ impl Game {
                     if zombie.snorkel_counter == 0 {
                         zombie.snorkel_phase = SNORKEL_WALKING_IN_POOL_PHASE;
                         zombie.in_pool = true;
-                        zombie.speed = SNORKEL_POOL_SPEED;
                     }
                 }
                 SNORKEL_WALKING_IN_POOL_PHASE => {
@@ -9967,7 +9964,9 @@ impl Game {
                         } else {
                             -15 * POSITION_SCALE
                         };
-                        zombie.speed = 0;
+                        // Source StartWalkAnim -> PickRandomSpeed re-picks 0.66..0.68
+                        // and the zombie keeps walking while it rises out of the pool.
+                        zombie.speed = self.rng.fixed_range(660_000, 680_000);
                         zombie.eating = false;
                     } else if zombie.eating {
                         zombie.snorkel_phase = SNORKEL_UP_TO_EAT_PHASE;
@@ -9999,16 +9998,15 @@ impl Game {
                     zombie.snorkel_counter = zombie.snorkel_counter.saturating_sub(1);
                     if zombie.snorkel_counter == 0 {
                         zombie.snorkel_phase = SNORKEL_WALKING_IN_POOL_PHASE;
-                        zombie.speed = SNORKEL_POOL_SPEED;
+                        // Source PickRandomSpeed re-picks 0.66..0.68 for every Snorkel.
+                        zombie.speed = self.rng.fixed_range(660_000, 680_000);
                     }
                 }
                 SNORKEL_OUT_OF_POOL_PHASE => {
-                    zombie.speed = 0;
                     zombie.snorkel_counter = zombie.snorkel_counter.saturating_sub(1);
                     if zombie.snorkel_counter == 0 {
                         zombie.snorkel_phase = SNORKEL_WALKING_PHASE;
                         zombie.in_pool = false;
-                        zombie.speed = SNORKEL_ENTRY_SPEED;
                     }
                 }
                 _ => {}
@@ -11242,8 +11240,20 @@ impl Game {
                     variant: self.rng.range(2) as u8,
                 });
             }
-            let dolphin_suppress_attack = self.update_dolphin_state(zombie_index, events);
-            self.update_snorkel_state(zombie_index, events);
+            // Source UpdatePlaying decrements the ice/butter counter before
+            // dispatching phase actions, so a still-immobilized Dolphin or
+            // Snorkel must not advance entry, splash, eating, descent, or exit
+            // progress. The pre-decrement value decides: counters 0..=1 are
+            // running or on the exact thaw tick, counters above 1 are paused.
+            let immobilized = self.state.board.zombies[zombie_index].frozen_counter > 1;
+            let dolphin_suppress_attack = if immobilized {
+                false
+            } else {
+                self.update_dolphin_state(zombie_index, events)
+            };
+            if !immobilized {
+                self.update_snorkel_state(zombie_index, events);
+            }
             self.update_zamboni_state(zombie_index);
             let garlic_active = self.advance_garlic_state(zombie_index, events);
             if self.update_special_zombie_state(zombie_index, events) {
@@ -15836,6 +15846,19 @@ fn projectile_can_hit_zombie(zombie: &ZombieState, projectile_type: ProjectileTy
     if !plant_damage_can_hit_zombie(zombie) || zombie_rejects_ground_damage(zombie) {
         return false;
     }
+    // The source EffectedByDamage treats Dolphin pool-entry and jump as
+    // off-ground windows: only weapons carrying DAMAGES_OFF_GROUND may hit,
+    // and among projectiles only CobCannon (GetDamageRangeFlags 127) carries
+    // it. Ordinary Pea/Butter ground shots pass through both phases.
+    if zombie.zombie_type == ZombieType::DolphinRider
+        && matches!(
+            zombie.dolphin_phase,
+            DOLPHIN_INTO_POOL_PHASE | DOLPHIN_IN_JUMP_PHASE
+        )
+        && projectile_type != ProjectileType::Cob
+    {
+        return false;
+    }
     if zombie.zombie_type == ZombieType::Bobsled && zombie.bobsled_sliding && !zombie.bobsled_leader
     {
         return false;
@@ -15845,22 +15868,22 @@ fn projectile_can_hit_zombie(zombie: &ZombieState, projectile_type: ProjectileTy
     {
         return false;
     }
-    if zombie.zombie_type == ZombieType::Snorkel
-        && matches!(
-            zombie.snorkel_phase,
-            SNORKEL_INTO_POOL_PHASE
-                | SNORKEL_UP_TO_EAT_PHASE
-                | SNORKEL_DOWN_FROM_EAT_PHASE
-                | SNORKEL_OUT_OF_POOL_PHASE
-        )
-    {
-        return false;
-    }
-    if zombie.zombie_type == ZombieType::Snorkel
-        && zombie.snorkel_phase == SNORKEL_WALKING_IN_POOL_PHASE
-        && !projectile_type.is_pult()
-    {
-        return false;
+    if zombie.zombie_type == ZombieType::Snorkel {
+        if zombie.snorkel_phase == SNORKEL_INTO_POOL_PHASE {
+            // Source EffectedByDamage: the pool-entry phase is an off-ground
+            // window, so only DAMAGES_OFF_GROUND weapons hit; among projectiles
+            // only CobCannon carries it (GetDamageRangeFlags 127).
+            if projectile_type != ProjectileType::Cob {
+                return false;
+            }
+        } else if zombie.in_pool && !zombie.eating {
+            // Submerged Snorkel: only DAMAGES_SUBMERGED weapons hit. The source
+            // pult family carries it (GetDamageRangeFlags 13); ordinary ground
+            // shots pass over while Cattail (11) also lacks the bit.
+            if !projectile_type.is_pult() {
+                return false;
+            }
+        }
     }
     // Only Cactus/Cattail spikes carry the flying damage-range flag; airborne
     // balloons and mid-flight thrown imps reject every other projectile.
@@ -15892,10 +15915,7 @@ fn snorkel_blocks_movement(zombie: &ZombieState) -> bool {
     zombie.zombie_type == ZombieType::Snorkel
         && matches!(
             zombie.snorkel_phase,
-            SNORKEL_UP_TO_EAT_PHASE
-                | SNORKEL_EATING_IN_POOL_PHASE
-                | SNORKEL_DOWN_FROM_EAT_PHASE
-                | SNORKEL_OUT_OF_POOL_PHASE
+            SNORKEL_UP_TO_EAT_PHASE | SNORKEL_EATING_IN_POOL_PHASE | SNORKEL_DOWN_FROM_EAT_PHASE
         )
 }
 
@@ -20111,7 +20131,7 @@ mod tests {
             .unwrap();
         assert_eq!(dolphin_state.dolphin_phase, DOLPHIN_RIDING_PHASE);
         assert_eq!(dolphin_state.dolphin_counter, 0);
-        assert_eq!(dolphin_state.speed, DOLPHIN_RIDE_SPEED);
+        assert_eq!(dolphin_state.speed, DOLPHIN_WALK_SPEED);
         assert!(dolphin_state.in_pool);
 
         game.place_izombie_plant(PlantType::Sunflower, 2, 2);
@@ -20319,6 +20339,116 @@ mod tests {
     }
 
     #[test]
+    fn ground_projectiles_cannot_hit_a_dolphin_during_entry_or_jump() {
+        for phase in [DOLPHIN_INTO_POOL_PHASE, DOLPHIN_IN_JUMP_PHASE] {
+            let mut game = Game::new(7, SceneKind::Pool);
+            let mut setup = Vec::new();
+            let dolphin =
+                game.spawn_dolphin_rider_zombie(2, 0, Some(700 * POSITION_SCALE), &mut setup);
+            {
+                let dolphin_state = game
+                    .state
+                    .board
+                    .zombies
+                    .iter_mut()
+                    .find(|candidate| candidate.id == dolphin)
+                    .unwrap();
+                dolphin_state.dolphin_phase = phase;
+                dolphin_state.dolphin_counter = DOLPHIN_ENTRY_TICKS / 2;
+                dolphin_state.speed = 0;
+                dolphin_state.age = 3;
+            }
+            let dolphin_x = game
+                .state
+                .board
+                .zombies
+                .iter()
+                .find(|candidate| candidate.id == dolphin)
+                .unwrap()
+                .position_x;
+            for projectile_type in [ProjectileType::Pea, ProjectileType::Butter] {
+                let mut setup_events = Vec::new();
+                game.fire_projectile(
+                    0,
+                    projectile_type,
+                    2,
+                    ProjectileTrajectory {
+                        motion: ProjectileMotion::Straight,
+                        position_x: dolphin_x,
+                        position_y: grid_y(2),
+                        velocity_x: 0,
+                        velocity_y: 0,
+                    },
+                    &mut setup_events,
+                );
+                let events = game.advance(InputFrame::default());
+                let hit_or_chilled = events.iter().any(|event| match event {
+                    GameEvent::ProjectileHit { zombie, .. } => *zombie == dolphin,
+                    GameEvent::ZombieChilled { entity, .. } => *entity == dolphin,
+                    _ => false,
+                });
+                assert!(
+                    !hit_or_chilled,
+                    "{projectile_type:?} must not hit or chill a dolphin in phase {phase}"
+                );
+            }
+            let dolphin_state = game
+                .state
+                .board
+                .zombies
+                .iter()
+                .find(|candidate| candidate.id == dolphin)
+                .unwrap();
+            assert_eq!(dolphin_state.health, 500);
+            assert_eq!(dolphin_state.frozen_counter, 0);
+        }
+
+        // The same ground projectile still hits a walking dolphin.
+        let mut game = Game::new(7, SceneKind::Pool);
+        let mut setup = Vec::new();
+        let dolphin = game.spawn_dolphin_rider_zombie(2, 0, Some(700 * POSITION_SCALE), &mut setup);
+        {
+            let dolphin_state = game
+                .state
+                .board
+                .zombies
+                .iter_mut()
+                .find(|candidate| candidate.id == dolphin)
+                .unwrap();
+            dolphin_state.dolphin_phase = DOLPHIN_WALKING_PHASE;
+            dolphin_state.speed = 0;
+            dolphin_state.age = 3;
+        }
+        let dolphin_x = game
+            .state
+            .board
+            .zombies
+            .iter()
+            .find(|candidate| candidate.id == dolphin)
+            .unwrap()
+            .position_x;
+        let mut setup_events = Vec::new();
+        game.fire_projectile(
+            0,
+            ProjectileType::Pea,
+            2,
+            ProjectileTrajectory {
+                motion: ProjectileMotion::Straight,
+                position_x: dolphin_x,
+                position_y: grid_y(2),
+                velocity_x: 0,
+                velocity_y: 0,
+            },
+            &mut setup_events,
+        );
+        let events = game.advance(InputFrame::default());
+        assert!(events.iter().any(|event| matches!(
+            event,
+            GameEvent::ProjectileHit { zombie, .. } if *zombie == dolphin
+        )));
+    }
+
+    #[test]
     fn dolphin_rider_does_not_jump_while_tanglekelp_targets_it() {
         let mut game = Game::new(7, SceneKind::Pool);
         game.place_izombie_plant(PlantType::Other(19), 2, 2);
@@ -20448,7 +20578,7 @@ mod tests {
             .unwrap();
         assert_eq!(state.snorkel_phase, SNORKEL_WALKING_IN_POOL_PHASE);
         assert!(state.in_pool);
-        assert_eq!(state.speed, SNORKEL_POOL_SPEED);
+        assert_eq!(state.speed, SNORKEL_ENTRY_SPEED);
 
         let snorkel_position = {
             let snorkel_state = game
@@ -20580,7 +20710,7 @@ mod tests {
             .unwrap();
         assert_eq!(snorkel_state.snorkel_phase, SNORKEL_WALKING_IN_POOL_PHASE);
         assert!(snorkel_state.in_pool);
-        assert_eq!(snorkel_state.speed, SNORKEL_POOL_SPEED);
+        assert!((660_000..=680_000).contains(&snorkel_state.speed));
 
         let snorkel_index = game
             .state
@@ -20650,6 +20780,243 @@ mod tests {
             SNORKEL_WALKING_PHASE
         );
         assert!(!backwards.state.board.zombies[backwards_index].in_pool);
+    }
+
+    #[test]
+    fn snorkel_keeps_walking_while_surfacing_from_the_pool() {
+        let mut game = Game::new(7, SceneKind::Pool);
+        let mut setup = Vec::new();
+        let snorkel =
+            game.spawn_snorkel_zombie(2, 0, Some(grid_x(2) + 20 * POSITION_SCALE), &mut setup);
+        let exit_x = 25 * POSITION_SCALE;
+        {
+            let state = game
+                .state
+                .board
+                .zombies
+                .iter_mut()
+                .find(|candidate| candidate.id == snorkel)
+                .unwrap();
+            state.snorkel_phase = SNORKEL_WALKING_IN_POOL_PHASE;
+            state.snorkel_counter = 0;
+            state.position_x = exit_x;
+            state.in_pool = true;
+            state.age = 3;
+        }
+        let mut saw_rise_movement = false;
+        let mut last_rise_x = None;
+        for _ in 0..SNORKEL_EXIT_TICKS {
+            game.advance(InputFrame::default());
+            let Some(state) = game
+                .state
+                .board
+                .zombies
+                .iter()
+                .find(|candidate| candidate.id == snorkel)
+            else {
+                // A surfacing Snorkel can walk into the pool cleaner; the
+                // movement-during-rise check is already proven by then.
+                break;
+            };
+            if state.snorkel_phase == SNORKEL_OUT_OF_POOL_PHASE {
+                assert!((660_000..=680_000).contains(&state.speed));
+                assert!(state.in_pool);
+                match last_rise_x {
+                    Some(previous) => assert!(
+                        state.position_x < previous,
+                        "a surfacing snorkel must keep walking during the rise"
+                    ),
+                    None => assert!(state.position_x < exit_x),
+                }
+                last_rise_x = Some(state.position_x);
+                saw_rise_movement = true;
+            }
+        }
+        assert!(saw_rise_movement);
+    }
+
+    #[test]
+    fn submerged_snorkel_takes_pult_but_not_pea_damage() {
+        for phase in [SNORKEL_DOWN_FROM_EAT_PHASE, SNORKEL_OUT_OF_POOL_PHASE] {
+            let mut game = Game::new(7, SceneKind::Pool);
+            let mut setup = Vec::new();
+            let snorkel =
+                game.spawn_snorkel_zombie(2, 0, Some(grid_x(2) + 20 * POSITION_SCALE), &mut setup);
+            let snorkel_x = {
+                let state = game
+                    .state
+                    .board
+                    .zombies
+                    .iter_mut()
+                    .find(|candidate| candidate.id == snorkel)
+                    .unwrap();
+                state.snorkel_phase = phase;
+                state.snorkel_counter = SNORKEL_EAT_TRANSITION_TICKS / 2;
+                state.in_pool = true;
+                state.eating = false;
+                state.speed = 0;
+                state.age = 3;
+                state.position_x
+            };
+            let mut pea_events = Vec::new();
+            game.fire_projectile(
+                0,
+                ProjectileType::Pea,
+                2,
+                ProjectileTrajectory {
+                    motion: ProjectileMotion::Straight,
+                    position_x: snorkel_x,
+                    position_y: grid_y(2),
+                    velocity_x: 0,
+                    velocity_y: 0,
+                },
+                &mut pea_events,
+            );
+            let events = game.advance(InputFrame::default());
+            assert!(
+                !events.iter().any(|event| matches!(
+                    event,
+                    GameEvent::ProjectileHit { zombie, .. } if *zombie == snorkel
+                )),
+                "a pea must pass over a submerged snorkel in phase {phase}"
+            );
+
+            game.state.board.projectiles.clear();
+            let mut melon_events = Vec::new();
+            game.fire_projectile(
+                0,
+                ProjectileType::Melon,
+                2,
+                ProjectileTrajectory {
+                    motion: ProjectileMotion::Straight,
+                    position_x: snorkel_x,
+                    position_y: grid_y(2),
+                    velocity_x: 0,
+                    velocity_y: 0,
+                },
+                &mut melon_events,
+            );
+            let events = game.advance(InputFrame::default());
+            assert!(
+                events.iter().any(|event| matches!(
+                    event,
+                    GameEvent::ProjectileHit { zombie, .. } if *zombie == snorkel
+                )),
+                "a pult lob must hit a submerged snorkel in phase {phase}"
+            );
+        }
+    }
+
+    #[test]
+    fn dolphin_phases_pause_while_immobilized_and_resume_on_thaw() {
+        let mut game = Game::new(7, SceneKind::Pool);
+        let mut setup = Vec::new();
+        let dolphin = game.spawn_dolphin_rider_zombie(2, 0, Some(720 * POSITION_SCALE), &mut setup);
+        {
+            let state = game
+                .state
+                .board
+                .zombies
+                .iter_mut()
+                .find(|candidate| candidate.id == dolphin)
+                .unwrap();
+            state.dolphin_phase = DOLPHIN_INTO_POOL_PHASE;
+            state.dolphin_counter = DOLPHIN_ENTRY_TICKS;
+            state.frozen_counter = 5;
+            state.age = 3;
+        }
+        let events = game.advance(InputFrame::default());
+        let state = game
+            .state
+            .board
+            .zombies
+            .iter()
+            .find(|candidate| candidate.id == dolphin)
+            .unwrap();
+        assert_eq!(state.dolphin_counter, DOLPHIN_ENTRY_TICKS);
+        assert_eq!(state.frozen_counter, 4);
+        assert!(!events.iter().any(|event| matches!(
+            event,
+            GameEvent::ZombieEnteredPool { entity, .. } if *entity == dolphin
+        )));
+        for _ in 0..3 {
+            game.advance(InputFrame::default());
+        }
+        let state = game
+            .state
+            .board
+            .zombies
+            .iter()
+            .find(|candidate| candidate.id == dolphin)
+            .unwrap();
+        assert_eq!(state.dolphin_counter, DOLPHIN_ENTRY_TICKS);
+        assert_eq!(state.frozen_counter, 1);
+        game.advance(InputFrame::default());
+        let state = game
+            .state
+            .board
+            .zombies
+            .iter()
+            .find(|candidate| candidate.id == dolphin)
+            .unwrap();
+        assert_eq!(state.frozen_counter, 0);
+        assert_eq!(state.dolphin_counter, DOLPHIN_ENTRY_TICKS - 1);
+    }
+
+    #[test]
+    fn snorkel_phases_pause_while_immobilized_and_resume_on_thaw() {
+        let mut game = Game::new(7, SceneKind::Pool);
+        let mut setup = Vec::new();
+        let snorkel = game.spawn_snorkel_zombie(2, 0, Some(720 * POSITION_SCALE), &mut setup);
+        {
+            let state = game
+                .state
+                .board
+                .zombies
+                .iter_mut()
+                .find(|candidate| candidate.id == snorkel)
+                .unwrap();
+            state.snorkel_phase = SNORKEL_INTO_POOL_PHASE;
+            state.snorkel_counter = SNORKEL_ENTRY_TICKS;
+            state.frozen_counter = 5;
+            state.age = 3;
+        }
+        let events = game.advance(InputFrame::default());
+        let state = game
+            .state
+            .board
+            .zombies
+            .iter()
+            .find(|candidate| candidate.id == snorkel)
+            .unwrap();
+        assert_eq!(state.snorkel_counter, SNORKEL_ENTRY_TICKS);
+        assert_eq!(state.frozen_counter, 4);
+        assert!(!events.iter().any(|event| matches!(
+            event,
+            GameEvent::ZombieEnteredPool { entity, .. } if *entity == snorkel
+        )));
+        for _ in 0..3 {
+            game.advance(InputFrame::default());
+        }
+        let state = game
+            .state
+            .board
+            .zombies
+            .iter()
+            .find(|candidate| candidate.id == snorkel)
+            .unwrap();
+        assert_eq!(state.snorkel_counter, SNORKEL_ENTRY_TICKS);
+        assert_eq!(state.frozen_counter, 1);
+        game.advance(InputFrame::default());
+        let state = game
+            .state
+            .board
+            .zombies
+            .iter()
+            .find(|candidate| candidate.id == snorkel)
+            .unwrap();
+        assert_eq!(state.frozen_counter, 0);
+        assert_eq!(state.snorkel_counter, SNORKEL_ENTRY_TICKS - 1);
     }
 
     #[test]
