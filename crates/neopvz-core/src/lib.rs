@@ -6244,19 +6244,14 @@ impl Game {
         // Source Board::GetTopPlantAt resolves Coffee through the normal plant
         // layer only: support (Lily Pad/Flower Pot), Pumpkin, and another
         // flying Coffee are separate slots and never reject a valid overlay.
-        let coffee_target = self
-            .state
-            .board
-            .plants
-            .iter()
-            .any(|plant| {
-                plant.row == row
-                    && plant.column == column
-                    && !matches!(plant.plant_type.slot(), 16 | 30 | 33 | 35)
-                    && plant.plant_type.is_nocturnal()
-                    && plant.asleep
-                    && plant.wake_up_counter == 0
-            });
+        let coffee_target = self.state.board.plants.iter().any(|plant| {
+            plant.row == row
+                && plant.column == column
+                && !matches!(plant.plant_type.slot(), 16 | 30 | 33 | 35)
+                && plant.plant_type.is_nocturnal()
+                && plant.asleep
+                && plant.wake_up_counter == 0
+        });
         let coffee_already_present = self.state.board.plants.iter().any(|plant| {
             plant.row == row && plant.column == column && plant.plant_type.slot() == 35
         });
@@ -7303,16 +7298,16 @@ impl Game {
                 .board
                 .plants
                 .iter()
-                .rfind(|plant| {
+                .find(|plant| {
                     plant.id != plant_id
                         && plant.row == row
                         && plant.column == column
-                        && !matches!(plant.plant_type.slot(), 16 | 33)
+                        && !matches!(plant.plant_type.slot(), 16 | 30 | 33 | 35)
+                        && plant.plant_type.is_nocturnal()
+                        && plant.asleep
+                        && plant.wake_up_counter == 0
                 })
-                .and_then(|plant| {
-                    (plant.plant_type.is_nocturnal() && plant.asleep && plant.wake_up_counter == 0)
-                        .then_some(plant.id)
-                });
+                .map(|plant| plant.id);
             if let Some(target_id) = target_id
                 && let Some(target) = self
                     .state
@@ -23135,6 +23130,101 @@ mod tests {
             .unwrap();
         assert!(!mushroom_state.asleep);
         assert_eq!(mushroom_state.wake_up_counter, 0);
+    }
+
+    #[test]
+    fn coffee_wakes_a_sleeping_mushroom_beneath_a_pumpkin_shell() {
+        let mut game = Game::new(7, SceneKind::Day);
+        game.state.sun = 500;
+        game.state.board.set_seed_packets(&[
+            PlantType::Other(8),
+            PlantType::Other(30),
+            PlantType::Other(35),
+        ]);
+        game.advance(InputFrame {
+            actions: vec![
+                InputAction::SelectSeed { slot: 0 },
+                InputAction::Plant { row: 2, column: 2 },
+                InputAction::SelectSeed { slot: 1 },
+                InputAction::Plant { row: 2, column: 2 },
+                InputAction::SelectSeed { slot: 2 },
+                InputAction::Plant { row: 2, column: 2 },
+            ],
+        });
+
+        let mushroom = game
+            .state
+            .board
+            .plants
+            .iter()
+            .find(|plant| plant.plant_type.slot() == 8)
+            .unwrap()
+            .id;
+        let coffee = game
+            .state
+            .board
+            .plants
+            .iter()
+            .find(|plant| plant.plant_type.slot() == 35)
+            .unwrap()
+            .id;
+        assert!(
+            game.state
+                .board
+                .plants
+                .iter()
+                .find(|plant| plant.id == mushroom)
+                .unwrap()
+                .asleep
+        );
+        assert!(
+            game.state
+                .board
+                .plants
+                .iter()
+                .any(|plant| plant.plant_type.slot() == 30),
+            "the pumpkin shell must be accepted over the mushroom"
+        );
+
+        let mut wake_counter = 0;
+        for _ in 0..COFFEE_WAKE_TICKS {
+            let events = game.advance(InputFrame::default());
+            if events.iter().any(|event| {
+                matches!(
+                    event,
+                    GameEvent::PlantSpecialTriggered {
+                        entity,
+                        plant_type: PlantType::Other(35),
+                    } if *entity == coffee
+                )
+            }) {
+                wake_counter = game
+                    .state
+                    .board
+                    .plants
+                    .iter()
+                    .find(|plant| plant.id == mushroom)
+                    .unwrap()
+                    .wake_up_counter;
+                break;
+            }
+        }
+        assert_eq!(wake_counter, COFFEE_WAKE_TICKS);
+        assert!(
+            game.state
+                .board
+                .plants
+                .iter()
+                .all(|plant| plant.id != coffee)
+        );
+        let mushroom_state = game
+            .state
+            .board
+            .plants
+            .iter()
+            .find(|plant| plant.id == mushroom)
+            .unwrap();
+        assert!(mushroom_state.asleep);
     }
 
     #[test]

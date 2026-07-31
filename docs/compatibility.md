@@ -189,6 +189,15 @@ source evidence is local `Zombie.cpp` `RiseFromGrave` (`8130-8160`),
 `UpdateZombieRiseFromGrave` (`3009-3038`), and `EffectedByDamage`
 (`8082-8085`); Issue `#226`.
 
+Instant Coffee now resolves its target through the source normal plant layer
+instead of insertion order: a Pumpkin shell or another flying Coffee no longer
+hides the sleeping nocturnal plant, on both the planting and trigger paths.
+Focused coverage is
+`coffee_wakes_a_sleeping_mushroom_beneath_a_pumpkin_shell`; source evidence is
+local `Board.cpp` `GetPlantsOnLawn`/`GetTopPlantAt` (`2155-2277`),
+`Plant.cpp` `IsFlying` (`5144-5157`), and `Board.cpp` Coffee placement guards
+(`2789-2802`); Issue `#197`.
+
 ## Player-Accessible Modes
 
 | Obligation | Mode domain | Accepted | Total | Status | Evidence / owner |
