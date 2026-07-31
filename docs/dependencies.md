@@ -2,7 +2,7 @@
 
 Only dependencies used by current code are kept. Cargo resolves the latest
 stable patch within each listed stable line, and `Cargo.lock` records the exact
-graph used by the GitHub full gate. Matching direct-dependency sources live in
+graph used by the local stable Cargo gate. Matching direct-dependency sources live in
 the ignored `third_party-src/` directory and are never committed.
 
 | Crate | Stable line | Purpose | Upstream source | Reference tag |
@@ -42,4 +42,4 @@ enabled; unused realtime-priority, MP3, FLAC, and WAV features remain disabled.
 MO3 remains deferred. The published `libopenmpt-sys 0.3.0` repository is no
 longer available, so it is not reproducible enough to adopt. A later audio PR
 must pin the official libopenmpt source, provide a thin C-API wrapper, and prove
-the Ubuntu link and MO3 playback path in the full gate before adding it.
+the local link and MO3 playback path before adding it.
