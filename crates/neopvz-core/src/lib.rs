@@ -60,9 +60,12 @@ const SQUASH_HALF_WIDTH: i64 = 40;
 const SQUASH_ATTACK_LEFT_OFFSET: i64 = 20;
 const SQUASH_ATTACK_RIGHT_OFFSET: i64 = 65;
 const SQUASH_FOOTBALL_OVERLAP_ALLOWANCE: i64 = 20;
-const ICE_SHROOM_INITIAL_FREEZE_TICKS: u32 = 400;
-const ICE_SHROOM_REFRESH_FREEZE_TICKS: u32 = 300;
 const ICE_SHROOM_CHILL_TICKS: u32 = 2_000;
+const ICE_SHROOM_POOL_FREEZE_TICKS: u32 = 300;
+const ICE_SHROOM_COLD_FREEZE_MIN: u32 = 300;
+const ICE_SHROOM_COLD_FREEZE_MAX: u32 = 400;
+const ICE_SHROOM_FRESH_FREEZE_MIN: u32 = 400;
+const ICE_SHROOM_FRESH_FREEZE_MAX: u32 = 600;
 const ICE_SHROOM_DAMAGE: i32 = 20;
 const BOARD_ICE_TICKS: u32 = 300;
 const DOOM_SHROOM_RADIUS: i64 = 250;
@@ -7434,9 +7437,6 @@ impl Game {
                 .board
                 .zombies
                 .iter()
-                .filter(|zombie| {
-                    plant_damage_can_hit_zombie(zombie) && !zombie_rejects_ground_damage(zombie)
-                })
                 .map(|zombie| zombie.id)
                 .collect::<Vec<_>>();
 
@@ -7451,24 +7451,47 @@ impl Game {
                     continue;
                 };
 
-                let (had_debuff, can_freeze) = {
-                    let zombie = &mut self.state.board.zombies[zombie_index];
-                    let had_debuff = zombie.frozen_counter != 0 || zombie.chilled_counter != 0;
-                    zombie.chilled_counter = zombie.chilled_counter.max(ICE_SHROOM_CHILL_TICKS);
-                    events.push(GameEvent::ZombieChilled {
-                        entity: zombie_id,
-                        duration: ICE_SHROOM_CHILL_TICKS,
-                    });
+                // Source HitIceTrap: fully excluded states get no chill, no
+                // freeze, and no Ice-shroom damage.
+                if !zombie_can_be_chilled(&self.state.board.zombies[zombie_index]) {
+                    continue;
+                }
 
-                    // Keep the current freeze eligibility explicit.
-                    (had_debuff, matches!(zombie.zombie_type, ZombieType::Normal))
+                // Read the pre-chill debuff state and freeze eligibility before
+                // applying the chill.
+                let (cold, can_freeze) = {
+                    let zombie = &self.state.board.zombies[zombie_index];
+                    (
+                        zombie.frozen_counter != 0 || zombie.chilled_counter != 0,
+                        zombie_can_be_frozen(zombie),
+                    )
                 };
-                if can_freeze {
-                    let duration = if had_debuff {
-                        ICE_SHROOM_REFRESH_FREEZE_TICKS
+                let duration = if can_freeze {
+                    if self.state.board.zombies[zombie_index].in_pool {
+                        ICE_SHROOM_POOL_FREEZE_TICKS
+                    } else if cold {
+                        self.rng
+                            .range_inclusive(ICE_SHROOM_COLD_FREEZE_MIN, ICE_SHROOM_COLD_FREEZE_MAX)
                     } else {
-                        ICE_SHROOM_INITIAL_FREEZE_TICKS
-                    };
+                        self.rng.range_inclusive(
+                            ICE_SHROOM_FRESH_FREEZE_MIN,
+                            ICE_SHROOM_FRESH_FREEZE_MAX,
+                        )
+                    }
+                } else {
+                    0
+                };
+
+                self.state.board.zombies[zombie_index].chilled_counter = self.state.board.zombies
+                    [zombie_index]
+                    .chilled_counter
+                    .max(ICE_SHROOM_CHILL_TICKS);
+                events.push(GameEvent::ZombieChilled {
+                    entity: zombie_id,
+                    duration: ICE_SHROOM_CHILL_TICKS,
+                });
+
+                if can_freeze {
                     let frozen_counter = self.state.board.zombies[zombie_index].frozen_counter;
                     self.state.board.zombies[zombie_index].frozen_counter =
                         frozen_counter.max(duration);
@@ -13782,6 +13805,79 @@ fn plant_damage_can_hit_zombie(zombie: &ZombieState) -> bool {
             || (zombie.zombie_type == ZombieType::Bungee && zombie.special_phase > 0))
 }
 
+// Zombie::CanBeChilled (1.0.0.1051 Zombie.cpp:7983-8008): Zamboni, a sledded
+// Bobsled team, dead/dying, hidden/rising Digger, a rising Backup Dancer,
+// mind-controlled, and the Boss (no exposed-head phases are modeled yet) are
+// excluded from chill, freeze, and the Ice-shroom's 20 damage.
+fn zombie_can_be_chilled(zombie: &ZombieState) -> bool {
+    if zombie.zombie_type == ZombieType::Zamboni {
+        return false;
+    }
+    if zombie.zombie_type == ZombieType::Bobsled && zombie.bobsled_sliding {
+        return false;
+    }
+    if zombie.health <= 0 {
+        return false;
+    }
+    if zombie.zombie_type == ZombieType::Digger
+        && (zombie.digger_underground || zombie.digger_counter > 0)
+    {
+        return false;
+    }
+    if zombie.zombie_type == ZombieType::BackupDancer && zombie.dancer_phase == DANCER_RISE_PHASE {
+        return false;
+    }
+    if zombie.hypnotized || zombie.zombie_type == ZombieType::Boss {
+        return false;
+    }
+    true
+}
+
+// Zombie::CanBeFrozen (1.0.0.1051 Zombie.cpp:8010-8032): chill-only classes.
+// Frozen eligibility is rejected for vaulting Pole Vaulters, Dolphin entry and
+// jump, Snorkel entry, flying Balloons, thrown/landing Imps, SquashHead
+// rise/fall, bouncing Pogo zombies, and Bungee zombies outside their brief
+// bottom phase (which is not separately modeled).
+fn zombie_can_be_frozen(zombie: &ZombieState) -> bool {
+    if !zombie_can_be_chilled(zombie) {
+        return false;
+    }
+    if zombie.zombie_type == ZombieType::PoleVaulter
+        && zombie.special_phase == POLE_VAULT_IN_VAULT_PHASE
+    {
+        return false;
+    }
+    if zombie.zombie_type == ZombieType::DolphinRider
+        && matches!(
+            zombie.dolphin_phase,
+            DOLPHIN_INTO_POOL_PHASE | DOLPHIN_IN_JUMP_PHASE
+        )
+    {
+        return false;
+    }
+    if zombie.zombie_type == ZombieType::Snorkel && zombie.snorkel_phase == SNORKEL_INTO_POOL_PHASE
+    {
+        return false;
+    }
+    if balloon_is_flying(zombie) {
+        return false;
+    }
+    if zombie.zombie_type == ZombieType::Imp && (zombie.imp_thrown || zombie.imp_flight_ticks > 0) {
+        return false;
+    }
+    if zombie.zombie_type == ZombieType::SquashHead && zombie.special_phase != 0 {
+        return false;
+    }
+    if zombie.zombie_type == ZombieType::Pogo && (zombie.pogo_counter > 0 || zombie.pogo_phase != 0)
+    {
+        return false;
+    }
+    if zombie.zombie_type == ZombieType::Bungee {
+        return false;
+    }
+    true
+}
+
 fn zombie_rejects_ground_damage(zombie: &ZombieState) -> bool {
     (zombie.zombie_type == ZombieType::BackupDancer && zombie.dancer_phase == DANCER_RISE_PHASE)
         || (zombie.zombie_type == ZombieType::Digger
@@ -15654,80 +15750,145 @@ mod tests {
     }
 
     #[test]
-    fn ice_shroom_freezes_every_normal_zombie_and_applies_target_damage() {
+    fn ice_shroom_applies_source_chill_freeze_and_damage_classes() {
+        let trigger = |game: &mut Game| {
+            game.state.sun = 200;
+            game.advance(InputFrame {
+                actions: vec![
+                    InputAction::SelectSeed { slot: 14 },
+                    InputAction::Plant { row: 2, column: 2 },
+                ],
+            });
+            game.state.board.plants[0].special_counter = 1;
+            game.advance(InputFrame::default())
+        };
+
+        // Fresh ordinary zombie: chill + 400..=600 freeze + 20 damage.
         let mut game = Game::new(7, SceneKind::Night);
-        game.state.sun = 200;
-        game.advance(InputFrame {
-            actions: vec![
-                InputAction::SelectSeed { slot: 14 },
-                InputAction::Plant { row: 2, column: 2 },
-            ],
-        });
-        game.state.board.plants[0].special_counter = 1;
-        let center = grid_x(2);
-        let mut setup_events = Vec::new();
-        let first = game.spawn_normal_zombie(0, 0, Some(center), &mut setup_events);
-        let second = game.spawn_normal_zombie(4, 0, Some(center), &mut setup_events);
-        game.state.board.zombies[1].chilled_counter = 1;
-
-        let events = game.advance(InputFrame::default());
-
-        assert_eq!(game.state.board.ice_counter, BOARD_ICE_TICKS - 1);
-        assert!(game.state.board.plants.is_empty());
+        let mut setup = Vec::new();
+        let fresh = game.spawn_normal_zombie(0, 0, Some(grid_x(2)), &mut setup);
+        let events = trigger(&mut game);
         assert!(events.iter().any(|event| matches!(
             event,
-            GameEvent::PlantSpecialTriggered {
-                plant_type: PlantType::Other(14),
-                ..
-            }
-        )));
-        assert_eq!(
-            events
-                .iter()
-                .filter(|event| matches!(
-                    event,
-                    GameEvent::ZombieChilled {
-                        duration: ICE_SHROOM_CHILL_TICKS,
-                        ..
-                    }
-                ))
-                .count(),
-            2
-        );
-        assert!(events.iter().any(|event| matches!(
-            event,
-            GameEvent::ZombieFrozen {
+            GameEvent::ZombieChilled {
                 entity,
-                duration: ICE_SHROOM_INITIAL_FREEZE_TICKS,
-            } if *entity == first
+                duration: ICE_SHROOM_CHILL_TICKS,
+            } if *entity == fresh
         )));
-        assert!(events.iter().any(|event| matches!(
-            event,
-            GameEvent::ZombieFrozen {
-                entity,
-                duration: ICE_SHROOM_REFRESH_FREEZE_TICKS,
-            } if *entity == second
-        )));
-        assert_eq!(
-            events
-                .iter()
-                .filter(|event| matches!(
-                    event,
-                    GameEvent::PlantSpecialHit {
-                        damage: ICE_SHROOM_DAMAGE,
-                        ..
-                    }
-                ))
-                .count(),
-            2
-        );
+        let fresh_frozen = events
+            .iter()
+            .find_map(|event| match event {
+                GameEvent::ZombieFrozen { entity, duration } if *entity == fresh => Some(*duration),
+                _ => None,
+            })
+            .expect("a fresh zombie must be frozen");
         assert!(
-            game.state
+            (ICE_SHROOM_FRESH_FREEZE_MIN..=ICE_SHROOM_FRESH_FREEZE_MAX).contains(&fresh_frozen)
+        );
+        assert!(events.iter().any(|event| matches!(
+            event,
+            GameEvent::PlantSpecialHit {
+                zombie,
+                damage: ICE_SHROOM_DAMAGE,
+                ..
+            } if *zombie == fresh
+        )));
+
+        // Already-cold zombie: chill + 300..=400 freeze + 20 damage.
+        let mut game = Game::new(7, SceneKind::Night);
+        let mut setup = Vec::new();
+        let cold = game.spawn_normal_zombie(0, 0, Some(grid_x(2)), &mut setup);
+        game.state.board.zombies[0].chilled_counter = 100;
+        let events = trigger(&mut game);
+        let cold_frozen = events
+            .iter()
+            .find_map(|event| match event {
+                GameEvent::ZombieFrozen { entity, duration } if *entity == cold => Some(*duration),
+                _ => None,
+            })
+            .expect("an already-cold zombie must be frozen");
+        assert!((ICE_SHROOM_COLD_FREEZE_MIN..=ICE_SHROOM_COLD_FREEZE_MAX).contains(&cold_frozen));
+
+        // In-pool zombie: chill + exactly 300 freeze + 20 damage.
+        let mut game = Game::new(7, SceneKind::Night);
+        let mut setup = Vec::new();
+        let pool_zombie = game.spawn_normal_zombie(0, 0, Some(grid_x(2)), &mut setup);
+        game.state.board.zombies[0].in_pool = true;
+        let events = trigger(&mut game);
+        assert!(events.iter().any(|event| matches!(
+            event,
+            GameEvent::ZombieFrozen {
+                entity,
+                duration: ICE_SHROOM_POOL_FREEZE_TICKS,
+            } if *entity == pool_zombie
+        )));
+        assert!(events.iter().any(|event| matches!(
+            event,
+            GameEvent::PlantSpecialHit {
+                zombie,
+                damage: ICE_SHROOM_DAMAGE,
+                ..
+            } if *zombie == pool_zombie
+        )));
+
+        // Chill-only class: a bouncing Pogo is chilled but not frozen or damaged.
+        let mut game = Game::new(7, SceneKind::Night);
+        let mut setup = Vec::new();
+        let pogo = game.spawn_pogo_zombie(0, 0, Some(grid_x(2)), &mut setup);
+        {
+            let zombie = game
+                .state
                 .board
                 .zombies
-                .iter()
-                .all(|zombie| zombie.health == 270 - ICE_SHROOM_DAMAGE)
-        );
+                .iter_mut()
+                .find(|candidate| candidate.id == pogo)
+                .unwrap();
+            zombie.pogo_counter = 10;
+            zombie.pogo_phase = 1;
+        }
+        let events = trigger(&mut game);
+        assert!(events.iter().any(|event| matches!(
+            event,
+            GameEvent::ZombieChilled { entity, .. } if *entity == pogo
+        )));
+        assert!(!events.iter().any(|event| matches!(
+            event,
+            GameEvent::ZombieFrozen { entity, .. } if *entity == pogo
+        )));
+        assert!(!events.iter().any(|event| matches!(
+            event,
+            GameEvent::PlantSpecialHit { zombie, .. } if *zombie == pogo
+        )));
+        let pogo_state = game
+            .state
+            .board
+            .zombies
+            .iter()
+            .find(|candidate| candidate.id == pogo)
+            .unwrap();
+        assert_eq!(pogo_state.health, 500);
+        assert_eq!(pogo_state.frozen_counter, 0);
+
+        // Excluded class: a Zamboni receives no chill, freeze, or damage.
+        let mut game = Game::new(7, SceneKind::Night);
+        let mut setup = Vec::new();
+        let zamboni = game.spawn_zamboni_zombie(0, 0, Some(grid_x(2)), &mut setup);
+        let zamboni_health = game.state.board.zombies[0].health;
+        let events = trigger(&mut game);
+        assert!(!events.iter().any(|event| matches!(
+            event,
+            GameEvent::ZombieChilled { entity, .. } if *entity == zamboni
+        )));
+        assert!(!events.iter().any(|event| matches!(
+            event,
+            GameEvent::ZombieFrozen { entity, .. } if *entity == zamboni
+        )));
+        assert!(!events.iter().any(|event| matches!(
+            event,
+            GameEvent::PlantSpecialHit { zombie, .. } if *zombie == zamboni
+        )));
+        assert_eq!(game.state.board.zombies[0].health, zamboni_health);
+        assert_eq!(game.state.board.zombies[0].frozen_counter, 0);
     }
 
     #[test]

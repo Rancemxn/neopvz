@@ -180,6 +180,19 @@ starts the source five-tick triggered phase without plant damage; the remaining
 animation, deterministic, and audio-mapping evidence is recorded in ignored
 `artifacts/umbrella-projectile-interception/verification.md`; Issue `#200`.
 
+The Ice-shroom effect now follows the source `HitIceTrap` three-class contract:
+`CanBeChilled` exclusions (Zamboni, sledded Bobsled team, hidden/rising Digger,
+rising Backup Dancer, mind-controlled, and the Boss without an exposed-head
+model) receive no chill, freeze, or 20 damage; `CanBeFrozen` exclusions
+(vaulting Pole Vaulter, Dolphin entry/jump, Snorkel entry, flying Balloon,
+thrown/landing Imp, SquashHead rise/fall, bouncing Pogo, and Bungee) receive
+chill only; ordinary eligible zombies receive chill plus a source-range freeze
+(300 in pool, 300..=400 when already cold, 400..=600 when fresh) plus 20
+damage, with deterministic RNG consumption. Focused table-driven coverage is
+`ice_shroom_applies_source_chill_freeze_and_damage_classes`; source evidence is
+local `Zombie.cpp` `CanBeChilled` (`7983-8008`), `CanBeFrozen` (`8010-8032`),
+and `HitIceTrap` (`8346-8382`); Issue `#186`.
+
 ## Player-Accessible Modes
 
 | Obligation | Mode domain | Accepted | Total | Status | Evidence / owner |
