@@ -2526,6 +2526,8 @@ pub struct PlantState {
     pub special_target: Option<EntityId>,
     #[serde(default)]
     pub squash_target_x: Option<i64>,
+    #[serde(default)]
+    pub cob_target: Option<(u8, u8)>,
     pub blink_counter: u32,
     #[serde(default)]
     pub asleep: bool,
@@ -6337,6 +6339,7 @@ impl Game {
             special_armed: plant_type.is_potato_mine(),
             special_target: None,
             squash_target_x: None,
+            cob_target: None,
             blink_counter: 0,
             asleep: false,
             wake_up_counter: 0,
@@ -7804,18 +7807,12 @@ impl Game {
             });
             return;
         }
-        let source_row = self.state.board.plants[index].row;
-        let source_column = self.state.board.plants[index].column;
         self.state.board.plants[index].special_armed = false;
+        // Source CobCannonFire (Plant.cpp:4502-4516) stores the target and the
+        // 206-tick firing counter; the Cob projectile is created only at the
+        // UpdateShooting launch boundary.
         self.state.board.plants[index].special_counter = COB_RELOAD_TICKS;
-        self.fire_cob_projectile(
-            entity,
-            source_row,
-            source_column,
-            target_row,
-            target_column,
-            events,
-        );
+        self.state.board.plants[index].cob_target = Some((target_row, target_column));
         events.push(GameEvent::CobCannonFired {
             entity,
             target_row,
@@ -8074,6 +8071,7 @@ impl Game {
             special_armed,
             special_target: None,
             squash_target_x: None,
+            cob_target: None,
             blink_counter,
             asleep,
             wake_up_counter: 0,
@@ -8592,11 +8590,20 @@ impl Game {
             let mut squash_hum_started = false;
             let mut firing_projectile = None;
             let mut fired_directions = 0;
+            let mut cob_launch = None;
             {
                 let plant = &mut self.state.board.plants[index];
                 if plant_type.is_cob_cannon() {
                     plant.special_counter = plant.special_counter.saturating_sub(1);
-                    if plant.special_counter == 0 {
+                    if plant.special_counter == 1
+                        && let Some((target_row, target_column)) = plant.cob_target
+                    {
+                        // Source UpdateShooting creates the Cob projectile only
+                        // at the launch boundary (Plant.cpp:3234-3340).
+                        plant.cob_target = None;
+                        cob_launch =
+                            Some((plant.id, plant.row, plant.column, target_row, target_column));
+                    } else if plant.special_counter == 0 {
                         plant.special_armed = true;
                     }
                 } else if plant_type.is_gold_magnet() {
@@ -8812,6 +8819,17 @@ impl Game {
                     entity: id,
                     variant: self.rng.range(3) as u8,
                 });
+            }
+            if let Some((source, source_row, source_column, target_row, target_column)) = cob_launch
+            {
+                self.fire_cob_projectile(
+                    source,
+                    source_row,
+                    source_column,
+                    target_row,
+                    target_column,
+                    events,
+                );
             }
             if fire {
                 self.fire_projectiles(
@@ -16122,6 +16140,7 @@ mod tests {
             special_armed: false,
             special_target: None,
             squash_target_x: None,
+            cob_target: None,
             blink_counter: 0,
             asleep: false,
             wake_up_counter: 0,
@@ -26798,6 +26817,11 @@ mod tests {
             .find(|zombie| zombie.id == immune)
             .unwrap()
             .hypnotized = true;
+        // Keep the targets stationary during the 206-tick firing animation so
+        // the launch-and-impact behavior is what is under test.
+        for zombie in &mut game.state.board.zombies {
+            zombie.speed = 0;
+        }
         let fire_events = game.advance(InputFrame {
             actions: vec![InputAction::FireCobCannon {
                 entity: cannon,
@@ -26814,9 +26838,17 @@ mod tests {
             } if *entity == cannon
         )));
         let mut impact_events = Vec::new();
-        for _ in 0..250 {
-            impact_events.extend(game.advance(InputFrame::default()));
-            if game.state.board.projectiles.is_empty() {
+        // The Cob is deferred until the 206-tick firing counter elapses, then
+        // takes a lobbed flight to the target.
+        for _ in 0..(COB_RELOAD_TICKS + 250) {
+            let events = game.advance(InputFrame::default());
+            impact_events.extend(events.iter().cloned());
+            if events.iter().any(|event| {
+                matches!(
+                    event,
+                    GameEvent::ProjectileHit { zombie, .. } if *zombie == primary
+                )
+            }) {
                 break;
             }
         }
@@ -26851,6 +26883,68 @@ mod tests {
             1
         );
         assert_eq!(game.state.board.zombies.len(), 1);
+    }
+
+    #[test]
+    fn cob_cannon_defers_launch_until_the_firing_counter_elapses() {
+        let mut game = Game::new(7, SceneKind::Day);
+        game.state.sun = 1_000;
+        game.advance(InputFrame {
+            actions: vec![
+                InputAction::SelectSeed { slot: 34 },
+                InputAction::Plant { row: 2, column: 1 },
+            ],
+        });
+        game.state.board.seed_packets[34].refresh_remaining = 0;
+        game.advance(InputFrame {
+            actions: vec![
+                InputAction::SelectSeed { slot: 34 },
+                InputAction::Plant { row: 2, column: 2 },
+            ],
+        });
+        game.advance(InputFrame {
+            actions: vec![
+                InputAction::SelectSeed { slot: 47 },
+                InputAction::Plant { row: 2, column: 1 },
+            ],
+        });
+        let cannon = game.state.board.plants[0].id;
+        for _ in 0..COB_ARM_TICKS {
+            game.advance(InputFrame::default());
+        }
+        assert!(game.state.board.plants[0].special_armed);
+
+        game.advance(InputFrame {
+            actions: vec![InputAction::FireCobCannon {
+                entity: cannon,
+                row: 2,
+                column: 4,
+            }],
+        });
+        let mut counter = game.state.board.plants[0].special_counter;
+        assert!(
+            counter < COB_RELOAD_TICKS,
+            "the firing animation starts at the 206-tick counter"
+        );
+        assert!(game.state.board.projectiles.is_empty());
+        assert_eq!(game.state.board.plants[0].cob_target, Some((2, 4)));
+
+        // The Cob must not exist anywhere before the launch boundary.
+        while counter > 2 {
+            game.advance(InputFrame::default());
+            counter = game.state.board.plants[0].special_counter;
+            assert!(
+                game.state.board.projectiles.is_empty(),
+                "no Cob projectile may exist before the firing counter reaches 1"
+            );
+        }
+        game.advance(InputFrame::default());
+        assert_eq!(game.state.board.plants[0].special_counter, 1);
+        assert_eq!(game.state.board.projectiles.len(), 1);
+        assert_eq!(
+            game.state.board.projectiles[0].projectile_type,
+            ProjectileType::Cob
+        );
     }
 
     #[test]
