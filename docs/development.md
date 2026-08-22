@@ -21,9 +21,9 @@ commit in the dependency PR that introduces the dependency.
 
 The local stable Cargo gate is authoritative for implementation changes. Run
 `cargo +stable fmt --all -- --check`, `cargo +stable clippy --workspace
---all-targets --locked -- -D warnings`, `cargo +stable test --workspace
---locked`, and `cargo +stable build --workspace --locked`. A passing local
-gate is sufficient for acceptance; do not run a release build.
+--all-targets --locked -- -D warnings`, `cargo nextest run --workspace
+--locked`, and `cargo +stable build --workspace --locked`. A passing local gate
+is sufficient for acceptance; do not run a release build.
 
 `.github/workflows/full-gate.yml` and `.github/workflows/windows-artifact.yml`
 may still record formatting, lint, test, and build results. Treat their links
@@ -40,6 +40,10 @@ such as `artifacts/`; never upload them to GitHub or Actions.
 For repeated visual tuning, use a checkpoint/debug entry point (for example a
 hidden `--checkpoint <scene>` option) that starts directly at the target screen.
 Do not replay the preceding title and tutorial path for every coordinate change.
+
+For a deterministic `neopvz`-side 800x600 PNG, add the hidden `--capture <path>`
+option to the checkpoint command; it renders through the GPU and exits after
+the file is written.
 
 Preview static layouts against the external resource PNGs with a small native
 PowerShell/System.Drawing compositor before rebuilding. Use the preview only to

@@ -10,7 +10,10 @@ use thiserror::Error;
 mod formats;
 mod pak;
 
-pub use formats::{CompiledDefinition, CompiledError, Mo3Resource, MusicError};
+pub use formats::{
+    CompiledDefinition, CompiledError, Mo3Resource, MusicError, ReanimError, ReanimatorDefinition,
+    ReanimatorTrack, ReanimatorTransform,
+};
 pub use pak::{PakArchive, PakEntry, PakError};
 
 pub const TARGET_RESOURCE_VERSION: &str = "1.0.0.1051";

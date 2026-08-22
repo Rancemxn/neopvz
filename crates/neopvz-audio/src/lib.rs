@@ -6,7 +6,7 @@ use kira::backend::cpal::{
 };
 use kira::sound::static_sound::{StaticSoundData, StaticSoundHandle};
 use kira::track::{TrackBuilder, TrackHandle};
-use kira::{AudioManager, AudioManagerSettings, DefaultBackend, Tween};
+use kira::{AudioManager, AudioManagerSettings, DefaultBackend, Frame, Tween};
 use thiserror::Error;
 
 #[derive(Debug, Error)]
@@ -130,6 +130,16 @@ fn load_sound(path: &Path) -> Result<StaticSoundData, AudioError> {
     if !path.is_file() {
         return Err(AudioError::MissingAsset(path.display().to_string()));
     }
+    if path
+        .extension()
+        .is_some_and(|extension| extension.eq_ignore_ascii_case("au"))
+    {
+        let bytes = std::fs::read(path).map_err(|error| AudioError::Decode {
+            path: path.display().to_string(),
+            reason: error.to_string(),
+        })?;
+        return load_sound_bytes(&path.display().to_string(), bytes);
+    }
     StaticSoundData::from_file(path).map_err(|error| AudioError::Decode {
         path: path.display().to_string(),
         reason: error.to_string(),
@@ -137,10 +147,66 @@ fn load_sound(path: &Path) -> Result<StaticSoundData, AudioError> {
 }
 
 fn load_sound_bytes(path: &str, bytes: Vec<u8>) -> Result<StaticSoundData, AudioError> {
+    if path.to_ascii_lowercase().ends_with(".au") {
+        return load_au_sound(path, &bytes);
+    }
     StaticSoundData::from_cursor(Cursor::new(bytes)).map_err(|error| AudioError::Decode {
         path: path.to_owned(),
         reason: error.to_string(),
     })
+}
+
+fn load_au_sound(path: &str, bytes: &[u8]) -> Result<StaticSoundData, AudioError> {
+    let invalid = |reason: &str| AudioError::Decode {
+        path: path.to_owned(),
+        reason: reason.to_owned(),
+    };
+    if bytes.len() < 24 || &bytes[..4] != b".snd" {
+        return Err(invalid("invalid Sun AU header"));
+    }
+    let data_offset = u32::from_be_bytes(bytes[4..8].try_into().unwrap()) as usize;
+    let data_size = u32::from_be_bytes(bytes[8..12].try_into().unwrap());
+    let encoding = u32::from_be_bytes(bytes[12..16].try_into().unwrap());
+    let sample_rate = u32::from_be_bytes(bytes[16..20].try_into().unwrap());
+    let channels = u32::from_be_bytes(bytes[20..24].try_into().unwrap());
+    if data_offset < 24 || data_offset > bytes.len() || sample_rate == 0 || channels != 1 {
+        return Err(invalid("unsupported Sun AU stream header"));
+    }
+    if encoding != 1 {
+        return Err(invalid("unsupported Sun AU encoding"));
+    }
+    let available = bytes.len() - data_offset;
+    let data_len = if data_size == u32::MAX {
+        available
+    } else {
+        usize::try_from(data_size)
+            .map_err(|_| invalid("Sun AU data size does not fit this platform"))?
+    };
+    if data_len > available {
+        return Err(invalid("Sun AU data exceeds the resource"));
+    }
+    let frames = bytes[data_offset..data_offset + data_len]
+        .iter()
+        .copied()
+        .map(|sample| Frame::from_mono(decode_mulaw(sample)))
+        .collect::<Vec<_>>();
+    Ok(StaticSoundData {
+        sample_rate,
+        frames: frames.into(),
+        settings: Default::default(),
+        slice: None,
+    })
+}
+
+fn decode_mulaw(sample: u8) -> f32 {
+    let sample = !sample;
+    let sign = sample & 0x80 != 0;
+    let exponent = u32::from((sample >> 4) & 0x07);
+    let mantissa = i32::from(sample & 0x0f);
+    let magnitude = ((mantissa << 3) + 132) << exponent;
+    let magnitude = magnitude - 132;
+    let signed = if sign { -magnitude } else { magnitude };
+    signed as f32 / 32_768.0
 }
 
 #[cfg(test)]
@@ -160,5 +226,23 @@ mod tests {
             result,
             Err(AudioError::Decode { path, .. }) if path == "sounds/click.ogg"
         ));
+    }
+
+    #[test]
+    fn decodes_sun_au_mulaw_bytes_into_mono_frames() {
+        let mut bytes = Vec::from(&b".snd"[..]);
+        bytes.extend_from_slice(&24_u32.to_be_bytes());
+        bytes.extend_from_slice(&2_u32.to_be_bytes());
+        bytes.extend_from_slice(&1_u32.to_be_bytes());
+        bytes.extend_from_slice(&8_012_u32.to_be_bytes());
+        bytes.extend_from_slice(&1_u32.to_be_bytes());
+        bytes.extend_from_slice(&[0xff, 0x00]);
+
+        let sound = load_sound_bytes("sounds/diamond.au", bytes).expect("valid AU");
+        assert_eq!(sound.sample_rate, 8_012);
+        assert_eq!(sound.num_frames(), 2);
+        assert_eq!(sound.frames[0], Frame::from_mono(0.0));
+        assert!(sound.frames[1].left < 0.0);
+        assert_eq!(sound.frames[1].left, sound.frames[1].right);
     }
 }

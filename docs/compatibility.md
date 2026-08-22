@@ -13,7 +13,7 @@ evidence; a reviewer assertion alone is never sufficient.
 Status is `verified`, `partial`, or `missing`. The progress quantity is the sum
 of `total - accepted` across all rows.
 
-Current baseline: **1369 accepted / 1810 total; 441 unresolved**.
+Current baseline: **1401 accepted / 1810 total; 409 unresolved**.
 
 ## Foundation and Boundaries
 
@@ -50,7 +50,7 @@ loader coverage. They do not authorize committing the manifest or its assets.
 | ENT-PLANT | Plant definitions and player-observable behavior | 49 | 49 | verified | PRs `#27`, `#30`, `#33`, `#36`, `#39`, `#42`, `#44`, `#48`, `#50`, `#53`, `#56`, `#58`, `#59`, `#60`, `#66`, `#67`, `#69`, `#70`, `#71`, `#72`, `#73`, `#74`, `#75`, `#79`, `#80`, `#81`, `#82`, `#83`; runs `29969908209`/`29973097050`/`29973716257`/`29974169417`/`29974744365`/`29975305952`/`29975305940`/`29975652655`/`29975652651`/`29978884187`/`29978884201`/`29979356134`/`29979356138`/`29980230929`/`29980230938`/`29980841578`/`29980841574`/`30002936972`/`30002936877`/`30004214119`/`30004214079`/`30005507287`/`30005507199`/`30068974241`/`30099543625`/`30099543626`/`30132257878`/`30132257848`/`30132674816`/`30132674807`/`30133226675`/`30133226646`/`30133360999`/`30133360983`/`30134001945`/`30134001990`/`30134299774`/`30134299749`/`30134731995`/`30134731993`/`30135796477`/`30135796466`/`30136245552`/`30136245570`/`30137046838`/`30137046837`/`30137384077`/`30141692579`/`30141692532`; ignored `artifacts/pult-plants/verification.md`, `artifacts/basic-shooters/verification.md`, `artifacts/fume-shroom/verification.md`, `artifacts/gloom-shroom/verification.md`, `artifacts/scaredy-shroom/verification.md`, `artifacts/pumpkin-shell/verification.md`, `artifacts/spikerock/verification.md`, `artifacts/tanglekelp/verification.md`, `artifacts/aquatic-placement/verification.md`, `artifacts/flowerpot-placement/verification.md`, `artifacts/garlic-row-diversion/verification.md`, and local source/runtime records; PR `#86`, runs `30142737088`/`30142737093`, ignored `artifacts/marigold-coins/verification.md`, `artifacts/gold-magnet-coins/verification.md`, `artifacts/blover-special/verification.md`, `artifacts/gravebuster/verification.md`; PRs `#88`/`#90`/`#92`, runs `30144756597`/`30144756614`/`30148257254`/`30148257251`/`30148593526`/`30148593521`; PR `#94`, runs `30150244061`/`30150244058`, ignored `artifacts/instant-coffee/verification.md`; PR `#96`, runs `30150641968`/`30150641997`, ignored `artifacts/explode-o-nut/verification.md`; PR `#98`, runs `30151399161`/`30151399179`, ignored `artifacts/hypno-shroom/verification.md`; GiantWallnut and UmbrellaLeaf stationary behavior is identical to Wallnut (slot 3, PR `#50`), already verified by existing high-HP defensive plant tests; UmbrellaLeaf bungee/projectile deflection blocked by missing zombie types |
 | ENT-ZOMBIE | Zombie definitions and player-observable behavior | 40 | 40 | verified | PRs `#27`, `#83`, `#107`, `#109`, `#111`, `#114`, `#117`, `#119`, `#121`, `#123`, `#125`, `#127`; runs `29969908209`/`29969908244`/`30141692579`/`30141692532`/`30152116202`/`30152116249`/`30152333302`/`30152333296`/`30152776730`/`30152776724`/`30152983281`/`30152983283`/`30153184493`/`30153184475`/`30153465523`/`30153465528`/`30153750557`/`30153750564`/`30153860072`/`30153860073`/`30154448402`/`30154448405`/`30156386652`/`30156386655`; Normal, Flag, Conehead, Buckethead, ScreenDoor, DuckyTube, Football (1670 HP, 2.5x speed), Imp (270 HP regular play, 70 HP I Zombie, 0.9 I Zombie speed), Newspaper (420 total HP, 0.89-0.91 mad speed after paper destroyed), PoleVaulter, Jackbox (500 HP, 0.66-0.68 speed, 500鈥?500-tick random detonation, 1800 damage within 115 units across 卤1 row from the timer pop only 鈥?no death-triggered explosion, 90-unit plant radius, 120-tick vase pop); Balloon (270 HP, 20 flying HP, projectile pop, walking transition, and Blover blow-away); Bobsled (four-zombie team, 270 body HP, 300 leader sled shield HP, 600000-unit sliding phase, and 500-tick slide); Ladder (500 body HP, 500 ladder shield HP, 0.79-0.81 carry speed with a walk re-pick after placement, barrier placement, and ladder bypass); Yeti (1350 HP, 1500-2000-tick phase, 0.4 walk / 0.8 flee speed, four 100-value diamond drops on defeat); ignored artifacts/conehead-zombie/verification.md, artifacts/pole-vaulter/verification.md, artifacts/screen-door-zombie/verification.md, artifacts/ducky-tube/verification.md, artifacts/football-zombie/verification.md, artifacts/newspaper-zombie/verification.md, artifacts/imp-zombie/verification.md, artifacts/jackbox-zombie/verification.md, artifacts/yeti-zombie/verification.md, artifacts/catapult-zombie/verification.md, artifacts/pogo-zombie/verification.md, artifacts/gargantuar-zombie/verification.md, artifacts/dancer-zombie/verification.md, artifacts/digger-zombie/verification.md, artifacts/bungee-zombie/verification.md, artifacts/dolphin-rider/verification.md, artifacts/snorkel-zombie/verification.md, artifacts/zamboni-zombie/verification.md, artifacts/balloon-zombie/verification.md, artifacts/bobsled-ladder/verification.md; Catapult (850 HP, 20 shots, 150-tick launch, 300-tick reload, 75-damage basketball); Pogo (500 HP, 80-tick bounce over a same-row plant, landing one grid cell to its left without biting); Gargantuar (3,000 HP, contact squashes plants, and deals 20 damage to SpikeRock); Dancer (500 HP, 300-tick entrance, and four 270-HP Backup Dancers); Digger (370 HP, 0.66-0.68 tunneling, 130-tick rise, 0.12 surfaced walk / 0.23 I Zombie); Bungee (450 HP, 300-tick bottom timer, and plant steal); Dolphin Rider (500 HP, pool entry, 120-tick jump over ordinary plants, and Tallnut block); Snorkel (270 HP, 0.66-0.68 water speed, submerged until eating); Zomboni (1350 HP, source speed profile, and drive-over plant removal); ignored `artifacts/zombotany-boss/verification.md`; Gargantuar/Gigagargantuar imp throw (half-HP one-time throw, source flight integration, 270-HP landed imp, with the regular-play Imp profile corrected from 70 to 270 HP and the I,Zombie 70-HP override retained) and the balloon damage-range rule (only Cactus/Cattail spikes hit fliers; cob blasts hit everything) in ignored `artifacts/gargantuar-imp-throw/verification.md` and `artifacts/balloon-cactus/verification.md`; independent verification issues `#129`-`#136` with fix PRs `#137`-`#144` corrected the I Zombie deploy costs, Conehead/Dancer/Imp deploy profiles, Jackbox, Newspaper, Dolphin Rider, Flag/Backup Dancer, Ladder carry, and Digger speed claims against the decomp and 1.0.0.1051 function table; Magnet-shroom metal steal, pool-row spawn gating with the ducky-tube overlay, and bungee wave delivery (roof final-wave sky drop) in ignored artifacts/magnet-shroom/verification.md, artifacts/pool-row-spawns/verification.md, and artifacts/bungee-delivery/verification.md; local DEBUG full gate (format, Clippy, workspace tests, and DEBUG workspace build) passed |
 | ENT-PROJECTILE | Projectile types and collision behavior | 15 | 15 | verified | PRs `#30`, `#33`, `#36`, `#58`, `#67`, `#69`, `#71`, `#72`, `#74`, `#260`, `#268`, `#270`; runs `29973097050`/`29973716257`/`29974169417`/`30003168668`/`30003168691`/`30132257878`/`30132257848`/`30133226675`/`30133226646`/`30133613372`/`30133613399`/`30134299774`/`30134299749`/`30480181965`/`30480182225`/`30496450729`/`30496450907`/`30498120123`/`30498120119`; ignored `artifacts/puffshroom-range/verification.md`, `artifacts/pult-plants/verification.md`, `artifacts/fume-shroom/verification.md`, `artifacts/gloom-shroom/verification.md`, `artifacts/cob-cannon/verification.md`, `artifacts/pea-head/verification.md`, `artifacts/pult-trajectories/verification.md`, `artifacts/threepeater-trajectory/verification.md`, `artifacts/starfruit-trajectory/verification.md`, and local Torchwood source/runtime records; ProjectileType::Other(u8) (Other(1) lobbed basketball at 75 damage; other values default to a straight 20-damage projectile), Cob, ZombiePea, source-specific regular pult trajectory/collision behavior, the Threepeater vertical trajectory, and the Starfruit origin/shadow/vertical collision timing are covered by generic logic plus focused checks; Issues `#216`, `#227`, `#236` |
-| ENT-PICKUP | Sun, coins, prizes, and pickup behavior | 15 | 26 | partial | SunPickupState, CoinPickupState, SunProduced/SunCollected/CoinProduced/CoinCollected events, CollectSun/CollectCoin input actions, source-like COIN_MOTION_COIN award arcs (launch, drift, gravity, item-award offsets, sunflower award elevation, landing), Raining Seeds usable-seed payload drops and free collection/planting, and money-bag fan-out into five from-present gold coins with 80-tick auto-collection are implemented; the source pickup catalog, money/sun variants, mode-unlock presents, garden prizes, chocolate, and remaining award-specific progression are covered by ignored local evidence and core tests; visual pickup particles unresolved |
+| ENT-PICKUP | Sun, coins, prizes, and pickup behavior | 26 | 26 | verified | SunPickupState, CoinPickupState, SunProduced/SunCollected/CoinProduced/CoinCollected events, CollectSun/CollectCoin input actions, source-like COIN_MOTION_COIN award arcs (launch, drift, gravity, item-award offsets, sunflower award elevation, landing), Raining Seeds usable-seed payload drops and free collection/planting, and money-bag fan-out into five from-present gold coins with 80-tick auto-collection are implemented; the source pickup catalog, money/sun variants, mode-unlock presents, garden prizes, chocolate, and remaining award-specific progression are covered by ignored local evidence and core tests; pickup particles remain unresolved|
 | ENT-GRID | Graves, craters, portals, vases, and other grid items | 13 | 13 | verified | PRs `#50`, `#92`; runs `29979356134`/`29979356138`/`30148593526`/`30148593521`; graves (PR #50), craters (PR #50 DoomShroom crater with replant blocking), Vasebreaker vases (seeded layout, break/reveal, plant/zombie contents, no-vase rejection, and win condition), the per-row Zomboni ice trail (lay/melt/planting block, Jalapeno melt, spike-vehicle pop, Bobsled spawn dependency and end-of-ice crash), the single-use garden rake (first-zombie kill and consumption), placed ladders (Ladder-zombie placement, barrier bypass for later zombies, and Magnet-shroom removal, with focused core tests), I Zombie lawn brains (placement, zombie brain-eating, and loss condition, evidenced by artifacts/izombie/verification.md), and Zombiquarium click-position brains (three-item cap, age gate, Snorkel targeting/healing, and packet-spawn lifecycle) accepted; ignored `artifacts/vasebreaker/verification.md`, `artifacts/zomboni-ice-trail/verification.md`, and local source/runtime records; adventure level 4-5 Scary Potter (three-stage pot layouts from Challenge.cpp ScaryPotterPopulate, wave-clock suppression, stage advance on board clear, and the three-stage win) in ignored `artifacts/scary-potter-adventure/verification.md`; first-run adventure sod rows (1-1 row 2 only, 1-2/1-3 rows 1-3: planting, spawning, and mower gating) in ignored `artifacts/sod-rows/verification.md`; Portal Combat initial pair layout, 200-tick conveyor/wave start, 9,000-tick challenge state, 6,000-tick relocation, row spawn weights, source `mLastPortalX` destination-column guard, zombie/straight-projectile/triggered-mower transport, relocation row/column exclusion, and Peashooter/Repeater/Cactus cross-row target search are covered by `portal_combat_uses_source_pairs_timers_and_row_weights`, `portal_combat_transfers_paired_entities`, and `portal_combat_shooters_target_zombies_across_portal_rows`, with local source evidence `Challenge.cpp:3140-3376` and `Plant.cpp:4814-4862` |
 | ENT-LAWNMOWER | Lawn, pool, roof, and special mower behavior | 4 | 4 | verified | PR `#84`; runs `30142029320`/`30142029344`; ignored `artifacts/lawnmower-trigger/verification.md`; all playable scenes (Day, Night, Pool, Roof) use the same mower trigger/sweep/retain logic initialized in BoardState::new — no scene-specific mower behavior exists in the target version |
 | ENT-EFFECT | Player-observable particle/effect events | 73 | 105 | partial | Ignored `artifacts/effect-evidence/catalog.md` (full 106-entry trigger-site catalog), `artifacts/effect-anchors/verification.md`, `artifacts/boss-fireball/verification.md`, `artifacts/vehicle-effects/verification.md`, `artifacts/dead-effect-slots/verification.md`, `artifacts/seed-packet-ready/verification.md`, `artifacts/jackbox-effect/verification.md`, and `artifacts/garden-glow/verification.md`; 64 simulation-class effects have deterministic anchor events and focused tests (splats, specials, planting, grave/vase lifecycle, armor/shield drops, thaw, potato arm, seed packet readiness, Jackbox explosion, tallnut jump block, pogo break, digger rise, mind control, vehicle deaths, vehicle tier smoke/tire-pop, ice-trail state, portal open/teleport, umbrella deflect, butter, boss fire/ice ball spit-roll-destroy family, and Zen/Aquarium happy glows), plus five catalog-preserved dead/superseded slots with no gameplay trigger sites (#26, #57, #67, #76, #85); remaining units ride the renderer campaign; Issues `#2`, `#5` |
@@ -80,6 +80,28 @@ Spikeweed, SpikeRock, LilyPad, FlowerPot, Garlic, PuffShroom, SeaShroom, TangleK
 GloomShroom, ScaredyShroom, CabbagePult, KernelPult, WinterMelon, GatlingPea, Cactus, LeftPeater, Marigold, GoldMagnet, Blover, GraveBuster, InstantCoffee, ExplodeONut, HypnoShroom, GiantWallnut, UmbrellaLeaf, PumpkinShell, Imitater, and Yeti behavior; the normal, PoleVaulter, Balloon, Bobsled, Ladder, Catapult, PeaHead, Pogo, Gargantuar, Dancer, Backup Dancer, Digger, Bungee, Dolphin Rider, Snorkel, Boss, WallnutHead, JalapenoHead, GatlingHead, SquashHead, TallnutHead, Gigagargantuar, and Zamboni zombies; and Pea, SnowPea, Puff, Cabbage,
 Kernel, Butter, Melon, WinterMelon, Fireball, Star, Spike, Cob, ZombiePea, and Generic(Other) projectile/collision behavior. Remaining entity, mode, visual, audio, and effect obligations remain listed in the ledger above.
 
+GoldMagnet now follows the 1.0.0.1051 target path: only mature Silver, Gold,
+and Diamond coins are eligible, from-present coins are excluded, up to five
+targets are retained during one suck, and each target travels to the plant
+before the 200-300 tick recharge starts. Source evidence is local
+`Plant.cpp:2172-2319`; focused coverage is
+`gold_magnet_requires_magnetshroom_and_collects_coins` and
+`gold_magnet_filters_present_coins_and_caps_suction_at_five_items`. This
+refines the already accepted GoldMagnet plant unit without changing the
+ledger totals; pickup visuals and remaining pickup catalog behavior remain
+under `ENT-PICKUP`.
+
+Whack-a-Zombie now uses the source grave lifecycle: nine initial graves on
+columns 3-8, weighted grave placement that clears plants, the 200-tick opening
+clock, 2,000-tick wave clock, phase-based Normal/Conehead/Buckethead counts,
+50-tick grave rises, and the final wave's twenty Conehead/Buckethead spawns.
+Same-version evidence is local `Board.cpp:1093-1105` and
+`Challenge.cpp:2747-2915`; focused coverage is
+`whack_a_zombie_uses_graves_for_the_first_and_final_waves` and
+`whack_a_zombie_grave_selection_prefers_and_clears_a_plant`. The implementation
+does not add a visual grave particle or hammer animation event, so those remain
+under the visual/effect ledger.
+
 The aquatic-placement units in `ENT-PLANT` and `SIM-SYSTEM` were re-evaluated
 for Issue `#192`: the earlier scene-wide acceptance is superseded by the
 per-row Pool/Fog check in ignored `artifacts/aquatic-placement/verification.md`,
@@ -106,6 +128,16 @@ top-plant priority. Focused checks cover first eligible collision, scene
 heights and roof slope, stack priority, and target replacement; evidence is in
 ignored `artifacts/pult-trajectories/verification.md`. Issue `#217`, PR `#261`,
 Actions `30490198714`/`30490198670`.
+
+The board projectile renderer now resolves the source `Projectile::Draw` image
+table from the target archive for Pea/Zombie Pea, Snow Pea, Puff, Cabbage,
+Kernel, Butter, Melon, Winter Melon, Fireball, Spike, Star, Cob, and Catapult
+basketball projectiles. Source image paths and draw scales are retained in the
+asset loader and focused board mapping checks. The board path now uses centered
+affine sprites for source-style projectile spin, Puff age-based growth, source
+day/night shadow cells, and lobbed-projectile height scaling. Exact
+source-randomized starting angles/speeds, impact/trail particles, and visual
+acceptance remain under the visual and effect ledgers.
 
 Catapult launch targeting now shares the source grounded-plant boundary:
 Squash rising/falling/done-falling states and health-zero terminal plants are
@@ -205,7 +237,7 @@ local `Zombie.cpp` `PickRandomSpeed`, `UpdateZombieDolphinRider`,
 
 The Ice-shroom effect now follows the source `HitIceTrap` three-class contract:
 `CanBeChilled` exclusions (Zamboni, sledded Bobsled team, hidden/rising Digger,
-rising Backup Dancer, mind-controlled, and the Boss without an exposed-head
+grave risers, rising Backup Dancer, mind-controlled, and the Boss without an exposed-head
 model) receive no chill, freeze, or 20 damage; `CanBeFrozen` exclusions
 (vaulting Pole Vaulter, Dolphin entry/jump, Snorkel entry, flying Balloon,
 thrown/landing Imp, SquashHead rise/fall, bouncing Pogo, and Bungee) receive
@@ -214,7 +246,7 @@ chill only; ordinary eligible zombies receive chill plus a source-range freeze
 damage, with deterministic RNG consumption. Focused table-driven coverage is
 `ice_shroom_applies_source_chill_freeze_and_damage_classes`; source evidence is
 local `Zombie.cpp` `CanBeChilled` (`7983-8008`), `CanBeFrozen` (`8010-8032`),
-and `HitIceTrap` (`8346-8382`); Issue `#186`.
+and `HitIceTrap` (`8346-8382`); Issues `#186` and `#283`.
 
 Final-wave grave and pool risers now use the source `RiseFromGrave` phase: a
 150-tick off-ground rise on land or a 50-tick submerged rise in the pool,
@@ -275,6 +307,91 @@ evidence is local `Plant.cpp` `FindTargetZombie` (`4811-4925`, PotatoMine
 branch `4890-4912`) and `UpdatePotato` (`1138-1187`); the Bungee target-column
 rule is not yet modeled because the steal Bungee stores no target cell;
 Issue `#210`.
+
+`BossBungeeLeave`/`BossAreBungeesDone` coordinate the source Boss Bungee leave
+phase and buttered-follower cleanup (`Zombie.cpp:9913-9973`). Rust does not
+claim that lifecycle because it has no Boss Bungee phase or follower-ID state.
+
+Adventure mode presents now follow the source `Board::DropLootPiece` boundary:
+level 22 emits the minigame present and level 36 emits the puzzle present only
+after wave 5, when the matching unlock bit is clear, and when no uncollected
+present of that type is on the board. The Rust handoff keeps loot-bearing and
+event-only death paths distinct, persists collected mode bits, and covers head
+loss and final-wave award suppression. The source upsell-cutscene gate and
+`PresentSurvivalMode` trigger remain unresolved.
+
+The normal Adventure Select route now applies the target selector's independent
+Minigame, Puzzle, and Survival lock bits, while a completed Adventure run opens
+all three entries. The selector's locked visual is represented by the existing
+renderer alpha path; exact grey tint, locked-message modal, and the source
+Survival-present drop trigger remain unresolved and are not counted as new
+accepted UI or visual units.
+
+The board pickup renderer now loads the target `Sun`, `Coin_silver`,
+`Coin_gold`, and `Diamond` compiled reanimations, using the source attachment
+coordinates for the 60x60 sun and the three coin variants; moving silver/gold
+coins retain the source static-image fallback. The target Present, moneybag,
+chocolate, Scary Pot, small note, and silver/gold sunflower trophy resources
+remain mapped alongside the existing money and seed-packet images. Source
+collection particles, payload-specific seed art, remaining pickup animations,
+and visual checkpoint acceptance remain under `ENT-PICKUP`, `ENT-EFFECT`, and
+the VIS rows.
+
+Chocolate collection now handles `Chocolate` and `AwardChocolate` through one
+normalized usable-charge counter persisted by `SaveInventory.chocolates`; legacy
+missing fields default to zero. The source purchase-count sentinel and separate
+garden chocolate visibility/consumption state are not yet modeled.
+
+The ordinary `Board::DropLootPiece` selector is implemented as the shared
+`drop_loot_piece` path. It preserves the source mode-present precedence,
+first-coin forcing, Column/Whack branches, 70-wave limit, Zen Garden capacity
+and Stinky gates, packet affordability suppression, coin-value selection, and
+caller-specific factors from zombie loot, I Zombie brain scoring, and Grave
+Buster. Source cross-checks, the focused deterministic tests, and the exact
+caller boundaries are recorded in ignored
+`artifacts/ordinary-loot/verification.md`.
+
+The Whack-a-Zombie sun contract is resolved: source `mSunMoney` is the modeled
+`GameState.sun` pool, with source-aligned zero/150/5000 starting values by mode.
+Rust collects and spends sun immediately, so the source in-flight collection
+term is zero; Whack-a-Zombie's sun-drop thresholds remain deferred with the
+ordinary selector.
+
+The award integration audit preserves all three source `DropLootPiece` callers,
+the zombie-value factors, the 75/500/2000/8000 packet-upgrade schedule, and the
+source Silver/Gold/Diamond values. I Zombie and Grave Buster now retain their
+caller boundaries, while profile challenge records, adventure completion state,
+and the ordinary selector remain the shared prerequisite for exact replay
+awards.
+
+Fixed Adventure completion awards remain separate from ordinary loot. The source
+first-run notes/seed packets, level-50 awards, replay money bags, and level-35
+intermediate Scary Potter suppression are covered by the shared completion-award
+helper. The level-50 Boss prerequisite and randomized endless potted-plant
+payloads remain outside this simulation slice.
+
+Non-Adventure completion awards preserve the source distinction between finite
+money-bag/trophy outcomes, gold-sunflower progression, and endless Scary
+Potter/I Zombie `PuzzlePhaseComplete` awards. Endless award fan-out keeps the
+source diamond and five-gold-coin behavior; full profile challenge-record
+selection remains unresolved.
+
+Endless I Zombie and endless Scary Potter/Vasebreaker now use the shared source
+`PuzzlePhaseComplete` continuation: they advance `challenge.stage`, reset or
+repopulate mode state, and emit event-only deaths instead of winning on the
+first clear. The source 500-tick fade/advice pacing and randomized garden award
+payloads remain documented limitations.
+
+Last Stand follows the source five-stage, ten-wave onslaught lifecycle: the start
+and continue action, stage-offset wave budget and pool-row gate, six-card seed
+chooser with forbidden seeds, seed refresh, transient-entity clear, and next
+stage rebuild are modeled. The source advice/fade pacing, localized button text,
+and exact button art remain outside this simulation slice.
+
+The exact shared challenge-award helper remains blocked by profile shape. Source
+records are per concrete `GameMode`, while Rust currently aggregates completion
+by broad `ModeKind`; no speculative save field or generic award subsystem is
+added until those records are represented.
 
 
 ## Player-Accessible Modes
@@ -340,13 +457,14 @@ evidence is local `Challenge.cpp:524-529,3648-3721` and
 Slot Machine now accepts the source seed-bank handle hitbox, charges 25 sun only
 for an unlocked spin, holds all three reels for the source 300-tick roll, uses
 the source weighted symbol selection and third-reel match bias, pays the source
-two-of-a-kind and jackpot diamond/sun/usable-seed fan-outs, and reaches the
+two-of-a-kind and jackpot diamond/sun/usable-seed fan-outs, including the
+source x=360 offset for two-diamond and two-seed payouts, and reaches the
 2,000-sun completion path. Focused coverage is
 `slot_machine_rolls_three_reels_and_rejects_locked_or_empty_spins`,
 `slot_machine_resolves_each_source_payout_class`,
 `slot_machine_sun_jackpot_can_reach_the_source_completion_path`, and the legacy
 state default check; source evidence is local `Challenge.cpp:1287-1298,1332-1335,2005-2048`
-and `SeedPacket.cpp:33-82,162-180`; Issue `#245`.
+and `SeedPacket.cpp:33-82,162-180`; Issues `#245` and `#284`.
 
 Portal Combat now preserves the source four-portal pair layout, conveyor and
 challenge clocks, portal-row spawn weights, target-column `mLastPortalX`
@@ -363,10 +481,149 @@ local `Challenge.cpp:3140-3376` and `Plant.cpp:4814-4862`.
 
 | Obligation | Behavior domain | Accepted | Total | Status | Evidence / owner |
 |---|---|---:|---:|---|---|
-| UI-SCREEN | Loading, title, menu, selector, seed chooser, HUD, pause, options, help, almanac, shop, and result flows | 3 | 12 | partial | PR `#64`, runs `30030645194`/`30030645257` and `30048802223`/`30048802288`, ignored `artifacts/windows-7de9f1d/verification.md`/`artifacts/windows-beb00d3/verification.md`; selector/adventure tutorial route accepted; seed chooser remains partial; Issues `#2`, `#17` |
-| INPUT-ACTION | Mouse, keyboard, hover, click, drag, placement, pause, restart, and command-line resource selection | 8 | 8 | verified | PR `#64`, commits `547f99b`/`514906c`, title mouse start, seed-chooser start/card selection and keyboard selection, left-click placement, Space pause/resume, and local terminal restart in ignored `artifacts/windows-a6c3f53/verification.md`/`artifacts/windows-aa443d7/verification.md`/`artifacts/windows-23f3f67/verification.md`/`artifacts/windows-514906c/verification.md`/`artifacts/windows-514906c/verification-keyboard.md`/`artifacts/local-restart/verification.md`; runs `30054043147`/`30054043130`; remaining pause-menu and visual semantics are tracked by Issues `#2`/`#17` |
+| UI-SCREEN | Loading, title, menu, selector, seed chooser, HUD, pause, options, help, almanac, shop, and result flows | 4 | 12 | partial | PR `#64`, runs `30030645194`/`30030645257` and `30048802223`/`30048802288`, ignored `artifacts/windows-7de9f1d/verification.md`/`artifacts/windows-beb00d3/verification.md` and `artifacts/pause-menu/verification.md`; selector/adventure tutorial and pause dialog routes accepted; Options, Help, Almanac, GameOver, Complete, seed chooser, and shop remain partial; Issues `#2`, `#17` |
+| INPUT-ACTION | Mouse, keyboard, hover, click, drag, placement, pause, restart, and command-line resource selection | 8 | 8 | verified | PR `#64`, commits `547f99b`/`514906c`, title mouse start, seed-chooser start/card selection and keyboard selection, in-play SeedBank packet hit routing, left-click placement, Space pause/resume, pause-dialog resume, and local terminal restart in ignored `artifacts/windows-a6c3f53/verification.md`/`artifacts/windows-aa443d7/verification.md`/`artifacts/windows-23f3f67/verification.md`/`artifacts/windows-514906c/verification.md`/`artifacts/windows-514906c/verification-keyboard.md`/`artifacts/local-restart/verification.md`/`artifacts/pause-menu/verification.md`/`artifacts/board-hud/verification.md`; runs `30054043147`/`30054043130`; remaining visual semantics are tracked by Issues `#2`/`#17` |
 | SAVE-PROGRESSION | Profile, settings, unlocks, awards, inventory, garden, mode completion, and load compatibility | 8 | 8 | verified | PR `#61`, runs `30024232209`/`30024232459`, core profile round-trip test, ignored `artifacts/profile-progression/verification.md` |
 | PLATFORM-CONTRACT | Logical viewport, window/fullscreen behavior, DPI, audio device, and external-path behavior | 6 | 6 | verified | PR `#64`, 800x600 logical viewport, window startup, DPI-aware 1000x750 client capture, external `--data-dir` launch, and local debug `--fullscreen`/F11 round trip in ignored `artifacts/local-platform/verification.md`; the same artifact records the local app's graceful startup fallback when the audio backend reports an unavailable-device error. Remaining pause-menu, visual, and full audio obligations remain under Issues `#2`, `#14`, `#17`, and `#19` |
+
+The shop slice now has a source-aligned purchase action for packet upgrades,
+fertilizer, bug spray, phonograph, and Stinky. It is reachable from the
+Adventure Select store icon after the adventure unlock, renders against the
+external Store resources, and persists through the existing profile handoff.
+Focused state and external-launch evidence is recorded in ignored
+`artifacts/store/verification.md`; the remaining StoreScreen pages, catalog
+items, visual review, and purchase-specific audio remain unresolved, so this
+shop slice does not add another accepted UI-SCREEN unit.
+
+The pause dialog now follows the source modal route for board scenes: the
+existing core pause state is rendered with the target dialog panel pieces and
+resume text, and Escape, Space, Enter, or a left click resumes the board.
+Source, focused nextest, external launch, and a local checkpoint capture are
+recorded in ignored `artifacts/pause-menu/verification.md`.
+
+The Options slice now follows the selector-specific source dialog route for
+music/effects sliders, fullscreen, and the `OK` button. Values update the
+existing audio tracks and `SaveSettings`, and the source Options resources are
+loaded from the external 1.0.0.1051 directory. The selector Almanac/Credits,
+Restart, Main Menu, hardware-capability dialogs, visual review, and device
+audio synchronization remain unresolved; source and runtime evidence are in
+ignored `artifacts/options/verification.md`.
+
+The Help route now follows the source `AwardScreen::AWARD_HELP_ZOMBIENOTE`
+paper-note path from the Game Selector, including the external background,
+Zombie Note, help content, and source Main Menu button regions. Its focused
+nextest and external-resource launch evidence are recorded in ignored
+`artifacts/help/verification.md`; visual review and the separate Almanac,
+Credits, and result/award variants remain unresolved.
+
+The seed chooser now uses the source `Has7Rows` threshold and shared card
+coordinates: unfinished adventures expose the 40-slot, 73-pixel-row layout,
+while completed adventures or the relevant higher-tier plant unlocks expose
+the 48-slot, 70-pixel-row layout. Mouse hit testing follows the rendered card
+rectangles, including the previously unreachable right-hand columns. The
+13-cell `packet_plants.png` atlas is now used for the source special packet
+types, with the existing static plant images reused where available. The
+Imitater special button, the remaining per-seed reanimation art, source
+warning states, and visual acceptance remain unresolved, so this does not add
+another accepted UI-SCREEN unit.
+
+The in-play board now has a source-shaped SeedBank route backed by the external
+1.0.0.1051 `SeedBank`, `SunBank`, `ShovelBank`, and conveyor resources. Ordinary
+packet positions, bank extension widths, slot-machine and conveyor layouts,
+sun/cost labels, cooldown dimming, and left-click packet selection follow the
+local `Board.cpp:1304-1312,8927-8943` and `SeedPacket.cpp:523-574,882-1003`
+evidence. Focused geometry/hit tests, a locked debug build, and a direct
+window capture against the verified resource inventory are recorded in ignored
+`artifacts/board-hud/verification.md`; unsupported per-seed reanimations,
+shovel cursor semantics, and original-vs-neopvz comparison remain
+open, so the HUD does not add another accepted UI-SCREEN unit.
+
+The board now also draws the source `FlagMeter` background, dynamic clipped fill,
+progress label, Adventure/Survival flag markers, and moving zombie head. Its
+countdown mapping, Boss-health path, and source asset dimensions are covered by
+focused tests and the external `day` checkpoint; evidence is recorded in ignored
+`artifacts/board-progress/verification.md`. Non-Boss health-threshold
+interpolation, exact raise/easing timing, challenge-specific labels, and a
+valid WGPU window capture remain unresolved, so this remains a partial visual
+slice and does not add another accepted UI-SCREEN unit.
+
+Board entities now use source compiled reanim definitions for Normal, Flag,
+Conehead, Buckethead, Screen Door, Football, Newspaper, the 16 available
+specialized body types, and the Boss body/driver/fireball/iceball set in the
+1.0.0.1051 archive. The catalog also loads the target Peashooter, Sunflower,
+Snow Pea, Puff-shroom, Fume-shroom, Wall-nut, Starfruit, Magnet-shroom, and
+the remaining source seed-slot definitions for board plant rendering.
+The Rust decoder follows the target `Definition.cpp` cache layout and its
+missing-field inheritance, maps the zombie/Boss set's 687 tracks and adds 734
+tracks across all 49 source plant slots, resolving 963 same-version image
+symbols. It interpolates the source transform fields, applies the source
+equipment visibility groups and additive effect groups, and attaches the Boss
+driver to `Boss_head2` with the source offset and scale. Newspaper armor
+transitions, Football helmet loss, the supported specialized movement/eating
+actions, and Boss idle/attack/RV/death states select source action tracks; the
+supported plants select source sleep/armed/explode/shoot/big-idle tracks where
+state and definition provide them. Plant render groups now also hide PotatoMine
+glow until armed, switch KernelPult's Cornpult butter/kernel prefixes from the
+stored weapon state, place Pumpkin_back behind the main shell, and compose the
+source Peashooter-family, SplitPea, and Threepeater head reanimations through
+their body anchor tracks. Backup Dancer has no matching target resource. Source
+format checks, focused layer visibility/attachment tests, plant action tests,
+and the external checkpoints are recorded in ignored
+`artifacts/reanim/verification.md`; Boss fireball/iceball trail particles,
+other attachments, particles, clipping, damage image overrides, other
+plant-specific head attachments, exact action timing/blink state, and visual
+acceptance remain unresolved, so this does not add an accepted VIS-ZOMBIE or
+VIS-PLANT unit.
+
+The Almanac selector route now follows the source unlock threshold and exposes
+Index, Plants, and Zombies page states with the target 1.0.0.1051 page
+backgrounds, close/index/navigation controls, source-shaped 49-plant and
+26-zombie grids, and entry selection. The source Imitater slot and Boss
+position are preserved, and zombie display order is mapped independently from
+the internal Rust enum order. Selected cards now display source-ordered plant
+and zombie names, and plant cards display cost and recharge metadata from the
+core seed definition table. The save-backed plant availability rule is used
+when a profile is present; unsupported entity reanimations remain blank, and
+source description strings are loaded from the external `LawnStrings.txt` table
+when a card is selected. Zombie slots now follow the source first-appearance
+level, spawned-only, Yeti silhouette, and not-encountered description rules;
+the core tracks and carries the source's in-memory `gZombieDefeated` state for
+the active player session, and entity
+reanimations, animation review, and visual acceptance are unfinished. Evidence is in ignored
+`artifacts/almanac/verification.md`.
+
+The GameOver route now renders a source-shaped failure sequence over the
+terminal board: natural losses keep the board visible, hold result input until
+the source 11000-millisecond boundary, and show the external masked
+`reanim/ZombiesWon` art from the 6000-millisecond boundary before opening the
+result dialog. Try Again still maps to the existing restart path and Main Menu
+to Adventure Select. The source board-pan curve, reanimation frame progression,
+shake behavior, challenge-specific message/header, mode-specific menu
+destinations, footer lifecycle, original lost-board background, and visual
+acceptance remain unresolved; implementation evidence is in ignored
+`artifacts/game-over-visual/verification.md`, so this slice does not add
+another accepted UI-SCREEN unit.
+
+The Complete route now selects the current state award and renders the external
+AwardScreen background, seed-packet plant reward, shovel/Almanac/keys/taco/
+watering-can tools, trophy outcomes, and the supplied paper-note pages. Continue
+uses the existing profile-aware next-level transition, while Main Menu returns
+to Adventure Select. The level-49 final-note asset is absent from the supplied
+resources and falls back to the last note page; exact award text/art cropping,
+store and Zen Garden handoffs, audio timing, and visual acceptance remain
+unresolved. Evidence is in ignored `artifacts/complete/verification.md`, so
+this slice does not add another accepted UI-SCREEN unit.
+
+The final first-run completion now enters a Credits route after the level-50
+award, and `--checkpoint credits` starts the same route directly. Its source
+phase boundaries (400, 785, and 1033 movie frames), final scrolling section,
+50-update button delay, replay/main-menu regions, source Credits image assets,
+and `ZombiesOnYourLawn.ogg` music path are covered by focused nextest checks.
+The renderer still lacks the source Reanimation attachment/particle system, so
+the phase scenes use the supplied static backgrounds and Credits art; exact
+singing-Sunflower, zombie choreography, fog/disco effects, and visual acceptance
+remain unresolved. This reduces the Credits behavior gap but does not add an
+accepted UI-SCREEN or VIS unit.
 
 ## Visual and Audio Evidence
 
@@ -378,7 +635,7 @@ local `Challenge.cpp:3140-3376` and `Plant.cpp:4814-4862`.
 | VIS-ZOMBIE | Zombie animation, layering, clipping, and feedback review units | 0 | 33 | missing | Issue `#14` |
 | VIS-PROJECTILE | Projectile animation and impact review units | 0 | 14 | missing | Issue `#14` |
 | VIS-EFFECT | Effect and particle review units | 0 | 105 | missing | Issue `#14` |
-| AUD-SFX | Simulation-tick and decoded-output sound-event units | 98 | 167 | partial | `SeedSelected` → `sounds/tap.ogg`, `InputRejected` → `sounds/buzzer.ogg`, `Paused` → `sounds/pause.ogg`, `ZombieDeployed` → `sounds/plant.ogg`/`sounds/plant2.ogg`, `PlantShoveled` → `sounds/plant2.ogg`, plant `SunProduced` -> `sounds/throw.ogg`, special-prize `CoinProduced` -> `sounds/chime.ogg`, Gold `CoinLanded` -> `sounds/moneyfalls.ogg`, `SunCollected` → `sounds/points.ogg`, Diamond `CoinCollected` -> `sounds/diamond.au`, usable-seed `PickupCollected` -> `sounds/seedlift.ogg`, sun `PickupCollected` -> `sounds/points.ogg`, prize `PickupCollected` -> `sounds/prize.ogg`, money `CoinCollected` → `sounds/coin.ogg`, `GardenWatered` → `sounds/watering.ogg` + companion `sounds/throw.ogg`, `GardenFertilized` → `sounds/fertilizer.ogg` + companion `sounds/throw.ogg`, `GardenBecameHappy` → `sounds/prize.ogg` + companion `sounds/throw.ogg`, IceShroom `PlantSpecialTriggered` → `sounds/frozen.ogg`, `ZombieChilled` → `sounds/frozen.ogg`, `CobCannonFired` → `sounds/coblaunch.ogg`, Catapult `ProjectileFired { Other(1) }` → `sounds/basketball.ogg`, Torchwood `ProjectileIgnited` -> `sounds/firepea.ogg`, `PortalOpened` → `sounds/portal.ogg`, GraveBuster `PlantSpecialTriggered` → `sounds/gravebusterchomp.ogg`, Coffee `PlantSpecialTriggered` → `sounds/coffee.ogg`, TangleKelp `TangleKelpGrabStarted` → `sounds/floop.ogg`, TangleKelp `TangleKelpWaterEntry` → `sounds/zombiesplash.ogg`, PotatoMine `PotatoMineArmed` → `sounds/dirt_rise.ogg`, Digger `DiggerSurfaced` → `sounds/dirt_rise.ogg` + companion `sounds/wakeup.ogg`, Magnet-shroom `MetalStolen` → `sounds/magnetshroom.ogg`, Zamboni `VehicleDisabled` → `sounds/balloon_pop.ogg`, PotatoMine `PlantSpecialTriggered` → `sounds/potato_mine.ogg`, Spikeweed `PlantSpecialTriggered` → `sounds/throw.ogg`, CherryBomb `PlantSpecialTriggered` → `sounds/cherrybomb.ogg`, ExplodeONut `PlantSpecialTriggered` → `sounds/cherrybomb.ogg` + companion `sounds/bowlingimpact2.ogg`, Jalapeno `PlantSpecialTriggered` → `sounds/jalapeno.ogg`, CherryBomb/Jalapeno companion → `sounds/juicy.ogg`, `ProjectileImpact` Butter → `sounds/butter.ogg`, `VaseBroken` → `sounds/vase_breaking.ogg`, `RakeTriggered` → `sounds/swing.ogg`, DoomShroom `PlantSpecialTriggered` → `sounds/doomshroom.ogg`, `BloverTriggered` → `sounds/blover.ogg`, Chomper `PlantSpecialTriggered` → `sounds/bigchomp.ogg`, Squash `PlantSpecialTriggered` -> `sounds/gargantuar_thump.ogg`, `SquashHumStarted` -> `sounds/squash_hmm.ogg`/`sounds/squash_hmm2.ogg`, `ZombieShieldHit` -> `sounds/shieldhit.ogg`/`sounds/shieldhit2.ogg`, `ZombieHypnotized` → `sounds/mindcontrolled.ogg`, `JackboxExploded` → `sounds/explosion.ogg`, day/night/roof `MowerTriggered { pool: false }` → `sounds/lawnmower.ogg`, pool `MowerTriggered { pool: true }` → `sounds/pool_cleaner.ogg`, `GameLost` → `sounds/losemusic.ogg`, `GameWon` → `sounds/winmusic.ogg`, `ZombieNewspaperRipped` → `sounds/newspaper_rip.ogg`, `ImpThrown` → `sounds/swing.ogg` + variant companion `sounds/imp.ogg`/`sounds/imp2.ogg`, `DolphinRider` appearance → `sounds/dolphin_appears.ogg`, `DolphinJumpStarted` → `sounds/dolphin_before_jumping.ogg` + companion `sounds/plant_water.ogg`, `ZombieEnteredPool` → `sounds/plant_water.ogg`/`sounds/zombie_entering_water.ogg`, `Zamboni` appearance → `sounds/zamboni.ogg`, `PogoBounceSound` → `sounds/pogo_zombie.ogg`, `PoleVaultGrassStep` → `sounds/grassstep.ogg`, `PoleVaultSound` → `sounds/polevault.ogg`, `Balloon` appearance → `sounds/ballooninflate.ogg`, Jackbox/Digger `ZombieSongStarted` -> `sounds/jackinthebox.ogg`/`sounds/digger_zombie.ogg`, `ZombieGroaned` -> `sounds/lowgroan.ogg`/`sounds/lowgroan2.ogg`/`sounds/groan.ogg`/`sounds/groan2.ogg`, `ZombieChew` -> `sounds/chomp.ogg`/`sounds/chomp2.ogg`/`sounds/chompsoft.ogg`, Gargantuar `ZombieDeathSound` -> `sounds/gargantudeath.ogg`, Boss `ZombieDeathSound` -> `sounds/bossexplosion.ogg` + companion `sounds/gargantudeath.ogg`; source cross-checks, decoded PCM hashes, and local app tick/`playback started` traces in ignored `artifacts/local-audio/verification.md`; `PlantPlaced`/`ImitaterMorphed` terrain-aware planting Foley remains unresolved under Issue `#193`; `Resumed` and `ZombieDied` deliberately have no direct sound mapping; the accepted `ZombieDied` silent boundary and remaining SFX/device timing remain under Issue `#19` |
+| AUD-SFX | Simulation-tick and decoded-output sound-event units | 151 | 167 | partial | `SeedSelected` 閳?`sounds/tap.ogg`, `InputRejected` 閳?`sounds/buzzer.ogg`, `Paused` 閳?`sounds/pause.ogg`, `ZombieDeployed` 閳?`sounds/plant.ogg`/`sounds/plant2.ogg`, `PlantShoveled` 閳?`sounds/plant2.ogg`, plant `SunProduced` -> `sounds/throw.ogg`, special-prize `CoinProduced` -> `sounds/chime.ogg`, Gold `CoinLanded` -> `sounds/moneyfalls.ogg`, `SunCollected` 閳?`sounds/points.ogg`, Diamond `CoinCollected` -> `sounds/diamond.au`, usable-seed `PickupCollected` -> `sounds/seedlift.ogg`, sun `PickupCollected` -> `sounds/points.ogg`, prize `PickupCollected` -> `sounds/prize.ogg`, money `CoinCollected` 閳?`sounds/coin.ogg`, `GardenWatered` 閳?`sounds/watering.ogg` + companion `sounds/throw.ogg`, `GardenFertilized` 閳?`sounds/fertilizer.ogg` + companion `sounds/throw.ogg`, `GardenBecameHappy` 閳?`sounds/prize.ogg` + companion `sounds/throw.ogg`, IceShroom `PlantSpecialTriggered` 閳?`sounds/frozen.ogg`, `ZombieChilled` 閳?`sounds/frozen.ogg`, `CobCannonFired` 閳?`sounds/coblaunch.ogg`, Catapult `ProjectileFired { Other(1) }` 閳?`sounds/basketball.ogg`, Torchwood `ProjectileIgnited` -> `sounds/firepea.ogg`, `PortalOpened` 閳?`sounds/portal.ogg`, GraveBuster `PlantSpecialTriggered` 閳?`sounds/gravebusterchomp.ogg`, Coffee `PlantSpecialTriggered` 閳?`sounds/coffee.ogg`, TangleKelp `TangleKelpGrabStarted` 閳?`sounds/floop.ogg`, TangleKelp `TangleKelpWaterEntry` 閳?`sounds/zombiesplash.ogg`, PotatoMine `PotatoMineArmed` 閳?`sounds/dirt_rise.ogg`, Digger `DiggerSurfaced` 閳?`sounds/dirt_rise.ogg` + companion `sounds/wakeup.ogg`, Magnet-shroom `MetalStolen` 閳?`sounds/magnetshroom.ogg`, Zamboni `VehicleDisabled` 閳?`sounds/balloon_pop.ogg`, PotatoMine `PlantSpecialTriggered` 閳?`sounds/potato_mine.ogg`, Spikeweed `PlantSpecialTriggered` 閳?`sounds/throw.ogg`, CherryBomb `PlantSpecialTriggered` 閳?`sounds/cherrybomb.ogg`, ExplodeONut `PlantSpecialTriggered` 閳?`sounds/cherrybomb.ogg` + companion `sounds/bowlingimpact2.ogg`, Jalapeno `PlantSpecialTriggered` 閳?`sounds/jalapeno.ogg`, CherryBomb/Jalapeno companion 閳?`sounds/juicy.ogg`, `ProjectileImpact` Butter 閳?`sounds/butter.ogg`, `VaseBroken` 閳?`sounds/vase_breaking.ogg`, `RakeTriggered` 閳?`sounds/swing.ogg`, DoomShroom `PlantSpecialTriggered` 閳?`sounds/doomshroom.ogg`, `BloverTriggered` 閳?`sounds/blover.ogg`, Chomper `PlantSpecialTriggered` 閳?`sounds/bigchomp.ogg`, Squash `PlantSpecialTriggered` -> `sounds/gargantuar_thump.ogg`, `SquashHumStarted` -> `sounds/squash_hmm.ogg`/`sounds/squash_hmm2.ogg`, `ZombieShieldHit` -> `sounds/shieldhit.ogg`/`sounds/shieldhit2.ogg`, `ZombieHypnotized` 閳?`sounds/mindcontrolled.ogg`, `JackboxExploded` 閳?`sounds/explosion.ogg`, day/night/roof `MowerTriggered { pool: false }` 閳?`sounds/lawnmower.ogg`, pool `MowerTriggered { pool: true }` 閳?`sounds/pool_cleaner.ogg`, `GameLost` 閳?`sounds/losemusic.ogg`, `GameWon` 閳?`sounds/winmusic.ogg`, `ZombieNewspaperRipped` 閳?`sounds/newspaper_rip.ogg`, `ImpThrown` 閳?`sounds/swing.ogg` + variant companion `sounds/imp.ogg`/`sounds/imp2.ogg`, `DolphinRider` appearance 閳?`sounds/dolphin_appears.ogg`, `DolphinJumpStarted` 閳?`sounds/dolphin_before_jumping.ogg` + companion `sounds/plant_water.ogg`, `ZombieEnteredPool` 閳?`sounds/plant_water.ogg`/`sounds/zombie_entering_water.ogg`, `Zamboni` appearance 閳?`sounds/zamboni.ogg`, `PogoBounceSound` 閳?`sounds/pogo_zombie.ogg`, `PoleVaultGrassStep` 閳?`sounds/grassstep.ogg`, `PoleVaultSound` 閳?`sounds/polevault.ogg`, `Balloon` appearance 閳?`sounds/ballooninflate.ogg`, Jackbox/Digger `ZombieSongStarted` -> `sounds/jackinthebox.ogg`/`sounds/digger_zombie.ogg`, `ZombieGroaned` -> `sounds/lowgroan.ogg`/`sounds/lowgroan2.ogg`/`sounds/groan.ogg`/`sounds/groan2.ogg`, `ZombieChew` -> `sounds/chomp.ogg`/`sounds/chomp2.ogg`/`sounds/chompsoft.ogg`, Gargantuar `ZombieDeathSound` -> `sounds/gargantudeath.ogg`, Boss `ZombieDeathSound` -> `sounds/bossexplosion.ogg` + companion `sounds/gargantudeath.ogg`; source cross-checks, decoded PCM hashes, and local app tick/`playback started` traces in ignored `artifacts/local-audio/verification.md`; `PlantPlaced`/`ImitaterMorphed` contextual planting Foley -> `sounds/plant.ogg`/`sounds/plant2.ogg`/`sounds/plant_water.ogg`/`sounds/ceramic.ogg`; evidence in ignored `artifacts/planting-audio/verification.md`; `Resumed` and `ZombieDied` deliberately have no direct sound mapping; the accepted `ZombieDied` silent boundary and remaining SFX/device timing remain under Issue `#19` |
 | AUD-MUSIC | Music playback, loop, and stem units | 1 | 2 | partial | Main/hihats MO3 loop duration and source track mapping verified in ignored `artifacts/music-loop/verification.md`; runtime playback/stem synchronization remains |
 | AUD-SYNC | Event-to-device timing and music synchronization contract | 0 | 1 | missing | Issue `#19` |
 
@@ -389,6 +646,21 @@ The zombie song/groan/chew/death SFX slice maps `ZombieSongStarted`,
 families. Source boundaries are local `Zombie.cpp:4724-4777,7404-7412,8953-8957,10205-10214`;
 the source-to-resource mapping, decoded PCM hashes, and focused core/App tests
 are recorded in ignored `artifacts/audio-slice/verification.md`.
+
+The accepted Adventure award-note SFX unit maps `GameWon` at levels 10, 20, 30,
+40, and 50 to the source `AwardScreen::IsPaperNote` branch and
+`sounds/paper.ogg`, after the normal win music or final fanfare. The focused
+mapping test and the hidden `complete-paper` checkpoint both confirm tick-0
+queue order and external playback; evidence is recorded in ignored
+`artifacts/award-paper-audio/verification.md`.
+
+The accepted GameOver failure-cutscene SFX units preserve the source
+`CutScene::UpdateZombiesWon` boundaries: `GameLost` starts `losemusic.ogg`,
+`GameLostChomp` emits `chomp.ogg` and `chomp2.ogg` at 5100 and 5600 cutscene
+milliseconds, and `GameLostScream` emits `scream.ogg` at 6000. Source timing,
+focused core/App checks, and external playback are recorded in ignored
+`artifacts/game-over-audio/verification.md`; the result dialog and brain
+animation lifecycle remain outside these accepted audio units.
 
 The accepted I, Zombie deployment SFX unit maps successful `ZombieDeployed`
 events to the source `plant.ogg`/`plant2.ogg` variation family. Source, event,
@@ -547,6 +819,21 @@ The accepted Zen Garden need-fulfillment SFX unit maps the source
 checkpoint playback evidence are recorded in ignored
 `artifacts/garden-fulfill/verification.md`.
 
+The accepted Zen Garden bug-spray and phonograph tool SFX units map the source
+`ZenGarden::MouseDownWithFeedingTool` `FOLEY_BUGSPRAY` and
+`FOLEY_PHONOGRAPH` calls to explicit `GardenToolUsed` events and
+`sounds/bugspray.ogg`/`sounds/phonograph.ogg`. Both tools then use the existing
+need-fulfillment transition and preserve its prize and spawn-sun companions.
+The core now persists per-plant need, growth stage, feeding count, and care
+cooldown plus wall-clock care timestamps; explicit tools must match
+`GetPlantsNeed`-equivalent state, and watering uses the source 7-15 second need
+delay. Fertilizer and bug-spray purchase counters, phonograph ownership, and
+their consumption rules are persisted with legacy-save defaults. Daily refresh
+uses the persisted UNIX epoch day; exact source timezone/DST behavior remains a
+known limitation.
+Source, event, mapping, external decode metadata, and both checkpoint playback
+traces are recorded in ignored `artifacts/garden-tools/verification.md`.
+
 The accepted Zen Garden spawn-sun companion SFX unit maps the source
 `ZenGarden::PlantWatered`, `PlantFertilized`, and `PlantFulfillNeed`
 `FOLEY_SPAWN_SUN` calls to `sounds/throw.ogg` companions on their corresponding
@@ -561,6 +848,22 @@ events retain `sounds/lawnmower.ogg`. Source, event discriminator, mapping,
 external decode metadata, and the pool checkpoint playback trace are recorded
 in ignored `artifacts/pool-mower/verification.md`.
 
+The accepted mower hit SFX unit maps the source `LawnMower::MowZombie`
+`FOLEY_SPLAT`/`FOLEY_SHOOP` calls to `MowerZombieHit`, preserving the source
+pool-row mower distinction and the three-way land splat variation. The existing
+`MowerTriggered` event remains the startup Foley boundary. Same-version source,
+resource probe, focused core/App checks, and both land/pool hidden checkpoint
+playback traces are recorded in ignored
+`artifacts/mower-hit-audio/verification.md`.
+
+The accepted Boss mower-squish SFX unit maps the source
+`Zombie::UpdateBossFireball` `FOLEY_SQUISH` call to `MowerSquished`, preserving
+the source distinction between a rolling Boss ball and an ordinary mower
+trigger. The two `SOUND_CHOMP` variants are mapped to `sounds/chomp.ogg` and
+`sounds/chomp2.ogg`. Source, resource probe, focused Boss/App checks, and the
+hidden playback checkpoint are recorded in ignored
+`artifacts/mower-squish-audio/verification.md`.
+
 The accepted Tree of Wisdom growth SFX unit maps the source
 `Challenge::TreeOfWisdomGrow` `FOLEY_PLANTGROW` call to `GardenTreeGrew` and
 `sounds/plantgrow.ogg`; source, event timing, mapping, external decode metadata,
@@ -573,11 +876,127 @@ The accepted huge-wave SFX unit maps the source `Board::UpdateZombieSpawning`
 and checkpoint playback evidence are recorded in ignored
 `artifacts/huge-wave-sound/verification.md`.
 
+The accepted final-wave SFX unit maps the source `Board::NextWaveComing` 60-tick
+counter and `Board::UpdateZombieSpawning` playback boundary to
+`FinalWaveSound` and `sounds/finalwave.ogg`. The core preserves the source
+exclusions for Survival repick stages, Last Stand, and continuous challenges;
+Whack-a-Zombie retains its separate spawning path but still calls the shared
+final-wave boundary. Same-version source, event timing,
+resource decode metadata, and focused core/App tests are recorded in ignored
+`artifacts/final-wave-sound/verification.md`.
+
+The accepted Adventure final-fanfare SFX unit maps the source
+`Board::FadeOutLevel` Adventure level-50 branch to the contextual `GameWon`
+sequence and `sounds/finalfanfare.ogg`; ordinary wins retain `sounds/winmusic.ogg`.
+The separate source branch keyed by `TrophiesNeedForGoldSunflower() == 1`
+remains unresolved because the current core does not expose an equivalent trophy
+count. Source, resource probe, focused App check, and the hidden final-fanfare
+checkpoint are recorded in ignored `artifacts/final-fanfare/verification.md`.
+
+The accepted Slot Machine launch SFX unit maps the source
+`Challenge::MouseDown` successful handle-pull branch, after the 25-sun charge,
+to `ChallengeAction { kind: SlotMachine, value: roll_count }` and
+`sounds/slotmachine.ogg`. The mapping intentionally stays silent for rejected
+spins and for the later reel-settlement update. Same-version source, event
+mapping, resource decode metadata, and focused App tests are recorded in ignored
+`artifacts/slot-machine-sound/verification.md`.
+
+The accepted Zombiquarium Snorkel purchase SFX unit maps the source successful
+Snorkel packet branch to the `FOLEY_ZOMBIESPLASH` two-resource variation and
+`ZombiquariumSnorkelPurchased`; the runtime paths are
+`sounds/plant_water.ogg` and `sounds/zombie_entering_water.ogg`. Feeding brains,
+buying the Trophy, and rejected purchases do not emit this event. Evidence is
+recorded in ignored `artifacts/zombiquarium-snorkel/verification.md`.
+
+The accepted Zombiquarium brain-consumption SFX unit maps the source near-distance
+`FOLEY_SLURP` call to `ZombiquariumBrainSlurped` and `sounds/slurp.ogg`; it is
+emitted only by the aquarium bite branch. Evidence is recorded in ignored
+`artifacts/zombiquarium-brain-slurp/verification.md`.
+
+The accepted Zombiquarium death SFX unit maps the periodic-damage death branch's
+`SOUND_ZOMBAQUARIUM_DIE` call to `ZombiquariumZombieDied` and
+`sounds/zombaquarium_die.ogg`, separate from ordinary zombie death events.
+Evidence is recorded in ignored `artifacts/zombiquarium-death-sound/verification.md`.
+
+The accepted vehicle explosion SFX unit maps ordinary Zamboni and Catapult death
+`FOLEY_EXPLOSION` calls to `VehicleExploded` and `sounds/explosion.ogg`; the
+spike-disabled `VehicleDisabled` path remains `sounds/balloon_pop.ogg`.
+Evidence is recorded in ignored `artifacts/vehicle-explosion-sound/verification.md`.
+
+The accepted Balloon pop SFX unit maps the source `Zombie::LandFlyer`
+`SOUND_BALLOON_POP` boundary to `BalloonPopped` when flying-balloon health
+reaches zero, including the pool death path, and maps it to
+`sounds/balloon_pop.ogg`. Same-version source, resource probe, focused checks,
+and the hidden startup checkpoint are recorded in ignored
+`artifacts/balloon-pop-audio/verification.md`.
+
+The accepted Bungee landing SFX unit maps the below-1500 altitude
+`FOLEY_BUNGEE_SCREAM` call to `BungeeScream` and the three scream resources;
+ordinary target stealing and the Boss Bungee lifecycle remain separate. Evidence
+is recorded in ignored `artifacts/bungee-scream/verification.md`.
+
+The accepted Bungee plant-lift SFX unit maps the source
+`BungeeLiftTarget` `FOLEY_FLOOP` call to `BungeePlantLifted` and
+`sounds/floop.ogg`; umbrella deflection and empty target cells stay silent at
+this boundary, and the lifted plant is held out of normal updates until the
+rise completes. Evidence is recorded in ignored
+`artifacts/bungee-lift-audio/verification.md`.
+
+The accepted Bungee landing grassstep SFX unit maps the source descending
+`BUNGEE_ZOMBIE_HEIGHT - 404` `FOLEY_GRASSSTEP` boundary to
+`BungeeGrassStep` and `sounds/grassstep.ogg`. A Bungee carrying a dropped
+zombie stays silent at this boundary. Same-version source, resource probe,
+focused core/App checks, and the hidden startup checkpoint are recorded in
+ignored `artifacts/bungee-grassstep/verification.md`.
+The accepted Jack-in-the-Box surprise SFX unit maps the source
+`Zombie::UpdateZombieJackInTheBox` remaining-counter `80` Foley boundary to
+`JackboxSurprise` and the 2:1 `jack_surprise` resource family. Frozen Jacks
+pause before the boundary and the final explosion remains a separate event.
+Same-version source, resource probe, focused core/App checks, and the hidden
+startup checkpoint are recorded in ignored `artifacts/jackbox-audio/verification.md`.
+
+The accepted Jack-in-the-Box boing SFX unit maps the source
+`Zombie::UpdateZombieJackInTheBox` transition into the 110-tick popping phase
+to `JackboxBoing` and `sounds/boing.ogg`; the later counter-80 surprise remains
+a separate event. Same-version source, resource probe, focused core/App
+checks, and the hidden startup checkpoint are recorded in ignored
+`artifacts/jackbox-boing-audio/verification.md`.
+
+The accepted Newspaper Rarrgh SFX unit maps the source
+`Zombie::UpdateZombieNewspaper` post-`anim_gasp` transition to
+`ZombieNewspaperRarrgh` and the 2:1 `newspaper_rarrgh` resource family. The
+source `CountZombiesOnScreen() <= 10` and `mHasHead` gates are preserved, and
+paper-rip playback remains a separate event. Same-version source, resource
+probe, focused core/App checks, and the hidden startup checkpoint are recorded
+in ignored `artifacts/newspaper-rarrgh-audio/verification.md`.
+The accepted zombie falling SFX unit maps the source ground-death
+`FOLEY_ZOMBIE_FALLING` boundary to `ZombieFallingSound` and the two
+`zombie_falling` resources. Source-excluded special types, pool deaths, and
+Zombiquarium deaths remain silent; Gargantuar deaths retain the source
+`gargantuar_thump` companion. Same-version source, resource probe, focused
+core/App checks, and the hidden startup checkpoint are recorded in ignored
+`artifacts/zombie-falling-sound/verification.md`.
+
 The accepted Backup Dancer summon SFX unit maps the source
 `Zombie::SummonBackupDancer` `FOLEY_GRAVESTONE_RUMBLE` call to
 `ZombieSpawned { BackupDancer }` and `sounds/gravestone_rumble.ogg`; source,
 event timing, mapping, external decode metadata, and checkpoint playback
 evidence are recorded in ignored `artifacts/dancer-rumble/verification.md`.
+
+The accepted Dancer leader SFX unit maps the source
+`Zombie::UpdateZombieDancer` post-snap `FOLEY_DANCER` call to
+`DancerRumble` and `sounds/dancer.ogg`, preserving the `CountZombiesOnScreen() <= 15`
+gate and the event's ordering before Backup Dancer summoning. Same-version
+source, resource probe, focused core/App checks, and the hidden startup
+checkpoint are recorded in ignored
+`artifacts/dancer-rumble-audio/verification.md`.
+
+The accepted Garlic yuck SFX unit maps the source
+`Zombie::UpdateYuckyFace` 70-update boundary, plus its early non-yucky-face
+branch, to `ZombieYuckSound` and the 2:1 `yuck` resource family, preserving the
+source headed-type and `CountZombiesOnScreen()` gates. Same-version source,
+resource probe, focused core/App checks, and the hidden startup checkpoint are
+recorded in ignored `artifacts/garlic-yuck-audio/verification.md`.
 
 The accepted first-wave SFX unit maps the source `Board::StartWave`
 `SOUND_AWOOGA` call for wave 0 to `WaveStarted { wave: 0 }` and
@@ -595,6 +1014,138 @@ The accepted boss attack SFX unit maps the source `Zombie::BossHeadSpit`
 `sounds/bossboulderattack.ogg`; source, event timing, mapping, external decode
 metadata, and checkpoint playback evidence are recorded in ignored
 `artifacts/boss-attack-sound/verification.md`.
+
+The accepted Boss head hydraulic SFX unit maps the source
+`Zombie::UpdateBoss` `PHASE_BOSS_HEAD_ENTER` `FOLEY_HYDRAULIC` boundary to
+`BossHeadHydraulic` and `sounds/hydraulic.ogg`. The current fixed-step head
+cycle emits this boundary immediately before the existing boulder-attack
+event; source, resource probe, focused checks, and the Boss checkpoint trace
+are recorded in ignored `artifacts/boss-head-hydraulic/verification.md`.
+
+The accepted Boss projectile-start SFX unit maps the source
+`Zombie::BossHeadSpitContact` `FOLEY_HYDRAULIC_SHORT` boundary to
+`BossProjectileStarted` and `sounds/hydraulic_short.ogg`, one simulation tick
+after the existing boulder-attack windup in the current fixed-step model.
+Source, resource probe, focused Boss/App checks, and the existing Boss hidden
+checkpoint playback trace are recorded in ignored
+`artifacts/boss-projectile-start-audio/verification.md`.
+
+The accepted Boss damage-explosion SFX unit maps the source
+`Zombie::TakeDamage` one-tenth-health crossing and
+`FOLEY_BOSS_EXPLOSION_SMALL` call to `BossDamageExplosion` and the existing
+`sounds/explosion.ogg` resource. Source threshold evidence, resource probe,
+focused core/App checks, and the hidden Boss damage checkpoint are recorded in
+ignored `artifacts/boss-damage-explosion-audio/verification.md`.
+
+The accepted Boss stomp SFX unit maps the source `Zombie::BossStompContact`
+`FOLEY_THUMP` boundary to `BossStomp` and the existing
+`sounds/gargantuar_thump.ogg` resource. The event is emitted only when the
+source stomp rectangle contains a living plant; source, resource probe,
+focused checks, and the hidden Boss stomp checkpoint trace are recorded in
+ignored `artifacts/boss-stomp-audio/verification.md`.
+
+The accepted Boss RV attack/landing SFX unit maps the source
+`Zombie::BossRVAttack`/`BossRVLanding` boundaries to `BossRVStarted` and
+`BossRVLanded`. The second damage tier selects the source two-row by three-column
+target rectangle, emits the hydraulic-short resource at attack start, and emits
+`sounds/RVthrow.ogg` at the 0.65-second landing boundary after the plant-death
+events. Source timing, resource metadata, focused nextest, and hidden checkpoint
+playback evidence are recorded in ignored `artifacts/boss-rv-audio/verification.md`.
+
+The accepted pool-mower water SFX units map the source `LawnMower::UpdatePool`
+entry and exit boundaries to `MowerEnteredPool` and `MowerExitedPool`. Entry
+uses the existing `sounds/plant_water.ogg` /
+`sounds/zombie_entering_water.ogg` Foley variants; exit uses
+`sounds/plant_water.ogg`. Source boundaries, focused checks, and the pool
+checkpoint playback trace are recorded in ignored
+`artifacts/mower-water-audio/verification.md`.
+
+The accepted night gravestone-rise SFX unit maps the source
+`Zombie::RiseFromGrave` `FOLEY_GRAVESTONE_RUMBLE` boundary to
+`ZombieGraveRumble` and `sounds/gravestone_rumble.ogg`. Pool, Whack-a-Zombie,
+and Backup Dancer rise paths retain their source-specific mappings. Source,
+resource probe, focused checks, and the hidden night checkpoint trace are
+recorded in ignored `artifacts/gravestone-rumble-audio/verification.md`.
+
+The accepted ladder-placement SFX unit maps the source
+`Zombie::UpdateLadder` `SOUND_LADDER_ZOMBIE` call at the completed placement
+boundary to `LadderPlaced` and `sounds/ladder_zombie.ogg`. Source boundary,
+focused checks, and hidden checkpoint playback trace are recorded in ignored
+`artifacts/ladder-placement-audio/verification.md`.
+
+The accepted Plantern placement SFX unit maps the source
+`Plant::PlantInitialize` `SOUND_PLANTERN` call for plant slot 25 ahead of the
+existing `Board::DoPlantingEffects` generic planting Foley. The hidden
+checkpoint preserves the source order as `sounds/plantern.ogg` followed by the
+contextual planting resource; source, resource probe, focused checks, and
+runtime playback are recorded in ignored
+`artifacts/plantern-audio/verification.md`.
+
+The accepted Garden leave UI SFX unit maps the source board main-menu button
+`SOUND_GRAVEBUTTON` branch to the existing `GardenLeft` transition and
+`sounds/gravebutton.ogg`. Source, resource probe, focused checks, and the
+hidden Garden checkpoint playback trace are recorded in ignored
+`artifacts/garden-leave-audio/verification.md`.
+
+The accepted Aquarium empty-click UI SFX unit maps the source
+`ZenGarden::MouseDownZenGarden` `SOUND_TAPGLASS` branch to `GardenTapGlass`
+only for an Aquarium service with no plant hit, using `sounds/tapglass.au`.
+Source, AU decode, focused checks, and the hidden Aquarium checkpoint playback
+trace are recorded in ignored `artifacts/tapglass-audio/verification.md`.
+
+The accepted Wall-nut Bowling placement SFX unit maps the source
+`Board::MouseDown` `SOUND_BOWLING` branch to the existing `PlantPlaced` event
+only for `WallnutBowling`, appending `sounds/bowling.ogg` after the normal
+planting resource. Source, resource probe, focused checks, and the hidden
+checkpoint playback trace are recorded in ignored
+`artifacts/wallnut-bowling-audio/verification.md`.
+
+The accepted Wall-nut Bowling impact SFX unit maps the source
+`Plant::UpdateBowling` `FOLEY_BOWLINGIMPACT` boundary to `BowlingImpact` and
+`sounds/bowlingimpact.ogg`; Explode-o-Nut retains the separate
+`PlantSpecialTriggered`/`sounds/bowlingimpact2.ogg` companion. Source, event,
+resource, focused nextest, and hidden checkpoint playback evidence are recorded
+in ignored `artifacts/wallnut-bowling-impact-audio/verification.md`.
+
+The accepted Wall-nut Bowling reward-group SFX unit maps the source
+`Plant::UpdateBowling` reward branches' single `FOLEY_SPAWN_SUN` call to
+`LootDropSound { SpawnSun }` before the group's `CoinProduced` events and
+`sounds/throw.ogg`. Source order, focused nextest, resource metadata, and the
+reward-enabled hidden checkpoint are recorded in ignored
+`artifacts/wallnut-bowling-reward-audio/verification.md`.
+
+The accepted standard Adventure opening SFX unit maps the source
+`CutScene::Update` `SOUND_READYSETPLANT` boundary to `ReadySetPlant` on the
+successful seed-confirmation transition or first ordinary board tick, using
+`sounds/readysetplant.ogg`. The existing gates keep first-time levels 1-2 and
+Adventure levels 5, 15, and 35 out of this event; source, resource probe,
+focused checks, and the hidden opening checkpoint playback trace are recorded
+in ignored
+`artifacts/ready-set-plant-audio/verification.md`.
+
+The accepted loot-drop SFX units map the source `Zombie::DropLoot`/
+`Board::DropLootPiece` `FOLEY_SPAWN_SUN` call to `LootDropSound { SpawnSun }`
+and `sounds/throw.ogg`; the first-run level-22/36 mode-unlock branch maps
+`FOLEY_ART_CHALLENGE` to `LootDropSound { ArtChallenge }` and `sounds/diamond.au`.
+The source order is preserved before the resulting `CoinProduced` event,
+including Yeti and terminal-award drops. The audio backend decodes the target
+8-bit mu-law Sun AU resource without changing the existing OGG path. Source,
+resource hashes, focused checks, and both hidden checkpoint playback traces are
+recorded in ignored `artifacts/loot-drop-audio/verification.md`.
+
+The accepted level-award collection SFX units map the source `Coin::Collect`
+branches to `AwardCollectionSound` and the existing `coin.ogg`, `diamond.au`,
+`seedlift.ogg`, `tap2.ogg`, and `shovel.ogg` resources. `AwardPresent` and
+`AwardChocolate` retain the source pre-collection prize path. Source ordering,
+resource metadata, focused checks, and the first-run level-4 checkpoint trace
+are recorded in ignored `artifacts/award-collection-audio/verification.md`.
+
+The accepted weather SFX units map the source `Challenge::InitLevel`/
+`UpdateStormyNight` `FOLEY_RAIN` and `FOLEY_THUNDER` boundaries to
+`WeatherSound` and `sounds/rain.ogg`/`sounds/thunder.ogg`. Adventure level 40
+preserves the source 400-update opening counter and 300/150 thunder boundaries;
+source timing, resource metadata, focused checks, and the external checkpoint
+trace are recorded in ignored `artifacts/weather-audio/verification.md`.
 
 The accepted award-bag fan-out unit preserves the source money-bag award path:
 collecting `AwardMoneyBag` creates five gold coins with the

@@ -9,7 +9,7 @@ use serde::{Deserialize, Serialize};
 use tempfile::NamedTempFile;
 use thiserror::Error;
 
-use crate::PlantType;
+use crate::{GardenNeed, GardenServiceKind, PlantType};
 
 pub const SAVE_FORMAT_VERSION: u32 = 1;
 
@@ -54,6 +54,17 @@ impl Default for SaveSettings {
 pub struct SaveInventory {
     pub coins: u32,
     pub seed_packets: Vec<PlantType>,
+    #[serde(default)]
+    pub chocolates: u32,
+    // StoreScreen.cpp:968-975 stores fertilizer and bug spray as five-use
+    // charges above PURCHASE_COUNT_OFFSET; the save exposes logical charges.
+    #[serde(default)]
+    pub fertilizer_charges: u16,
+    #[serde(default)]
+    pub bug_spray_charges: u16,
+    // StoreScreen.cpp:1017-1021 stores the phonograph as a one-time purchase.
+    #[serde(default)]
+    pub phonograph_purchased: bool,
 }
 
 #[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
@@ -63,6 +74,35 @@ pub struct GardenPlant {
     pub watered: bool,
     #[serde(default)]
     pub happy: bool,
+    #[serde(default)]
+    pub growth_stage: u8,
+    #[serde(default)]
+    pub times_fed: u8,
+    #[serde(default = "default_feedings_per_grow")]
+    pub feedings_per_grow: u8,
+    #[serde(default)]
+    pub need_cooldown_ticks: u32,
+    #[serde(default)]
+    pub last_watered_unix_seconds: i64,
+    #[serde(default)]
+    pub last_fertilized_unix_seconds: i64,
+    #[serde(default)]
+    pub last_need_fulfilled_unix_seconds: i64,
+    #[serde(default = "default_garden_need")]
+    pub need: GardenNeed,
+    // ZenGarden::IsZenGardenFull counts only GARDEN_MAIN potted plants
+    // (ZenGarden.cpp:295-320); legacy saves without attribution default to
+    // the Zen garden, which is where presents land.
+    #[serde(default)]
+    pub which_garden: GardenServiceKind,
+}
+
+fn default_feedings_per_grow() -> u8 {
+    4
+}
+
+fn default_garden_need() -> GardenNeed {
+    GardenNeed::Water
 }
 
 #[derive(Clone, Debug, Default, Deserialize, Eq, PartialEq, Serialize)]
@@ -94,6 +134,8 @@ pub struct SaveProfile {
     pub settings: SaveSettings,
     pub unlocked_plants: Vec<PlantType>,
     pub awards: Vec<String>,
+    #[serde(default)]
+    pub unlocked_modes: u8,
     pub inventory: SaveInventory,
     pub garden: GardenState,
     pub mode_completion: Vec<ModeCompletion>,
@@ -103,6 +145,11 @@ pub struct SaveProfile {
     pub adventure_rounds: u8,
     #[serde(default)]
     pub packet_upgrades: u8,
+    // ZenGarden::HasPurchasedStinky (ZenGarden.cpp:1259-1262): the Stinky
+    // store purchase, threaded like packet_upgrades through the Adventure
+    // constructor and profile application.
+    #[serde(default)]
+    pub stinky_purchased: bool,
 }
 
 fn default_adventure_level() -> u8 {
@@ -117,12 +164,14 @@ impl Default for SaveProfile {
             settings: SaveSettings::default(),
             unlocked_plants: Vec::new(),
             awards: Vec::new(),
+            unlocked_modes: 0,
             inventory: SaveInventory::default(),
             garden: GardenState::default(),
             mode_completion: Vec::new(),
             adventure_level: 1,
             adventure_rounds: 0,
             packet_upgrades: 0,
+            stinky_purchased: false,
         }
     }
 }
@@ -166,6 +215,16 @@ impl SaveProfile {
                     "garden contains an unknown plant".to_owned(),
                 ));
             }
+            if plant.growth_stage > 3 || !(3..=5).contains(&plant.feedings_per_grow) {
+                return Err(SaveError::Invalid(
+                    "garden plant growth state is out of range".to_owned(),
+                ));
+            }
+        }
+        if self.inventory.fertilizer_charges > 20 || self.inventory.bug_spray_charges > 20 {
+            return Err(SaveError::Invalid(
+                "garden tool charges are out of range".to_owned(),
+            ));
         }
         if self.mode_completion.len() > MAX_MODE_ENTRIES {
             return Err(SaveError::Invalid("too many mode entries".to_owned()));
@@ -177,6 +236,9 @@ impl SaveProfile {
         }
         if self.packet_upgrades > 4 {
             return Err(SaveError::Invalid("too many packet upgrades".to_owned()));
+        }
+        if self.unlocked_modes & !0b111 != 0 {
+            return Err(SaveError::Invalid("unknown unlocked mode bits".to_owned()));
         }
         let mut modes = BTreeSet::new();
         for entry in &self.mode_completion {
@@ -274,12 +336,25 @@ mod tests {
         profile.inventory = SaveInventory {
             coins: 125,
             seed_packets: vec![PlantType::Peashooter],
+            chocolates: 2,
+            fertilizer_charges: 5,
+            bug_spray_charges: 10,
+            phonograph_purchased: true,
         };
         profile.garden.plants.push(GardenPlant {
             plant_type: PlantType::Sunflower,
             age_ticks: 240,
             watered: true,
             happy: true,
+            growth_stage: 0,
+            times_fed: 0,
+            feedings_per_grow: 4,
+            need_cooldown_ticks: 0,
+            last_watered_unix_seconds: 0,
+            last_fertilized_unix_seconds: 0,
+            last_need_fulfilled_unix_seconds: 0,
+            need: GardenNeed::Water,
+            which_garden: GardenServiceKind::Zen,
         });
         profile.mode_completion.push(ModeCompletion {
             mode: ModeKind::Adventure,
@@ -313,6 +388,82 @@ mod tests {
             duplicate.validate(),
             Err(SaveError::Invalid(message)) if message.contains("duplicates")
         ));
+    }
+
+    #[test]
+    fn mode_unlock_bits_are_backward_compatible_and_bounded() {
+        let profile = fixture();
+        let mut legacy = serde_json::to_value(&profile).unwrap();
+        legacy.as_object_mut().unwrap().remove("unlocked_modes");
+        legacy
+            .get_mut("inventory")
+            .and_then(serde_json::Value::as_object_mut)
+            .unwrap()
+            .remove("chocolates");
+        legacy
+            .get_mut("inventory")
+            .and_then(serde_json::Value::as_object_mut)
+            .unwrap()
+            .remove("fertilizer_charges");
+        legacy
+            .get_mut("inventory")
+            .and_then(serde_json::Value::as_object_mut)
+            .unwrap()
+            .remove("bug_spray_charges");
+        legacy
+            .get_mut("inventory")
+            .and_then(serde_json::Value::as_object_mut)
+            .unwrap()
+            .remove("phonograph_purchased");
+        let restored = SaveProfile::from_json(&serde_json::to_vec(&legacy).unwrap()).unwrap();
+        assert_eq!(restored.unlocked_modes, 0);
+        assert_eq!(restored.inventory.chocolates, 0);
+        assert_eq!(restored.inventory.fertilizer_charges, 0);
+        assert_eq!(restored.inventory.bug_spray_charges, 0);
+        assert!(!restored.inventory.phonograph_purchased);
+
+        let mut invalid = profile;
+        invalid.unlocked_modes = 0b1000;
+        assert!(matches!(
+            invalid.to_json_pretty(),
+            Err(SaveError::Invalid(message)) if message.contains("unknown unlocked mode bits")
+        ));
+    }
+
+    #[test]
+    fn legacy_garden_plants_default_to_the_zen_garden() {
+        let profile = fixture();
+        let mut legacy = serde_json::to_value(&profile).unwrap();
+        legacy
+            .get_mut("garden")
+            .and_then(serde_json::Value::as_object_mut)
+            .and_then(|garden| garden.get_mut("plants"))
+            .and_then(serde_json::Value::as_array_mut)
+            .and_then(|plants| plants.first_mut())
+            .and_then(serde_json::Value::as_object_mut)
+            .map(|plant| {
+                plant.remove("which_garden");
+                plant.remove("growth_stage");
+                plant.remove("times_fed");
+                plant.remove("feedings_per_grow");
+                plant.remove("need_cooldown_ticks");
+                plant.remove("last_watered_unix_seconds");
+                plant.remove("last_fertilized_unix_seconds");
+                plant.remove("last_need_fulfilled_unix_seconds");
+                plant.remove("need");
+            })
+            .expect("legacy garden plant");
+        let restored = SaveProfile::from_json(&serde_json::to_vec(&legacy).unwrap()).unwrap();
+        let plant = &restored.garden.plants[0];
+        assert_eq!(plant.which_garden, GardenServiceKind::Zen);
+        assert_eq!(plant.growth_stage, 0);
+        assert_eq!(plant.times_fed, 0);
+        assert_eq!(plant.feedings_per_grow, 4);
+        assert_eq!(plant.need_cooldown_ticks, 0);
+        assert_eq!(plant.last_watered_unix_seconds, 0);
+        assert_eq!(plant.last_fertilized_unix_seconds, 0);
+        assert_eq!(plant.last_need_fulfilled_unix_seconds, 0);
+        assert_eq!(plant.need, GardenNeed::Water);
     }
 
     #[test]

@@ -47,12 +47,14 @@
   replacements so the source encoding and line endings are preserved.
 - Use `jq` for structured JSON inspection and transformation, including `gh`
   and API output; do not parse JSON with ad hoc text manipulation.
+- Run shell commands through FastCtx `fastctx_run` rather than the direct `bash`
+  tool. Use `fastctx_run_background` only for genuinely long-running work.
 - Run commands synchronously by default. A blocking command's returned result
   is its completion result; do not add a separate wait or poll afterward.
   Start work asynchronously only when it enables useful parallel work. Poll
   only genuinely background work, including GitHub Actions, and no more often
   than every 20 seconds.
-- Do not manually convert numeric representations. Use the configured IDA `int_convert` MCP tool for reverse-engineering values and Math MCP for calculations.
+- Do not manually convert numeric representations. Use the configured IDA `int_convert` MCP tool for reverse-engineering values; use Python for all other calculations and do not use Math MCP.
 - Use the current Tavily MCP namespace (`mcp__tavily_hikari__*`) as the default
   web search and research path, not Context7. Reserve Context7 for an explicit
   current library/API documentation request; never use it as compatibility
@@ -82,3 +84,13 @@
   review described in `docs/development.md`.
 - Follow `loop.md` for the compatibility goal, completion evidence, termination
   bounds, approval gates, residual routing, and bounded subagent contracts.
+
+## Local file inspection
+
+For reading, searching, and finding local files, prefer the FastCtx MCP tools — `mcp__fastctx__read`, `mcp__fastctx__grep`, `mcp__fastctx__glob` — over `cat`/`Get-Content`, `rg`/`findstr`/`Select-String`, and `dir`/`ls -R`. Read only what the task needs. When you need several files, pass them to one read call as files=[{"path": ...}, ...] instead of one call per file. Pass absolute paths. The last line of every result says `Complete` or `Partial` — continue only with the exact parameters a `Partial` note provides.
+
+Never point `read_mcp_resource`, `list_mcp_resources`, or `list_mcp_resource_templates` at the `fastctx` server: FastCtx publishes tools, not MCP resources, so those calls always fail. Read a local file with `mcp__fastctx__read` and an absolute path — never a `file://` URI.
+
+### Batch replacement
+
+Use `mcp__fastctx__replace` for mechanical find-and-replace across files. It preserves each file's encoding and line endings, supports dry-run previews, and rejects concurrent changes before writing. Use apply_patch for generated content, semantic rewrites, or small local edits.

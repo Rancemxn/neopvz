@@ -1,4 +1,5 @@
 use std::{
+    collections::{HashMap, HashSet},
     io::ErrorKind,
     path::{Path, PathBuf},
     process::ExitCode,
@@ -9,48 +10,113 @@ use std::{
 use clap::{Parser, ValueEnum};
 use neopvz_audio::{AudioBackend, AudioKind, KiraAudioBackend};
 use neopvz_core::{
-    ChallengeKind, CoinType, Game, GameEvent, GardenServiceKind, InputAction, InputFrame, ModeKind,
-    PlantType, ProjectileImpactSound, ProjectileType, SEEING_STARS_STARFRUIT_CELLS, SaveError,
-    SaveProfile, SceneKind, SunSource, ZombieType, adventure_seed_choices, adventure_seed_slots,
-    fixed_point_to_logical, mode_level_name, mode_level_names,
+    AwardCollectionSound, ChallengeKind, CoinType, EntityId, Game, GameEvent, GardenNeed,
+    GardenServiceKind, GardenTool, InputAction, InputFrame, LootDropSound, ModeKind, PlantType,
+    ProjectileImpactSound, ProjectileType, SEEING_STARS_STARFRUIT_CELLS, SaveError, SaveProfile,
+    SceneKind, StoreItem, SunSource, WeatherSound, WhackHitSound, ZombieState, ZombieType,
+    adventure_award_seed, adventure_completion_award, adventure_flag_wave_count,
+    adventure_level_is_conveyor, adventure_seed_choices, adventure_seed_slots, adventure_unlocks,
+    fixed_point_to_logical, last_stand_seed_choices, last_stand_seed_slots, mode_level_name,
+    mode_level_names, store_item_cost, zombie_wave_stats,
 };
-use neopvz_data::{AssetLayout, ResourceProvider};
+use neopvz_data::{
+    AssetLayout, ReanimatorDefinition, ReanimatorTrack, ReanimatorTransform, ResourceProvider,
+};
 use neopvz_render::{
-    AffineSpriteCommand, BOARD_BEGHOULED_TWIST_OVERLAY_IMAGE_ID, BOARD_BRAIN_IMAGE_ID,
-    BOARD_COIN_GOLD_IMAGE_ID, BOARD_COIN_SILVER_IMAGE_ID, BOARD_CRATER_IMAGE_ID,
-    BOARD_DIAMOND_IMAGE_ID, BOARD_FUMESHROOM_IMAGE_ID, BOARD_GRAVE_IMAGE_ID,
-    BOARD_MAGNETSHROOM_IMAGE_ID, BOARD_PROJECTILE_PEA_IMAGE_ID, BOARD_PROJECTILE_SNOW_PEA_IMAGE_ID,
-    BOARD_PUFFSHROOM_IMAGE_ID, BOARD_SNOWPEA_IMAGE_ID, BOARD_STARFRUIT_IMAGE_ID,
-    BOARD_SUN_IMAGE_ID, BOARD_VASE_BOTTOM_IMAGE_ID, BOARD_VASE_TOP_IMAGE_ID,
-    BOARD_WALLNUT_IMAGE_ID, BOARD_ZOMBIE_BODY_IMAGE_ID, BOSS_BACKGROUND_IMAGE_ID,
-    CHALLENGE_THUMBNAIL_BASE_IMAGE_ID, CRAZY_DAVE_BEARD_IMAGE_ID, CRAZY_DAVE_BODY_IMAGE_ID,
-    CRAZY_DAVE_EYE_IMAGE_ID, CRAZY_DAVE_EYEBROW_IMAGE_ID, CRAZY_DAVE_HEAD_IMAGE_ID,
-    CRAZY_DAVE_INNER_ARM_IMAGE_ID, CRAZY_DAVE_INNER_FINGER1_IMAGE_ID,
+    ALMANAC_CLOSE_BUTTON_IMAGE_ID, ALMANAC_CLOSE_TEXT_IMAGE_ID, ALMANAC_IMITATER_IMAGE_ID,
+    ALMANAC_INDEX_BACKGROUND_IMAGE_ID, ALMANAC_INDEX_BUTTON_IMAGE_ID, ALMANAC_INDEX_TEXT_IMAGE_ID,
+    ALMANAC_NAV_BUTTON_IMAGE_ID, ALMANAC_PLANT_BACKGROUND_IMAGE_ID, ALMANAC_PLANT_CARD_IMAGE_ID,
+    ALMANAC_PLANT_COST_BASE_IMAGE_ID, ALMANAC_PLANT_DESCRIPTION_BASE_IMAGE_ID,
+    ALMANAC_PLANT_NAME_BASE_IMAGE_ID, ALMANAC_PLANT_RECHARGE_BASE_IMAGE_ID,
+    ALMANAC_PLANTS_TEXT_IMAGE_ID, ALMANAC_TITLE_TEXT_IMAGE_ID, ALMANAC_ZOMBIE_BACKGROUND_IMAGE_ID,
+    ALMANAC_ZOMBIE_BLANK_IMAGE_ID, ALMANAC_ZOMBIE_CARD_IMAGE_ID,
+    ALMANAC_ZOMBIE_DESCRIPTION_BASE_IMAGE_ID, ALMANAC_ZOMBIE_NAME_BASE_IMAGE_ID,
+    ALMANAC_ZOMBIE_SILHOUETTE_NAME_BASE_IMAGE_ID, ALMANAC_ZOMBIE_WINDOW_IMAGE_ID,
+    ALMANAC_ZOMBIE_WINDOW2_IMAGE_ID, ALMANAC_ZOMBIES_TEXT_IMAGE_ID, AWARD_ALMANAC_IMAGE_ID,
+    AWARD_BODY_TEXT_BASE_IMAGE_ID, AWARD_BODY_TEXT_IMAGE_ID, AWARD_CAR_KEYS_IMAGE_ID,
+    AWARD_CONTINUE_TEXT_IMAGE_ID, AWARD_MAIN_MENU_TEXT_IMAGE_ID, AWARD_NOTE1_IMAGE_ID,
+    AWARD_NOTE2_IMAGE_ID, AWARD_NOTE3_IMAGE_ID, AWARD_NOTE4_IMAGE_ID,
+    AWARD_SCREEN_BACKGROUND_IMAGE_ID, AWARD_SHOVEL_IMAGE_ID, AWARD_TACO_IMAGE_ID,
+    AWARD_TITLE_TEXT_BASE_IMAGE_ID, AWARD_TITLE_TEXT_IMAGE_ID, AWARD_TROPHY_IMAGE_ID,
+    AWARD_WATERING_CAN_IMAGE_ID, AffineSpriteCommand, BOARD_BEGHOULED_TWIST_OVERLAY_IMAGE_ID,
+    BOARD_BRAIN_IMAGE_ID, BOARD_CHOCOLATE_IMAGE_ID, BOARD_COIN_GOLD_IMAGE_ID,
+    BOARD_COIN_SILVER_IMAGE_ID, BOARD_CONVEYOR_BELT_BACKDROP_IMAGE_ID,
+    BOARD_CONVEYOR_BELT_BASE_IMAGE_ID, BOARD_CRATER_IMAGE_ID, BOARD_DIAMOND_IMAGE_ID,
+    BOARD_FUMESHROOM_IMAGE_ID, BOARD_GOLD_SUNFLOWER_IMAGE_ID, BOARD_GRAVE_IMAGE_ID,
+    BOARD_MAGNETSHROOM_IMAGE_ID, BOARD_MONEYBAG_IMAGE_ID, BOARD_NOTE_IMAGE_ID,
+    BOARD_PRESENT_IMAGE_ID, BOARD_PROGRESS_FILL_IMAGE_ID, BOARD_PROGRESS_FLAG_IMAGE_ID,
+    BOARD_PROGRESS_HEAD_IMAGE_ID, BOARD_PROGRESS_LEVEL_IMAGE_ID, BOARD_PROGRESS_METER_IMAGE_ID,
+    BOARD_PROGRESS_POLE_IMAGE_ID, BOARD_PROJECTILE_BASKETBALL_IMAGE_ID,
+    BOARD_PROJECTILE_BUTTER_IMAGE_ID, BOARD_PROJECTILE_CABBAGE_IMAGE_ID,
+    BOARD_PROJECTILE_COB_IMAGE_ID, BOARD_PROJECTILE_FIREBALL_IMAGE_ID,
+    BOARD_PROJECTILE_KERNEL_IMAGE_ID, BOARD_PROJECTILE_MELON_IMAGE_ID,
+    BOARD_PROJECTILE_PEA_IMAGE_ID, BOARD_PROJECTILE_PUFF_IMAGE_ID,
+    BOARD_PROJECTILE_SHADOW_DAY_IMAGE_ID, BOARD_PROJECTILE_SHADOW_NIGHT_IMAGE_ID,
+    BOARD_PROJECTILE_SNOW_PEA_IMAGE_ID, BOARD_PROJECTILE_SPIKE_IMAGE_ID,
+    BOARD_PROJECTILE_STAR_IMAGE_ID, BOARD_PROJECTILE_WINTER_MELON_IMAGE_ID,
+    BOARD_PUFFSHROOM_IMAGE_ID, BOARD_SEED_BANK_EXTENSION_BASE_IMAGE_ID, BOARD_SEED_BANK_IMAGE_ID,
+    BOARD_SEED_COST_BASE_IMAGE_ID, BOARD_SHOVEL_BANK_IMAGE_ID, BOARD_SILVER_SUNFLOWER_IMAGE_ID,
+    BOARD_SNOWPEA_IMAGE_ID, BOARD_STARFRUIT_IMAGE_ID, BOARD_SUN_BANK_IMAGE_ID,
+    BOARD_SUN_COUNT_IMAGE_ID, BOARD_SUN_IMAGE_ID, BOARD_VASE_BOTTOM_IMAGE_ID, BOARD_VASE_IMAGE_ID,
+    BOARD_VASE_TOP_IMAGE_ID, BOARD_WALLNUT_IMAGE_ID, BOARD_ZOMBIE_BODY_IMAGE_ID,
+    BOARD_ZOMBIE_BUCKET_IMAGE_ID, BOARD_ZOMBIE_CONE_IMAGE_ID, BOARD_ZOMBIE_FLAG_HAND_IMAGE_ID,
+    BOARD_ZOMBIE_FLAG_IMAGE_ID, BOARD_ZOMBIE_FLAG_POLE_IMAGE_ID,
+    BOARD_ZOMBIE_FOOTBALL_HEAD_IMAGE_ID, BOARD_ZOMBIE_FOOTBALL_HELMET_IMAGE_ID,
+    BOARD_ZOMBIE_FOOTBALL_UPPERBODY_IMAGE_ID, BOARD_ZOMBIE_NEWSPAPER_HEAD_IMAGE_ID,
+    BOARD_ZOMBIE_NEWSPAPER_IMAGE_ID, BOARD_ZOMBIE_SCREEN_DOOR_IMAGE_ID, BOSS_BACKGROUND_IMAGE_ID,
+    BlendMode, CHALLENGE_THUMBNAIL_BASE_IMAGE_ID, CRAZY_DAVE_BEARD_IMAGE_ID,
+    CRAZY_DAVE_BODY_IMAGE_ID, CRAZY_DAVE_EYE_IMAGE_ID, CRAZY_DAVE_EYEBROW_IMAGE_ID,
+    CRAZY_DAVE_HEAD_IMAGE_ID, CRAZY_DAVE_INNER_ARM_IMAGE_ID, CRAZY_DAVE_INNER_FINGER1_IMAGE_ID,
     CRAZY_DAVE_INNER_FINGER2_IMAGE_ID, CRAZY_DAVE_INNER_FINGER3_IMAGE_ID,
     CRAZY_DAVE_INNER_FINGER4_IMAGE_ID, CRAZY_DAVE_INNER_HAND_IMAGE_ID, CRAZY_DAVE_MOUTH_IMAGE_ID,
     CRAZY_DAVE_OUTER_ARM_IMAGE_ID, CRAZY_DAVE_OUTER_FINGER1_IMAGE_ID,
     CRAZY_DAVE_OUTER_FINGER2_IMAGE_ID, CRAZY_DAVE_OUTER_FINGER3_IMAGE_ID,
     CRAZY_DAVE_OUTER_FINGER4_IMAGE_ID, CRAZY_DAVE_OUTER_HAND_IMAGE_ID, CRAZY_DAVE_POT_IMAGE_ID,
-    DAY_BACKGROUND_IMAGE_ID, FOG_BACKGROUND_IMAGE_ID, GpuRenderer, ImageAsset, LogicalViewport,
+    CREDITS_BIG_BRAIN_IMAGE_ID, CREDITS_LINE1_TEXT_IMAGE_ID, CREDITS_LINE2_TEXT_IMAGE_ID,
+    CREDITS_LINE3_TEXT_IMAGE_ID, CREDITS_LINE4_TEXT_IMAGE_ID, CREDITS_LINE5_TEXT_IMAGE_ID,
+    CREDITS_LINE6_TEXT_IMAGE_ID, CREDITS_MAIN_MENU_TEXT_IMAGE_ID, CREDITS_MTV_IMAGE_ID,
+    CREDITS_PLAY_BUTTON_IMAGE_ID, CREDITS_REPLAY_TEXT_IMAGE_ID, CREDITS_STAGE_IMAGE_ID,
+    CREDITS_TITLE_TEXT_IMAGE_ID, CREDITS_WE_ARE_UNDEAD_IMAGE_ID, CREDITS_ZOMBIE_NOTE_IMAGE_ID,
+    DAY_BACKGROUND_IMAGE_ID, FOG_BACKGROUND_IMAGE_ID, GAME_OVER_BODY_TEXT_IMAGE_ID,
+    GAME_OVER_HEADER_TEXT_IMAGE_ID, GAME_OVER_MAIN_MENU_TEXT_IMAGE_ID,
+    GAME_OVER_TRY_AGAIN_TEXT_IMAGE_ID, GARDEN_BACKGROUND_IMAGE_ID, GARDEN_BUG_SPRAY_IMAGE_ID,
+    GARDEN_FERTILIZER_IMAGE_ID, GARDEN_MUSHROOM_BACKGROUND_IMAGE_ID, GARDEN_NEED_BUBBLE_IMAGE_ID,
+    GARDEN_NEED_BUG_SPRAY_IMAGE_ID, GARDEN_NEED_FERTILIZER_IMAGE_ID,
+    GARDEN_NEED_PHONOGRAPH_IMAGE_ID, GARDEN_PHONOGRAPH_IMAGE_ID, GARDEN_WATERDROP_IMAGE_ID,
+    GARDEN_WATERING_CAN_IMAGE_ID, GpuRenderer, HELP_CONTENT_IMAGE_ID, HELP_MAIN_MENU_TEXT_IMAGE_ID,
+    HELP_MENU_BUTTON_IMAGE_ID, HELP_ZOMBIE_NOTE_IMAGE_ID, ImageAsset, LogicalViewport,
     MODE_SELECT_BACKGROUND_IMAGE_ID, MODE_SELECT_BLANK_IMAGE_ID, MODE_SELECT_WINDOW_IMAGE_ID,
-    NIGHT_BACKGROUND_IMAGE_ID, POOL_BACKGROUND_IMAGE_ID, ROOF_BACKGROUND_IMAGE_ID, RenderFrame,
+    NIGHT_BACKGROUND_IMAGE_ID, OPTIONS_ACCELERATION_LABEL_IMAGE_ID, OPTIONS_BACK_TEXT_IMAGE_ID,
+    OPTIONS_BACKGROUND_IMAGE_ID, OPTIONS_CHECKBOX_OFF_IMAGE_ID, OPTIONS_CHECKBOX_ON_IMAGE_ID,
+    OPTIONS_FULLSCREEN_LABEL_IMAGE_ID, OPTIONS_MUSIC_LABEL_IMAGE_ID, OPTIONS_SFX_LABEL_IMAGE_ID,
+    OPTIONS_SLIDER_KNOB_IMAGE_ID, OPTIONS_SLIDER_SLOT_IMAGE_ID, PAUSE_BODY_TEXT_IMAGE_ID,
+    PAUSE_DIALOG_BOTTOM_LEFT_IMAGE_ID, PAUSE_DIALOG_BOTTOM_MIDDLE_IMAGE_ID,
+    PAUSE_DIALOG_BOTTOM_RIGHT_IMAGE_ID, PAUSE_DIALOG_CENTER_LEFT_IMAGE_ID,
+    PAUSE_DIALOG_CENTER_MIDDLE_IMAGE_ID, PAUSE_DIALOG_CENTER_RIGHT_IMAGE_ID,
+    PAUSE_DIALOG_HEADER_IMAGE_ID, PAUSE_DIALOG_TOP_LEFT_IMAGE_ID, PAUSE_DIALOG_TOP_MIDDLE_IMAGE_ID,
+    PAUSE_DIALOG_TOP_RIGHT_IMAGE_ID, PAUSE_HEADER_TEXT_IMAGE_ID, PAUSE_RESUME_BUTTON_IMAGE_ID,
+    PAUSE_RESUME_TEXT_IMAGE_ID, POOL_BACKGROUND_IMAGE_ID, ROOF_BACKGROUND_IMAGE_ID, RenderFrame,
     SCREEN_PIXEL_IMAGE_ID, SEED_CHOOSER_BUTTON_IMAGE_ID, SEED_CHOOSER_IMAGE_ID,
-    SEED_CHOOSER_TITLE_IMAGE_ID, SEED_PACKET_NORMAL_IMAGE_ID, SEED_PACKET_SILHOUETTE_IMAGE_ID,
-    SEED_PEASHOOTER_IMAGE_ID, SEED_SUNFLOWER_IMAGE_ID, SELECTOR_ADVENTURE_IMAGE_ID,
-    SELECTOR_ALMANAC_IMAGE_ID, SELECTOR_BASE_IMAGE_ID, SELECTOR_CENTER_IMAGE_ID,
-    SELECTOR_CHALLENGES_IMAGE_ID, SELECTOR_HELP_IMAGE_ID, SELECTOR_LEAVES_IMAGE_ID,
-    SELECTOR_LEFT_IMAGE_ID, SELECTOR_OPTIONS_IMAGE_ID, SELECTOR_QUIT_IMAGE_ID,
-    SELECTOR_RIGHT_IMAGE_ID, SELECTOR_STORE_IMAGE_ID, SELECTOR_SURVIVAL_IMAGE_ID,
-    SELECTOR_TROPHY_IMAGE_ID, SELECTOR_VASEBREAKER_IMAGE_ID, SELECTOR_WOODSIGN1_IMAGE_ID,
-    SELECTOR_WOODSIGN2_IMAGE_ID, SELECTOR_WOODSIGN3_IMAGE_ID, SELECTOR_ZEN_GARDEN_IMAGE_ID,
-    SURVIVAL_THUMBNAIL_BASE_IMAGE_ID, SpriteCommand, TITLE_IMAGE_ID, TITLE_LOAD_BAR_DIRT_IMAGE_ID,
-    TITLE_LOAD_BAR_GRASS_IMAGE_ID, TITLE_LOAD_BAR_ROCK1_IMAGE_ID, TITLE_LOAD_BAR_ROCK3_IMAGE_ID,
+    SEED_CHOOSER_TITLE_IMAGE_ID, SEED_PACKET_NORMAL_IMAGE_ID, SEED_PACKET_PLANT_BASE_IMAGE_ID,
+    SEED_PACKET_SILHOUETTE_IMAGE_ID, SEED_PEASHOOTER_IMAGE_ID, SEED_SUNFLOWER_IMAGE_ID,
+    SELECTOR_ADVENTURE_IMAGE_ID, SELECTOR_ALMANAC_IMAGE_ID, SELECTOR_BASE_IMAGE_ID,
+    SELECTOR_CENTER_IMAGE_ID, SELECTOR_CHALLENGES_IMAGE_ID, SELECTOR_HELP_IMAGE_ID,
+    SELECTOR_LEAVES_IMAGE_ID, SELECTOR_LEFT_IMAGE_ID, SELECTOR_OPTIONS_IMAGE_ID,
+    SELECTOR_QUIT_IMAGE_ID, SELECTOR_RIGHT_IMAGE_ID, SELECTOR_STORE_IMAGE_ID,
+    SELECTOR_SURVIVAL_IMAGE_ID, SELECTOR_TROPHY_IMAGE_ID, SELECTOR_VASEBREAKER_IMAGE_ID,
+    SELECTOR_WOODSIGN1_IMAGE_ID, SELECTOR_WOODSIGN2_IMAGE_ID, SELECTOR_WOODSIGN3_IMAGE_ID,
+    SELECTOR_ZEN_GARDEN_IMAGE_ID, STORE_BACK_TEXT_IMAGE_ID, STORE_BACKGROUND_IMAGE_ID,
+    STORE_CAR_IMAGE_ID, STORE_ITEM_NAME_BASE_IMAGE_ID, STORE_ITEM_PRICE_BASE_IMAGE_ID,
+    STORE_MAIN_MENU_BUTTON_IMAGE_ID, STORE_PACKET_UPGRADE_IMAGE_ID, STORE_PRICE_TAG_IMAGE_ID,
+    STORE_SIGN_IMAGE_ID, STORE_STINKY_IMAGE_ID, SURVIVAL_THUMBNAIL_BASE_IMAGE_ID, SpriteCommand,
+    TITLE_IMAGE_ID, TITLE_LOAD_BAR_DIRT_IMAGE_ID, TITLE_LOAD_BAR_GRASS_IMAGE_ID,
+    TITLE_LOAD_BAR_ROCK1_IMAGE_ID, TITLE_LOAD_BAR_ROCK3_IMAGE_ID,
     TITLE_LOAD_BAR_SPROUT_BODY_IMAGE_ID, TITLE_LOAD_BAR_SPROUT_PETAL_IMAGE_ID,
     TITLE_LOAD_BAR_ZOMBIE_HAIR_IMAGE_ID, TITLE_LOAD_BAR_ZOMBIE_HEAD_IMAGE_ID,
     TITLE_LOAD_BAR_ZOMBIE_JAW_IMAGE_ID, TITLE_LOGO_IMAGE_ID, TITLE_START_PROMPT_HOVER_IMAGE_ID,
     TITLE_START_PROMPT_IMAGE_ID, TITLE_START_PROMPT_SHADOW_IMAGE_ID, TUTORIAL_BUBBLE_IMAGE_ID,
     TUTORIAL_CONTINUE_IMAGE_ID, TUTORIAL_TEXT1_IMAGE_ID, TUTORIAL_TEXT2_IMAGE_ID,
-    UI_PIXEL_IMAGE_ID, logical_position,
+    UI_PIXEL_IMAGE_ID, ZOMBIES_WON_IMAGE_ID, logical_position,
 };
 use winit::{
     application::ApplicationHandler,
@@ -72,6 +138,8 @@ struct Cli {
     profile: Option<PathBuf>,
     #[arg(long, hide = true, value_name = "SCENE")]
     checkpoint: Option<Checkpoint>,
+    #[arg(long, hide = true, value_name = "PATH")]
+    capture: Option<PathBuf>,
     #[arg(long, help = "Start in borderless fullscreen")]
     fullscreen: bool,
 }
@@ -80,32 +148,72 @@ struct Cli {
 enum Checkpoint {
     Title,
     AdventureSelect,
+    Store,
+    PauseMenu,
+    Options,
+    Help,
+    Almanac,
+    Complete,
+    CompletePaper,
+    Credits,
     AdventureTutorial,
     SeedChooser,
+    ReadySetPlantAudio,
     ModeSelect,
     Day,
     GameOver,
     GameLost,
+    GameLostAudio,
     GameWon,
+    FinalFanfare,
     Pickups,
     PrizeChime,
     PrizeCollection,
+    AwardCollectionAudio,
+    LootDropAudio,
+    LootChallengeAudio,
+    WeatherAudio,
     SunPickupCollection,
     GoldCoinLanding,
     DiamondCollection,
     UsableSeedCollection,
     SunProduction,
     PlantFiring,
+    PlantingAudio,
+    WallnutBowlingAudio,
+    WallnutBowlingImpactAudio,
+    PlanternAudio,
     Torchwood,
     GardenWater,
     GardenFertilize,
     GardenFulfill,
+    GardenBugSprayAudio,
+    GardenPhonographAudio,
+    GardenLeaveAudio,
+    AquariumTapGlass,
     GardenTreeGrow,
     HugeWaveSound,
+    FinalWaveSound,
+    ZombiquariumSnorkel,
+    ZombiquariumBrain,
+    ZombiquariumDeath,
+    WhackAudio,
+    BodyPartAudio,
+    BungeeAudio,
+    BungeeLiftAudio,
+    BungeeGrassstepAudio,
+    VehicleExplosion,
+    ZombieFallingAudio,
     DancerRumble,
+    GarlicYuckAudio,
+    MowerHitAudio,
+    MowerSquishAudio,
     FirstWaveSound,
     FlagWaveSound,
     BossAttack,
+    BossRVAudio,
+    BossStompAudio,
+    BossDamageAudio,
     IceShroom,
     PotatoMine,
     ExplosionPlants,
@@ -116,12 +224,15 @@ enum Checkpoint {
     BrainEaten,
     ImpThrow,
     NewspaperRip,
+    NewspaperRarrghAudio,
     Butter,
     ProjectileImpacts,
     VaseBreak,
     Rake,
     BloverChomper,
     HypnoJackbox,
+    JackboxAudio,
+    JackboxBoingAudio,
     CobCannon,
     Portal,
     GraveBuster,
@@ -130,6 +241,8 @@ enum Checkpoint {
     DolphinJump,
     PoolEntry,
     PoolMower,
+    GraveRumbleAudio,
+    LadderAudio,
     Spikeweed,
     Digger,
     Magnet,
@@ -137,6 +250,7 @@ enum Checkpoint {
     Zamboni,
     Catapult,
     BalloonAppearance,
+    BalloonPopAudio,
     PoleVault,
     PogoBlock,
     PogoBounce,
@@ -148,32 +262,69 @@ impl From<Checkpoint> for SceneKind {
         match checkpoint {
             Checkpoint::Title => Self::Title,
             Checkpoint::AdventureSelect => Self::AdventureSelect,
+            Checkpoint::Store => Self::AdventureSelect,
+            Checkpoint::PauseMenu => Self::Day,
+            Checkpoint::Options => Self::AdventureSelect,
+            Checkpoint::Help => Self::AdventureSelect,
+            Checkpoint::Almanac => Self::AdventureSelect,
+            Checkpoint::Complete | Checkpoint::CompletePaper => Self::Complete,
+            Checkpoint::Credits => Self::Complete,
             Checkpoint::AdventureTutorial => Self::AdventureTutorial,
             Checkpoint::SeedChooser => Self::SeedChooser,
+            Checkpoint::ReadySetPlantAudio => Self::Day,
             Checkpoint::ModeSelect => Self::ModeSelect,
             Checkpoint::Day => Self::Day,
             Checkpoint::GameOver => Self::GameOver,
-            Checkpoint::GameLost => Self::Day,
+            Checkpoint::GameLost | Checkpoint::GameLostAudio => Self::Day,
             Checkpoint::GameWon => Self::Day,
+            Checkpoint::FinalFanfare => Self::Day,
             Checkpoint::Pickups => Self::Day,
             Checkpoint::PrizeChime => Self::Day,
             Checkpoint::PrizeCollection => Self::Day,
+            Checkpoint::AwardCollectionAudio => Self::Day,
+            Checkpoint::LootDropAudio => Self::Day,
+            Checkpoint::LootChallengeAudio => Self::Night,
+            Checkpoint::WeatherAudio => Self::Night,
             Checkpoint::SunPickupCollection => Self::Day,
             Checkpoint::GoldCoinLanding => Self::Day,
             Checkpoint::DiamondCollection => Self::Day,
             Checkpoint::UsableSeedCollection => Self::Day,
             Checkpoint::SunProduction => Self::Day,
             Checkpoint::PlantFiring => Self::Night,
+            Checkpoint::PlantingAudio => Self::Pool,
+            Checkpoint::WallnutBowlingAudio | Checkpoint::WallnutBowlingImpactAudio => Self::Day,
+            Checkpoint::PlanternAudio => Self::Night,
             Checkpoint::Torchwood => Self::Day,
             Checkpoint::GardenWater
             | Checkpoint::GardenFertilize
             | Checkpoint::GardenFulfill
+            | Checkpoint::GardenBugSprayAudio
+            | Checkpoint::GardenPhonographAudio
+            | Checkpoint::GardenLeaveAudio
+            | Checkpoint::AquariumTapGlass
             | Checkpoint::GardenTreeGrow => Self::Garden,
             Checkpoint::HugeWaveSound => Self::Day,
+            Checkpoint::FinalWaveSound => Self::Day,
+            Checkpoint::ZombiquariumSnorkel
+            | Checkpoint::ZombiquariumBrain
+            | Checkpoint::ZombiquariumDeath => Self::Pool,
+            Checkpoint::WhackAudio
+            | Checkpoint::BodyPartAudio
+            | Checkpoint::BungeeAudio
+            | Checkpoint::BungeeLiftAudio
+            | Checkpoint::BungeeGrassstepAudio
+            | Checkpoint::VehicleExplosion
+            | Checkpoint::ZombieFallingAudio => Self::Day,
             Checkpoint::DancerRumble => Self::Day,
+            Checkpoint::GarlicYuckAudio => Self::Day,
+            Checkpoint::MowerHitAudio => Self::Day,
+            Checkpoint::MowerSquishAudio => Self::Boss,
             Checkpoint::FirstWaveSound => Self::Day,
             Checkpoint::FlagWaveSound => Self::Day,
             Checkpoint::BossAttack => Self::Boss,
+            Checkpoint::BossRVAudio => Self::Boss,
+            Checkpoint::BossStompAudio => Self::Boss,
+            Checkpoint::BossDamageAudio => Self::Boss,
             Checkpoint::IceShroom => Self::Night,
             Checkpoint::PotatoMine => Self::Day,
             Checkpoint::ExplosionPlants => Self::Night,
@@ -183,13 +334,14 @@ impl From<Checkpoint> for SceneKind {
             Checkpoint::ZombieDeploy => Self::Night,
             Checkpoint::BrainEaten => Self::Night,
             Checkpoint::ImpThrow => Self::Day,
-            Checkpoint::NewspaperRip => Self::Day,
+            Checkpoint::NewspaperRip | Checkpoint::NewspaperRarrghAudio => Self::Day,
             Checkpoint::Butter => Self::Day,
             Checkpoint::ProjectileImpacts => Self::Day,
             Checkpoint::VaseBreak => Self::Day,
             Checkpoint::Rake => Self::Day,
             Checkpoint::BloverChomper => Self::Day,
             Checkpoint::HypnoJackbox => Self::Night,
+            Checkpoint::JackboxAudio | Checkpoint::JackboxBoingAudio => Self::Day,
             Checkpoint::CobCannon => Self::Day,
             Checkpoint::Portal => Self::Day,
             Checkpoint::GraveBuster => Self::Day,
@@ -198,13 +350,15 @@ impl From<Checkpoint> for SceneKind {
             Checkpoint::DolphinJump => Self::Pool,
             Checkpoint::PoolEntry => Self::Pool,
             Checkpoint::PoolMower => Self::Pool,
+            Checkpoint::GraveRumbleAudio => Self::Night,
+            Checkpoint::LadderAudio => Self::Day,
             Checkpoint::Spikeweed => Self::Day,
             Checkpoint::Digger => Self::Day,
             Checkpoint::Magnet => Self::Night,
             Checkpoint::ShieldHit => Self::Day,
             Checkpoint::Zamboni => Self::Day,
             Checkpoint::Catapult => Self::Day,
-            Checkpoint::BalloonAppearance => Self::Day,
+            Checkpoint::BalloonAppearance | Checkpoint::BalloonPopAudio => Self::Day,
             Checkpoint::PoleVault => Self::Day,
             Checkpoint::PogoBlock => Self::Day,
             Checkpoint::PogoBounce => Self::Day,
@@ -219,6 +373,52 @@ const TITLE_LOAD_BAR_Y: f32 = 530.0;
 const TITLE_START_BUTTON_Y: f32 = 529.0;
 const TITLE_START_BUTTON_WIDTH: f32 = 314.0;
 const TITLE_START_BUTTON_HEIGHT: f32 = 50.0;
+const GAME_LOST_GRAPHIC_START: u32 = 6_000;
+const GAME_LOST_DIALOG_TIME: u32 = 11_000;
+const CREDITS_ANIM_RATE: f32 = 0.3;
+const CREDITS_MAIN1_END_FRAME: f32 = 400.0;
+const CREDITS_MAIN2_END_FRAME: f32 = 785.0;
+const CREDITS_MAIN3_END_FRAME: f32 = 1033.0;
+const CREDITS_END_BUTTON_DELAY_UPDATES: u32 = 50;
+const JALAPENO_FIRE_DURATION: u64 = 100;
+const PROJECTILE_FIRE_DURATION: u64 = 24;
+
+fn credits_end_update_count() -> u32 {
+    (CREDITS_MAIN3_END_FRAME / CREDITS_ANIM_RATE).ceil() as u32
+}
+
+fn credits_phase_at(update_count: u32) -> (u8, f32) {
+    let frame = update_count as f32 * CREDITS_ANIM_RATE;
+    if frame < CREDITS_MAIN1_END_FRAME {
+        (0, frame)
+    } else if frame < CREDITS_MAIN2_END_FRAME {
+        (1, frame - CREDITS_MAIN1_END_FRAME)
+    } else if frame < CREDITS_MAIN3_END_FRAME {
+        (2, frame - CREDITS_MAIN2_END_FRAME)
+    } else {
+        (3, frame - CREDITS_MAIN3_END_FRAME)
+    }
+}
+
+fn credits_scroll_offset(update_count: u32) -> f32 {
+    update_count.saturating_sub(credits_end_update_count()) as f32 * CREDITS_ANIM_RATE
+}
+
+fn credits_controls_visible(update_count: u32) -> bool {
+    update_count >= credits_end_update_count() + CREDITS_END_BUTTON_DELAY_UPDATES
+}
+
+fn game_lost_cutscene_active(cutscene_time: Option<u32>) -> bool {
+    cutscene_time.is_some_and(|time| time < GAME_LOST_DIALOG_TIME)
+}
+
+fn credits_replay_contains(x: f32, y: f32) -> bool {
+    (10.0..135.0).contains(&x) && (530.0..595.0).contains(&y)
+}
+
+fn credits_main_menu_contains(x: f32, y: f32) -> bool {
+    (298.0..507.0).contains(&x) && (554.0..600.0).contains(&y)
+}
 
 #[derive(Clone, Copy)]
 struct TitleReanimPart {
@@ -286,6 +486,10 @@ fn title_start_contains(x: f32, y: f32) -> bool {
         && (TITLE_START_BUTTON_Y..TITLE_START_BUTTON_Y + TITLE_START_BUTTON_HEIGHT).contains(&y)
 }
 
+fn title_mouse_starts(button: MouseButton, x: f32, y: f32) -> bool {
+    button == MouseButton::Left && title_start_contains(x, y)
+}
+
 fn push_title_reanimation(
     frame: &mut RenderFrame,
     x: f32,
@@ -307,6 +511,7 @@ fn push_title_reanimation(
             m11: overlay_scale_y * skew_y.cos() * part.scale_y,
             z: 4,
             alpha: 1.0,
+            blend_mode: BlendMode::Alpha,
         });
     }
 }
@@ -338,6 +543,7 @@ fn main() -> ExitCode {
 
     let cli = Cli::parse();
     let profile_path = cli.profile;
+    let capture_path = cli.capture;
     let mut profile = match profile_path.as_deref() {
         Some(path) => match load_profile(path) {
             Ok(profile) => Some(profile),
@@ -399,9 +605,16 @@ fn main() -> ExitCode {
     );
 
     let force_game_over = matches!(cli.checkpoint, Some(Checkpoint::GameOver));
-    let force_game_lost = matches!(cli.checkpoint, Some(Checkpoint::GameLost));
+    let force_game_lost = matches!(
+        cli.checkpoint,
+        Some(Checkpoint::GameLost | Checkpoint::GameLostAudio)
+    );
     let force_game_won = matches!(cli.checkpoint, Some(Checkpoint::GameWon));
     let force_pickups = matches!(cli.checkpoint, Some(Checkpoint::Pickups));
+    let fullscreen = cli.fullscreen
+        || profile
+            .as_ref()
+            .is_some_and(|profile| profile.settings.fullscreen);
     let initial_scene = if force_game_over || force_game_lost || force_game_won || force_pickups {
         SceneKind::Day
     } else {
@@ -409,7 +622,7 @@ fn main() -> ExitCode {
             .map(SceneKind::from)
             .unwrap_or(SceneKind::Title)
     };
-    let assets = match load_assets(&resources) {
+    let loaded_assets = match load_assets(&resources) {
         Ok(assets) => assets,
         Err(error) => {
             tracing::error!(%error, "required display resources failed to load");
@@ -433,14 +646,15 @@ fn main() -> ExitCode {
     };
     event_loop.set_control_flow(ControlFlow::Poll);
     let mut app = App::new(
-        assets,
+        loaded_assets,
         resources,
         audio,
         initial_scene,
-        cli.fullscreen,
+        fullscreen,
         cli.checkpoint,
         profile.take(),
     );
+    app.capture_path = capture_path;
     let run_result = event_loop.run_app(&mut app);
 
     if let Err(error) = run_result {
@@ -448,6 +662,11 @@ fn main() -> ExitCode {
         return ExitCode::FAILURE;
     }
 
+    if app.capture_path.is_some() {
+        return ExitCode::FAILURE;
+    }
+
+    app.sync_profile_settings();
     if let (Some(path), Some(mut profile)) = (profile_path, app.profile.take()) {
         app.game.update_profile(&mut profile);
         if let Err(error) = profile.write_atomic(&path) {
@@ -477,13 +696,113 @@ fn apply_profile_to_game(game: &mut Game, profile: Option<&SaveProfile>) {
 }
 
 fn carry_profile(current: &Game, next: &mut Game, profile: Option<&mut SaveProfile>) {
+    next.carry_almanac_defeats_from(current);
     if let Some(profile) = profile {
         current.update_profile(profile);
         next.apply_profile(profile);
     }
 }
 
-fn load_assets(resources: &ResourceProvider) -> Result<Vec<ImageAsset>, String> {
+const REANIM_IMAGE_ID_BASE: u32 = 10_000;
+
+const SPECIALIZED_REANIM_FILES: &[(ZombieType, &str)] = &[
+    (ZombieType::Zamboni, "Zombie_zamboni.reanim.compiled"),
+    // The target archive uses Zombie_dancer; the source loader calls it disco.
+    (ZombieType::Dancer, "Zombie_dancer.reanim.compiled"),
+    (
+        ZombieType::PoleVaulter,
+        "Zombie_polevaulter.reanim.compiled",
+    ),
+    (ZombieType::Balloon, "Zombie_balloon.reanim.compiled"),
+    (ZombieType::Gargantuar, "Zombie_gargantuar.reanim.compiled"),
+    (ZombieType::Imp, "Zombie_imp.reanim.compiled"),
+    (ZombieType::Digger, "Zombie_digger.reanim.compiled"),
+    (
+        ZombieType::DolphinRider,
+        "Zombie_dolphinrider.reanim.compiled",
+    ),
+    (ZombieType::Pogo, "Zombie_pogo.reanim.compiled"),
+    (ZombieType::Bobsled, "Zombie_bobsled.reanim.compiled"),
+    (ZombieType::Jackbox, "Zombie_jackbox.reanim.compiled"),
+    (ZombieType::Snorkel, "Zombie_snorkle.reanim.compiled"),
+    (ZombieType::Bungee, "Zombie_bungi.reanim.compiled"),
+    (ZombieType::Catapult, "Zombie_catapult.reanim.compiled"),
+    (ZombieType::Ladder, "Zombie_ladder.reanim.compiled"),
+    (ZombieType::Yeti, "Zombie_yeti.reanim.compiled"),
+];
+
+const PLANT_REANIM_FILES: &[(PlantType, &str)] = &[
+    (PlantType::Peashooter, "PeaShooterSingle.reanim.compiled"),
+    (PlantType::Sunflower, "SunFlower.reanim.compiled"),
+    (PlantType::Other(2), "CherryBomb.reanim.compiled"),
+    (PlantType::Other(3), "Wallnut.reanim.compiled"),
+    (PlantType::Other(4), "PotatoMine.reanim.compiled"),
+    (PlantType::Other(5), "SnowPea.reanim.compiled"),
+    (PlantType::Other(6), "Chomper.reanim.compiled"),
+    (PlantType::Other(7), "PeaShooter.reanim.compiled"),
+    (PlantType::Other(8), "Puffshroom.reanim.compiled"),
+    (PlantType::Other(9), "SunShroom.reanim.compiled"),
+    (PlantType::Other(10), "Fumeshroom.reanim.compiled"),
+    (PlantType::Other(11), "Gravebuster.reanim.compiled"),
+    (PlantType::Other(12), "Hypnoshroom.reanim.compiled"),
+    (PlantType::Other(13), "ScaredyShroom.reanim.compiled"),
+    (PlantType::Other(14), "Iceshroom.reanim.compiled"),
+    (PlantType::Other(15), "DoomShroom.reanim.compiled"),
+    (PlantType::Other(16), "Lilypad.reanim.compiled"),
+    (PlantType::Other(17), "Squash.reanim.compiled"),
+    (PlantType::Other(18), "ThreePeater.reanim.compiled"),
+    (PlantType::Other(19), "Tanglekelp.reanim.compiled"),
+    (PlantType::Other(20), "Jalapeno.reanim.compiled"),
+    (PlantType::Other(21), "Caltrop.reanim.compiled"),
+    (PlantType::Other(22), "Torchwood.reanim.compiled"),
+    (PlantType::Other(23), "Tallnut.reanim.compiled"),
+    (PlantType::Other(24), "SeaShroom.reanim.compiled"),
+    (PlantType::Other(25), "Plantern.reanim.compiled"),
+    (PlantType::Other(26), "Cactus.reanim.compiled"),
+    (PlantType::Other(27), "Blover.reanim.compiled"),
+    (PlantType::Other(28), "SplitPea.reanim.compiled"),
+    (PlantType::Other(29), "Starfruit.reanim.compiled"),
+    (PlantType::Other(30), "Pumpkin.reanim.compiled"),
+    (PlantType::Other(31), "Magnetshroom.reanim.compiled"),
+    (PlantType::Other(32), "Cabbagepult.reanim.compiled"),
+    (PlantType::Other(33), "Pot.reanim.compiled"),
+    (PlantType::Other(34), "Cornpult.reanim.compiled"),
+    (PlantType::Other(35), "Coffeebean.reanim.compiled"),
+    (PlantType::Other(36), "Garlic.reanim.compiled"),
+    (PlantType::Other(37), "Umbrellaleaf.reanim.compiled"),
+    (PlantType::Other(38), "Marigold.reanim.compiled"),
+    (PlantType::Other(39), "Melonpult.reanim.compiled"),
+    (PlantType::Other(40), "GatlingPea.reanim.compiled"),
+    (PlantType::Other(41), "TwinSunFlower.reanim.compiled"),
+    (PlantType::Other(42), "GloomShroom.reanim.compiled"),
+    (PlantType::Other(43), "Cattail.reanim.compiled"),
+    (PlantType::Other(44), "WinterMelon.reanim.compiled"),
+    (PlantType::Other(45), "GoldMagnet.reanim.compiled"),
+    (PlantType::Other(46), "SpikeRock.reanim.compiled"),
+    (PlantType::Other(47), "CobCannon.reanim.compiled"),
+    (PlantType::Other(48), "Imitater.reanim.compiled"),
+];
+
+#[derive(Clone, Debug, Default)]
+struct ReanimCatalog {
+    zombie: Option<ReanimatorDefinition>,
+    football: Option<ReanimatorDefinition>,
+    newspaper: Option<ReanimatorDefinition>,
+    boss: Option<ReanimatorDefinition>,
+    boss_driver: Option<ReanimatorDefinition>,
+    boss_fireball: Option<ReanimatorDefinition>,
+    boss_iceball: Option<ReanimatorDefinition>,
+    fire: Option<ReanimatorDefinition>,
+    sun: Option<ReanimatorDefinition>,
+    coin_silver: Option<ReanimatorDefinition>,
+    coin_gold: Option<ReanimatorDefinition>,
+    diamond: Option<ReanimatorDefinition>,
+    specialized: Vec<(ZombieType, ReanimatorDefinition)>,
+    plants: Vec<(PlantType, ReanimatorDefinition)>,
+    image_ids: HashMap<String, u32>,
+}
+
+fn load_assets(resources: &ResourceProvider) -> Result<(Vec<ImageAsset>, ReanimCatalog), String> {
     let mut assets = vec![
         load_image(resources, TITLE_IMAGE_ID, "images/titlescreen.jpg")?,
         load_title_logo(resources)?,
@@ -782,6 +1101,59 @@ fn load_assets(resources: &ResourceProvider) -> Result<Vec<ImageAsset>, String> 
             50,
             70,
         )?,
+        load_image(resources, BOARD_SEED_BANK_IMAGE_ID, "images/SeedBank.png")?,
+        load_image(
+            resources,
+            BOARD_CONVEYOR_BELT_BACKDROP_IMAGE_ID,
+            "images/ConveyorBelt_backdrop.png",
+        )?,
+        load_image(
+            resources,
+            BOARD_SHOVEL_BANK_IMAGE_ID,
+            "images/ShovelBank.png",
+        )?,
+        load_image(resources, BOARD_SUN_BANK_IMAGE_ID, "images/SunBank.png")?,
+        load_cropped_image(
+            resources,
+            BOARD_PROGRESS_METER_IMAGE_ID,
+            "images/FlagMeter.png",
+            0,
+            0,
+            158,
+            27,
+        )?,
+        load_cropped_image(
+            resources,
+            BOARD_PROGRESS_HEAD_IMAGE_ID,
+            "images/FlagMeterParts.png",
+            0,
+            0,
+            25,
+            25,
+        )?,
+        load_cropped_image(
+            resources,
+            BOARD_PROGRESS_POLE_IMAGE_ID,
+            "images/FlagMeterParts.png",
+            25,
+            0,
+            25,
+            25,
+        )?,
+        load_cropped_image(
+            resources,
+            BOARD_PROGRESS_FLAG_IMAGE_ID,
+            "images/FlagMeterParts.png",
+            50,
+            0,
+            25,
+            25,
+        )?,
+        load_image(
+            resources,
+            BOARD_PROGRESS_LEVEL_IMAGE_ID,
+            "images/FlagMeterLevelProgress.png",
+        )?,
         load_image(
             resources,
             SEED_PACKET_SILHOUETTE_IMAGE_ID,
@@ -804,6 +1176,61 @@ fn load_assets(resources: &ResourceProvider) -> Result<Vec<ImageAsset>, String> 
         )?,
         load_image(
             resources,
+            BOARD_ZOMBIE_CONE_IMAGE_ID,
+            "reanim/Zombie_cone1.png",
+        )?,
+        load_image(
+            resources,
+            BOARD_ZOMBIE_BUCKET_IMAGE_ID,
+            "reanim/Zombie_bucket1.png",
+        )?,
+        load_image(
+            resources,
+            BOARD_ZOMBIE_FLAG_POLE_IMAGE_ID,
+            "reanim/Zombie_flagpole.png",
+        )?,
+        load_image(
+            resources,
+            BOARD_ZOMBIE_FLAG_IMAGE_ID,
+            "reanim/Zombie_flag1.png",
+        )?,
+        load_image(
+            resources,
+            BOARD_ZOMBIE_FLAG_HAND_IMAGE_ID,
+            "reanim/Zombie_flaghand.png",
+        )?,
+        load_image(
+            resources,
+            BOARD_ZOMBIE_SCREEN_DOOR_IMAGE_ID,
+            "reanim/Zombie_screendoor1.png",
+        )?,
+        load_image(
+            resources,
+            BOARD_ZOMBIE_FOOTBALL_HELMET_IMAGE_ID,
+            "reanim/Zombie_football_helmet.png",
+        )?,
+        load_image(
+            resources,
+            BOARD_ZOMBIE_FOOTBALL_UPPERBODY_IMAGE_ID,
+            "reanim/Zombie_football_upperbody.png",
+        )?,
+        load_image(
+            resources,
+            BOARD_ZOMBIE_NEWSPAPER_IMAGE_ID,
+            "reanim/Zombie_paper_paper1.png",
+        )?,
+        load_image(
+            resources,
+            BOARD_ZOMBIE_FOOTBALL_HEAD_IMAGE_ID,
+            "reanim/Zombie_football_head.png",
+        )?,
+        load_image(
+            resources,
+            BOARD_ZOMBIE_NEWSPAPER_HEAD_IMAGE_ID,
+            "reanim/Zombie_paper_head_look.png",
+        )?,
+        load_image(
+            resources,
             BOARD_PROJECTILE_PEA_IMAGE_ID,
             "images/ProjectilePea.png",
         )?,
@@ -811,6 +1238,79 @@ fn load_assets(resources: &ResourceProvider) -> Result<Vec<ImageAsset>, String> 
             resources,
             BOARD_PROJECTILE_SNOW_PEA_IMAGE_ID,
             "images/ProjectileSnowPea.png",
+        )?,
+        load_image(
+            resources,
+            BOARD_PROJECTILE_CABBAGE_IMAGE_ID,
+            "reanim/Cabbagepult_cabbage.png",
+        )?,
+        load_image(
+            resources,
+            BOARD_PROJECTILE_MELON_IMAGE_ID,
+            "reanim/Melonpult_melon.png",
+        )?,
+        load_image(
+            resources,
+            BOARD_PROJECTILE_WINTER_MELON_IMAGE_ID,
+            "reanim/WinterMelon_projectile.png",
+        )?,
+        load_image(
+            resources,
+            BOARD_PROJECTILE_KERNEL_IMAGE_ID,
+            "reanim/Cornpult_kernal.png",
+        )?,
+        load_image(
+            resources,
+            BOARD_PROJECTILE_BUTTER_IMAGE_ID,
+            "reanim/Cornpult_butter.png",
+        )?,
+        load_image(
+            resources,
+            BOARD_PROJECTILE_SPIKE_IMAGE_ID,
+            "images/ProjectileCactus.png",
+        )?,
+        load_image(
+            resources,
+            BOARD_PROJECTILE_STAR_IMAGE_ID,
+            "images/Projectile_star.png",
+        )?,
+        load_image(
+            resources,
+            BOARD_PROJECTILE_FIREBALL_IMAGE_ID,
+            "reanim/FirePea.png",
+        )?,
+        load_image(
+            resources,
+            BOARD_PROJECTILE_COB_IMAGE_ID,
+            "reanim/CobCannon_cob.png",
+        )?,
+        load_image(
+            resources,
+            BOARD_PROJECTILE_BASKETBALL_IMAGE_ID,
+            "reanim/Zombie_catapult_basketball.png",
+        )?,
+        load_image(
+            resources,
+            BOARD_PROJECTILE_PUFF_IMAGE_ID,
+            "reanim/puff_1.png",
+        )?,
+        load_cropped_image(
+            resources,
+            BOARD_PROJECTILE_SHADOW_DAY_IMAGE_ID,
+            "images/pea_shadows.png",
+            0,
+            0,
+            21,
+            9,
+        )?,
+        load_cropped_image(
+            resources,
+            BOARD_PROJECTILE_SHADOW_NIGHT_IMAGE_ID,
+            "images/pea_shadows.png",
+            21,
+            0,
+            21,
+            9,
         )?,
         load_image(resources, BOARD_SUN_IMAGE_ID, "reanim/Sun1.png")?,
         load_image(
@@ -824,6 +1324,33 @@ fn load_assets(resources: &ResourceProvider) -> Result<Vec<ImageAsset>, String> 
             "reanim/Coin_gold_dollar.png",
         )?,
         load_image(resources, BOARD_DIAMOND_IMAGE_ID, "reanim/Diamond.png")?,
+        load_image(resources, BOARD_PRESENT_IMAGE_ID, "images/Present.png")?,
+        load_image(
+            resources,
+            BOARD_MONEYBAG_IMAGE_ID,
+            "images/moneybag_hi_res.png",
+        )?,
+        load_image(resources, BOARD_CHOCOLATE_IMAGE_ID, "images/chocolate.png")?,
+        load_image(resources, BOARD_VASE_IMAGE_ID, "images/Scary_Pot.png")?,
+        load_image(resources, BOARD_NOTE_IMAGE_ID, "images/ZombieNoteSmall.png")?,
+        load_cropped_image(
+            resources,
+            BOARD_SILVER_SUNFLOWER_IMAGE_ID,
+            "images/Sunflower_trophy.png",
+            0,
+            0,
+            157,
+            269,
+        )?,
+        load_cropped_image(
+            resources,
+            BOARD_GOLD_SUNFLOWER_IMAGE_ID,
+            "images/Sunflower_trophy.png",
+            157,
+            0,
+            157,
+            269,
+        )?,
         load_image(resources, BOARD_SNOWPEA_IMAGE_ID, "reanim/SnowPea_head.png")?,
         load_image(
             resources,
@@ -921,7 +1448,790 @@ fn load_assets(resources: &ResourceProvider) -> Result<Vec<ImageAsset>, String> 
             BOSS_BACKGROUND_IMAGE_ID,
             "images/background6boss.jpg",
         )?,
+        load_image(
+            resources,
+            CREDITS_BIG_BRAIN_IMAGE_ID,
+            "images/Credits_BigBrain.jpg",
+        )?,
+        load_image(
+            resources,
+            CREDITS_ZOMBIE_NOTE_IMAGE_ID,
+            "images/Credits_ZombieNote.png",
+        )?,
+        load_image(
+            resources,
+            CREDITS_PLAY_BUTTON_IMAGE_ID,
+            "images/Credits_PlayButton.png",
+        )?,
+        load_image(
+            resources,
+            CREDITS_STAGE_IMAGE_ID,
+            "reanim/Credits_stage.png",
+        )?,
+        load_image(
+            resources,
+            CREDITS_WE_ARE_UNDEAD_IMAGE_ID,
+            "reanim/Credits_wearetheundead.jpg",
+        )?,
+        load_image(resources, CREDITS_MTV_IMAGE_ID, "reanim/Credits_MTV.png")?,
+        render_colored_text_image(
+            CREDITS_TITLE_TEXT_IMAGE_ID,
+            "植物大战僵尸",
+            520,
+            52,
+            28,
+            [255, 255, 255],
+        )?,
+        render_colored_text_image(
+            CREDITS_LINE1_TEXT_IMAGE_ID,
+            "游戏设计与编程",
+            720,
+            34,
+            20,
+            [255, 255, 255],
+        )?,
+        render_colored_text_image(
+            CREDITS_LINE2_TEXT_IMAGE_ID,
+            "PopCap Games",
+            720,
+            34,
+            20,
+            [255, 255, 255],
+        )?,
+        render_colored_text_image(
+            CREDITS_LINE3_TEXT_IMAGE_ID,
+            "音乐、动画与美术",
+            720,
+            34,
+            20,
+            [255, 255, 255],
+        )?,
+        render_colored_text_image(
+            CREDITS_LINE4_TEXT_IMAGE_ID,
+            "感谢每一位帮助过我们的人",
+            720,
+            34,
+            20,
+            [255, 255, 255],
+        )?,
+        render_colored_text_image(
+            CREDITS_LINE5_TEXT_IMAGE_ID,
+            "特别感谢：我们的玩家",
+            720,
+            34,
+            20,
+            [255, 255, 255],
+        )?,
+        render_colored_text_image(
+            CREDITS_LINE6_TEXT_IMAGE_ID,
+            "谢谢游玩",
+            720,
+            34,
+            20,
+            [255, 255, 255],
+        )?,
+        render_colored_text_image(
+            CREDITS_REPLAY_TEXT_IMAGE_ID,
+            "重播",
+            80,
+            28,
+            16,
+            [255, 255, 255],
+        )?,
+        render_colored_text_image(
+            CREDITS_MAIN_MENU_TEXT_IMAGE_ID,
+            "返回主菜单",
+            180,
+            28,
+            16,
+            [255, 255, 255],
+        )?,
+        load_image(
+            resources,
+            GARDEN_BACKGROUND_IMAGE_ID,
+            "images/Background_Greenhouse.jpg",
+        )?,
+        load_image(
+            resources,
+            GARDEN_MUSHROOM_BACKGROUND_IMAGE_ID,
+            "images/Background_MushroomGarden.jpg",
+        )?,
+        load_image(
+            resources,
+            GARDEN_WATERING_CAN_IMAGE_ID,
+            "images/WateringCan.png",
+        )?,
+        load_image(
+            resources,
+            GARDEN_FERTILIZER_IMAGE_ID,
+            "images/Fertilizer.png",
+        )?,
+        load_image(resources, GARDEN_BUG_SPRAY_IMAGE_ID, "images/bug_spray.png")?,
+        load_image(
+            resources,
+            GARDEN_PHONOGRAPH_IMAGE_ID,
+            "images/Phonograph.png",
+        )?,
+        load_image(
+            resources,
+            GARDEN_NEED_BUBBLE_IMAGE_ID,
+            "images/Plantspeechbubble.png",
+        )?,
+        load_image(resources, GARDEN_WATERDROP_IMAGE_ID, "images/waterdrop.png")?,
+        load_cropped_image(
+            resources,
+            GARDEN_NEED_FERTILIZER_IMAGE_ID,
+            "images/zen_need_icons.png",
+            0,
+            0,
+            30,
+            30,
+        )?,
+        load_cropped_image(
+            resources,
+            GARDEN_NEED_BUG_SPRAY_IMAGE_ID,
+            "images/zen_need_icons.png",
+            30,
+            0,
+            30,
+            30,
+        )?,
+        load_cropped_image(
+            resources,
+            GARDEN_NEED_PHONOGRAPH_IMAGE_ID,
+            "images/zen_need_icons.png",
+            60,
+            0,
+            30,
+            30,
+        )?,
+        load_image(
+            resources,
+            STORE_BACKGROUND_IMAGE_ID,
+            "images/Store_Background.jpg",
+        )?,
+        load_image(resources, STORE_SIGN_IMAGE_ID, "images/Store_Sign.png")?,
+        load_image(resources, STORE_CAR_IMAGE_ID, "images/Store_Car.jpg")?,
+        load_image(
+            resources,
+            STORE_PRICE_TAG_IMAGE_ID,
+            "images/Store_PriceTag.png",
+        )?,
+        load_image(
+            resources,
+            STORE_MAIN_MENU_BUTTON_IMAGE_ID,
+            "images/Store_MainMenuButton.png",
+        )?,
+        load_image(
+            resources,
+            STORE_PACKET_UPGRADE_IMAGE_ID,
+            "images/Store_PacketUpgrade.png",
+        )?,
+        load_image(resources, STORE_STINKY_IMAGE_ID, "reanim/Stinky_body.png")?,
+        render_colored_text_image(
+            STORE_ITEM_NAME_BASE_IMAGE_ID,
+            "Packet slots",
+            130,
+            24,
+            14,
+            [255, 255, 220],
+        )?,
+        render_colored_text_image(
+            STORE_ITEM_NAME_BASE_IMAGE_ID + 1,
+            "Fertilizer",
+            130,
+            24,
+            14,
+            [255, 255, 220],
+        )?,
+        render_colored_text_image(
+            STORE_ITEM_NAME_BASE_IMAGE_ID + 2,
+            "Bug spray",
+            130,
+            24,
+            14,
+            [255, 255, 220],
+        )?,
+        render_colored_text_image(
+            STORE_ITEM_NAME_BASE_IMAGE_ID + 3,
+            "Phonograph",
+            130,
+            24,
+            14,
+            [255, 255, 220],
+        )?,
+        render_colored_text_image(
+            STORE_ITEM_NAME_BASE_IMAGE_ID + 4,
+            "Stinky",
+            130,
+            24,
+            14,
+            [255, 255, 220],
+        )?,
+        render_colored_text_image(
+            STORE_ITEM_PRICE_BASE_IMAGE_ID,
+            "75",
+            48,
+            22,
+            14,
+            [32, 24, 12],
+        )?,
+        render_colored_text_image(
+            STORE_ITEM_PRICE_BASE_IMAGE_ID + 1,
+            "500",
+            48,
+            22,
+            14,
+            [32, 24, 12],
+        )?,
+        render_colored_text_image(
+            STORE_ITEM_PRICE_BASE_IMAGE_ID + 2,
+            "2000",
+            48,
+            22,
+            14,
+            [32, 24, 12],
+        )?,
+        render_colored_text_image(
+            STORE_ITEM_PRICE_BASE_IMAGE_ID + 3,
+            "8000",
+            48,
+            22,
+            14,
+            [32, 24, 12],
+        )?,
+        render_colored_text_image(
+            STORE_ITEM_PRICE_BASE_IMAGE_ID + 4,
+            "75",
+            48,
+            22,
+            14,
+            [32, 24, 12],
+        )?,
+        render_colored_text_image(
+            STORE_ITEM_PRICE_BASE_IMAGE_ID + 5,
+            "100",
+            48,
+            22,
+            14,
+            [32, 24, 12],
+        )?,
+        render_colored_text_image(
+            STORE_ITEM_PRICE_BASE_IMAGE_ID + 6,
+            "1500",
+            48,
+            22,
+            14,
+            [32, 24, 12],
+        )?,
+        render_colored_text_image(
+            STORE_ITEM_PRICE_BASE_IMAGE_ID + 7,
+            "300",
+            48,
+            22,
+            14,
+            [32, 24, 12],
+        )?,
+        render_colored_text_image(
+            STORE_BACK_TEXT_IMAGE_ID,
+            "Back",
+            100,
+            24,
+            14,
+            [255, 255, 220],
+        )?,
+        load_image(
+            resources,
+            PAUSE_DIALOG_TOP_LEFT_IMAGE_ID,
+            "images/dialog_topleft.png",
+        )?,
+        load_image(
+            resources,
+            PAUSE_DIALOG_TOP_MIDDLE_IMAGE_ID,
+            "images/dialog_topmiddle.png",
+        )?,
+        load_image(
+            resources,
+            PAUSE_DIALOG_TOP_RIGHT_IMAGE_ID,
+            "images/dialog_topright.png",
+        )?,
+        load_image(
+            resources,
+            PAUSE_DIALOG_HEADER_IMAGE_ID,
+            "images/dialog_header.png",
+        )?,
+        load_image(
+            resources,
+            PAUSE_DIALOG_CENTER_LEFT_IMAGE_ID,
+            "images/dialog_centerleft.png",
+        )?,
+        load_image(
+            resources,
+            PAUSE_DIALOG_CENTER_MIDDLE_IMAGE_ID,
+            "images/dialog_centermiddle.png",
+        )?,
+        load_image(
+            resources,
+            PAUSE_DIALOG_CENTER_RIGHT_IMAGE_ID,
+            "images/dialog_centerright.png",
+        )?,
+        load_image(
+            resources,
+            PAUSE_DIALOG_BOTTOM_LEFT_IMAGE_ID,
+            "images/dialog_bottomleft.png",
+        )?,
+        load_image(
+            resources,
+            PAUSE_DIALOG_BOTTOM_MIDDLE_IMAGE_ID,
+            "images/dialog_bottommiddle.png",
+        )?,
+        load_image(
+            resources,
+            PAUSE_DIALOG_BOTTOM_RIGHT_IMAGE_ID,
+            "images/dialog_bottomright.png",
+        )?,
+        load_image(
+            resources,
+            PAUSE_RESUME_BUTTON_IMAGE_ID,
+            "images/options_backtogamebutton0.png",
+        )?,
+        render_colored_text_image(
+            PAUSE_HEADER_TEXT_IMAGE_ID,
+            "GAME PAUSED",
+            250,
+            28,
+            20,
+            [255, 255, 220],
+        )?,
+        render_colored_text_image(
+            PAUSE_BODY_TEXT_IMAGE_ID,
+            "Click to resume game",
+            240,
+            24,
+            16,
+            [255, 255, 220],
+        )?,
+        render_colored_text_image(
+            PAUSE_RESUME_TEXT_IMAGE_ID,
+            "Resume Game",
+            200,
+            28,
+            18,
+            [32, 24, 12],
+        )?,
+        load_image(
+            resources,
+            OPTIONS_BACKGROUND_IMAGE_ID,
+            "images/options_menuback.jpg",
+        )?,
+        load_image(
+            resources,
+            OPTIONS_CHECKBOX_OFF_IMAGE_ID,
+            "images/options_checkbox0.png",
+        )?,
+        load_image(
+            resources,
+            OPTIONS_CHECKBOX_ON_IMAGE_ID,
+            "images/options_checkbox1.png",
+        )?,
+        load_image(
+            resources,
+            OPTIONS_SLIDER_SLOT_IMAGE_ID,
+            "images/options_sliderslot.png",
+        )?,
+        load_image(
+            resources,
+            OPTIONS_SLIDER_KNOB_IMAGE_ID,
+            "images/options_sliderknob2.png",
+        )?,
+        render_colored_text_image(
+            OPTIONS_MUSIC_LABEL_IMAGE_ID,
+            "Music",
+            125,
+            24,
+            16,
+            [107, 109, 145],
+        )?,
+        render_colored_text_image(
+            OPTIONS_SFX_LABEL_IMAGE_ID,
+            "Sound FX",
+            125,
+            24,
+            16,
+            [107, 109, 145],
+        )?,
+        render_colored_text_image(
+            OPTIONS_ACCELERATION_LABEL_IMAGE_ID,
+            "3D Acceleration",
+            165,
+            24,
+            16,
+            [107, 109, 145],
+        )?,
+        render_colored_text_image(
+            OPTIONS_FULLSCREEN_LABEL_IMAGE_ID,
+            "Full Screen",
+            125,
+            24,
+            16,
+            [107, 109, 145],
+        )?,
+        render_colored_text_image(
+            OPTIONS_BACK_TEXT_IMAGE_ID,
+            "OK",
+            220,
+            28,
+            18,
+            [255, 255, 255],
+        )?,
+        load_image(
+            resources,
+            HELP_ZOMBIE_NOTE_IMAGE_ID,
+            "images/ZombieNote.jpg",
+        )?,
+        load_image(
+            resources,
+            HELP_CONTENT_IMAGE_ID,
+            "images/ZombieNoteHelp.png",
+        )?,
+        load_image(
+            resources,
+            HELP_MENU_BUTTON_IMAGE_ID,
+            "images/SeedChooser_Button2.png",
+        )?,
+        render_colored_text_image(
+            HELP_MAIN_MENU_TEXT_IMAGE_ID,
+            "Main Menu",
+            111,
+            26,
+            12,
+            [42, 42, 90],
+        )?,
+        load_image(
+            resources,
+            ALMANAC_INDEX_BACKGROUND_IMAGE_ID,
+            "images/Almanac_IndexBack.jpg",
+        )?,
+        load_image(
+            resources,
+            ALMANAC_PLANT_BACKGROUND_IMAGE_ID,
+            "images/Almanac_PlantBack.jpg",
+        )?,
+        load_image(
+            resources,
+            ALMANAC_ZOMBIE_BACKGROUND_IMAGE_ID,
+            "images/Almanac_ZombieBack.jpg",
+        )?,
+        load_image(
+            resources,
+            ALMANAC_CLOSE_BUTTON_IMAGE_ID,
+            "images/Almanac_CloseButton.png",
+        )?,
+        load_image(
+            resources,
+            ALMANAC_INDEX_BUTTON_IMAGE_ID,
+            "images/Almanac_IndexButton.png",
+        )?,
+        load_image(
+            resources,
+            ALMANAC_NAV_BUTTON_IMAGE_ID,
+            "images/SeedChooser_Button.png",
+        )?,
+        load_image(
+            resources,
+            ALMANAC_PLANT_CARD_IMAGE_ID,
+            "images/Almanac_PlantCard.png",
+        )?,
+        load_image(
+            resources,
+            ALMANAC_ZOMBIE_CARD_IMAGE_ID,
+            "images/Almanac_ZombieCard.png",
+        )?,
+        load_image(
+            resources,
+            ALMANAC_ZOMBIE_WINDOW_IMAGE_ID,
+            "images/Almanac_ZombieWindow.png",
+        )?,
+        load_image(
+            resources,
+            ALMANAC_ZOMBIE_WINDOW2_IMAGE_ID,
+            "images/Almanac_ZombieWindow2.png",
+        )?,
+        load_image(
+            resources,
+            ALMANAC_ZOMBIE_BLANK_IMAGE_ID,
+            "images/Almanac_ZombieBlank.png",
+        )?,
+        load_image(
+            resources,
+            ALMANAC_IMITATER_IMAGE_ID,
+            "images/Almanac_Imitater.png",
+        )?,
+        render_colored_text_image(
+            ALMANAC_TITLE_TEXT_IMAGE_ID,
+            "Suburban Almanac Index",
+            400,
+            32,
+            20,
+            [220, 220, 220],
+        )?,
+        render_colored_text_image(
+            ALMANAC_PLANTS_TEXT_IMAGE_ID,
+            "View Plants",
+            156,
+            32,
+            18,
+            [255, 255, 255],
+        )?,
+        render_colored_text_image(
+            ALMANAC_ZOMBIES_TEXT_IMAGE_ID,
+            "View Zombies",
+            210,
+            32,
+            18,
+            [255, 255, 255],
+        )?,
+        render_colored_text_image(
+            ALMANAC_CLOSE_TEXT_IMAGE_ID,
+            "Close",
+            89,
+            26,
+            12,
+            [42, 42, 90],
+        )?,
+        render_colored_text_image(
+            ALMANAC_INDEX_TEXT_IMAGE_ID,
+            "Index",
+            164,
+            26,
+            12,
+            [42, 42, 90],
+        )?,
+        load_image(
+            resources,
+            AWARD_SCREEN_BACKGROUND_IMAGE_ID,
+            "images/AwardScreen_Back.jpg",
+        )?,
+        load_image(resources, AWARD_TROPHY_IMAGE_ID, "images/trophy_hi_res.png")?,
+        render_colored_text_image(
+            AWARD_TITLE_TEXT_IMAGE_ID,
+            "LEVEL COMPLETE",
+            400,
+            36,
+            24,
+            [213, 159, 43],
+        )?,
+        render_colored_text_image(
+            AWARD_BODY_TEXT_IMAGE_ID,
+            "The lawn is safe!",
+            300,
+            48,
+            18,
+            [40, 50, 90],
+        )?,
+        render_colored_text_image(
+            AWARD_CONTINUE_TEXT_IMAGE_ID,
+            "Continue",
+            156,
+            42,
+            16,
+            [213, 159, 43],
+        )?,
+        render_colored_text_image(
+            AWARD_MAIN_MENU_TEXT_IMAGE_ID,
+            "Main Menu",
+            111,
+            26,
+            12,
+            [42, 42, 90],
+        )?,
+        render_colored_text_image(
+            GAME_OVER_HEADER_TEXT_IMAGE_ID,
+            "GAME OVER",
+            250,
+            28,
+            20,
+            [255, 255, 220],
+        )?,
+        render_colored_text_image(
+            GAME_OVER_BODY_TEXT_IMAGE_ID,
+            "The zombies ate your brains!",
+            280,
+            24,
+            16,
+            [255, 255, 220],
+        )?,
+        render_colored_text_image(
+            GAME_OVER_TRY_AGAIN_TEXT_IMAGE_ID,
+            "Try Again",
+            200,
+            28,
+            18,
+            [32, 24, 12],
+        )?,
+        render_colored_text_image(
+            GAME_OVER_MAIN_MENU_TEXT_IMAGE_ID,
+            "Main Menu",
+            164,
+            26,
+            12,
+            [42, 42, 90],
+        )?,
+        load_masked_image(
+            resources,
+            ZOMBIES_WON_IMAGE_ID,
+            "reanim/ZombiesWon.jpg",
+            "reanim/ZombiesWon_.png",
+        )?,
     ];
+    for index in 0..13 {
+        assets.push(load_cropped_image(
+            resources,
+            SEED_PACKET_PLANT_BASE_IMAGE_ID + index,
+            "images/packet_plants.png",
+            index * 50,
+            0,
+            50,
+            70,
+        )?);
+    }
+    for (frame, y) in (0..6).zip((0..6).map(|frame| frame * 16)) {
+        assets.push(load_cropped_image(
+            resources,
+            BOARD_CONVEYOR_BELT_BASE_IMAGE_ID + frame,
+            "images/ConveyorBelt.png",
+            0,
+            y,
+            502,
+            16,
+        )?);
+    }
+    for (index, (source_x, width)) in [(374, 72), (358, 88), (322, 124), (281, 165)]
+        .into_iter()
+        .enumerate()
+    {
+        assets.push(load_cropped_image(
+            resources,
+            BOARD_SEED_BANK_EXTENSION_BASE_IMAGE_ID + u32::try_from(index).unwrap(),
+            "images/SeedBank.png",
+            source_x,
+            0,
+            width,
+            87,
+        )?);
+    }
+    for slot in 0..ALMANAC_PLANT_COUNT {
+        let slot_id = u32::from(slot);
+        assets.push(render_colored_text_image(
+            ALMANAC_PLANT_NAME_BASE_IMAGE_ID + slot_id,
+            almanac_plant_name(slot),
+            258,
+            32,
+            18,
+            [255, 255, 255],
+        )?);
+        if let Some(plant_type) = almanac_plant_type(slot)
+            && plant_type != PlantType::Other(ALMANAC_IMITATER_SLOT)
+        {
+            assets.push(render_colored_text_image(
+                ALMANAC_PLANT_COST_BASE_IMAGE_ID + slot_id,
+                &format!("Cost: {}", plant_type.cost()),
+                134,
+                50,
+                12,
+                [255, 255, 255],
+            )?);
+            let recharge = match plant_type.refresh_time() {
+                750 => "Short",
+                3_000 => "Long",
+                _ => "Very Long",
+            };
+            assets.push(render_colored_text_image(
+                ALMANAC_PLANT_RECHARGE_BASE_IMAGE_ID + slot_id,
+                &format!("Recharge: {recharge}"),
+                139,
+                50,
+                12,
+                [40, 50, 90],
+            )?);
+        }
+    }
+    for index in 0..ALMANAC_ZOMBIE_COUNT {
+        let index_id = u32::from(index);
+        assets.extend([
+            render_colored_text_image(
+                ALMANAC_ZOMBIE_NAME_BASE_IMAGE_ID + index_id,
+                almanac_zombie_name(index),
+                258,
+                32,
+                18,
+                [190, 255, 235],
+            )?,
+            render_colored_text_image(
+                ALMANAC_ZOMBIE_SILHOUETTE_NAME_BASE_IMAGE_ID + index_id,
+                "???",
+                258,
+                32,
+                18,
+                [190, 255, 235],
+            )?,
+        ]);
+    }
+    assets.extend([
+        load_image(resources, AWARD_SHOVEL_IMAGE_ID, "images/Shovel_hi_res.png")?,
+        load_image(resources, AWARD_ALMANAC_IMAGE_ID, "images/Almanac.png")?,
+        load_image(resources, AWARD_CAR_KEYS_IMAGE_ID, "images/CarKeys.png")?,
+        load_image(resources, AWARD_TACO_IMAGE_ID, "images/Taco.png")?,
+        load_image(
+            resources,
+            AWARD_WATERING_CAN_IMAGE_ID,
+            "images/WateringCan.png",
+        )?,
+        load_image(resources, AWARD_NOTE1_IMAGE_ID, "images/ZombieNote1.png")?,
+        load_image(resources, AWARD_NOTE2_IMAGE_ID, "images/ZombieNote2.png")?,
+        load_image(resources, AWARD_NOTE3_IMAGE_ID, "images/ZombieNote3.png")?,
+        load_image(resources, AWARD_NOTE4_IMAGE_ID, "images/ZombieNote4.png")?,
+    ]);
+    for (id, text, color) in [
+        (0, "NEW PLANT", [213, 159, 43]),
+        (1, "GOT SHOVEL", [213, 159, 43]),
+        (2, "FOUND ALMANAC", [213, 159, 43]),
+        (3, "FOUND KEYS", [213, 159, 43]),
+        (4, "FOUND TACO", [213, 159, 43]),
+        (5, "FOUND WATERING CAN", [213, 159, 43]),
+        (6, "FOUND NOTE", [255, 200, 0]),
+        (7, "YOU WIN", [213, 159, 43]),
+        (8, "LEVEL COMPLETE", [213, 159, 43]),
+    ] {
+        assets.push(render_colored_text_image(
+            AWARD_TITLE_TEXT_BASE_IMAGE_ID + id,
+            text,
+            400,
+            36,
+            24,
+            color,
+        )?);
+    }
+    for (id, text) in [
+        (0, "A new seed packet is ready."),
+        (1, "The shovel is ready for your lawn."),
+        (2, "The Suburban Almanac is now available."),
+        (3, "The garage and new modes are unlocked."),
+        (4, "Crazy Dave's taco is safe."),
+        (5, "Zen Garden tools are now available."),
+        (6, "A new note from the zombies awaits."),
+        (7, "Your garden is safe!"),
+        (8, "Reward collected."),
+    ] {
+        assets.push(render_colored_text_image(
+            AWARD_BODY_TEXT_BASE_IMAGE_ID + id,
+            text,
+            300,
+            48,
+            18,
+            [40, 50, 90],
+        )?);
+    }
     for index in 0..22 {
         assets.push(load_cropped_image(
             resources,
@@ -952,7 +2262,244 @@ fn load_assets(resources: &ResourceProvider) -> Result<Vec<ImageAsset>, String> 
         ImageAsset::new(SCREEN_PIXEL_IMAGE_ID, 1, 1, vec![16, 24, 32, 255])
             .map_err(|error| error.to_string())?,
     );
-    Ok(assets)
+    let reanim_catalog = load_reanim_catalog(resources, &mut assets)?;
+    Ok((assets, reanim_catalog))
+}
+
+fn load_reanim_catalog(
+    resources: &ResourceProvider,
+    assets: &mut Vec<ImageAsset>,
+) -> Result<ReanimCatalog, String> {
+    let definition_paths = resources
+        .compiled_animation_paths()
+        .map_err(|error| format!("compiled animation inventory: {error}"))?;
+    let zombie = load_reanim_definition(resources, &definition_paths, "Zombie.reanim.compiled")?;
+    let football = load_reanim_definition(
+        resources,
+        &definition_paths,
+        "Zombie_football.reanim.compiled",
+    )?;
+    let newspaper =
+        load_reanim_definition(resources, &definition_paths, "Zombie_paper.reanim.compiled")?;
+    let boss = load_reanim_definition(resources, &definition_paths, "Zombie_boss.reanim.compiled")?;
+    let boss_driver = load_reanim_definition(
+        resources,
+        &definition_paths,
+        "Zombie_Boss_driver.reanim.compiled",
+    )?;
+    let boss_fireball = load_reanim_definition(
+        resources,
+        &definition_paths,
+        "Zombie_boss_fireball.reanim.compiled",
+    )?;
+    let boss_iceball = load_reanim_definition(
+        resources,
+        &definition_paths,
+        "Zombie_boss_iceball.reanim.compiled",
+    )?;
+    let fire = load_reanim_definition(resources, &definition_paths, "fire.reanim.compiled")?;
+    let sun = load_reanim_definition(resources, &definition_paths, "Sun.reanim.compiled")?;
+    let coin_silver =
+        load_reanim_definition(resources, &definition_paths, "Coin_silver.reanim.compiled")?;
+    let coin_gold =
+        load_reanim_definition(resources, &definition_paths, "Coin_gold.reanim.compiled")?;
+    let diamond = load_reanim_definition(resources, &definition_paths, "Diamond.reanim.compiled")?;
+    let mut specialized = Vec::new();
+    for &(zombie_type, file_name) in SPECIALIZED_REANIM_FILES {
+        if let Some(definition) = load_reanim_definition(resources, &definition_paths, file_name)? {
+            specialized.push((zombie_type, definition));
+        }
+    }
+    let mut plants = Vec::new();
+    for &(plant_type, file_name) in PLANT_REANIM_FILES {
+        if let Some(definition) = load_reanim_definition(resources, &definition_paths, file_name)? {
+            plants.push((plant_type, definition));
+        }
+    }
+    if zombie.is_none()
+        && football.is_none()
+        && newspaper.is_none()
+        && boss.is_none()
+        && boss_driver.is_none()
+        && boss_fireball.is_none()
+        && boss_iceball.is_none()
+        && fire.is_none()
+        && sun.is_none()
+        && coin_silver.is_none()
+        && coin_gold.is_none()
+        && diamond.is_none()
+        && specialized.is_empty()
+        && plants.is_empty()
+    {
+        tracing::warn!("reanimation definitions are unavailable; using static layers");
+        return Ok(ReanimCatalog::default());
+    }
+    let paths = resources
+        .paths()
+        .map_err(|error| format!("reanimation image inventory: {error}"))?;
+    let mut symbols = HashSet::new();
+    for definition in [
+        &zombie,
+        &football,
+        &newspaper,
+        &boss,
+        &boss_driver,
+        &boss_fireball,
+        &boss_iceball,
+        &fire,
+        &sun,
+        &coin_silver,
+        &coin_gold,
+        &diamond,
+    ]
+    .into_iter()
+    .flatten()
+    {
+        for track in &definition.tracks {
+            for transform in &track.transforms {
+                if let Some(image) = &transform.image {
+                    symbols.insert(image.to_ascii_uppercase());
+                }
+            }
+        }
+    }
+    for (_, definition) in &specialized {
+        for track in &definition.tracks {
+            for transform in &track.transforms {
+                if let Some(image) = &transform.image {
+                    symbols.insert(image.to_ascii_uppercase());
+                }
+            }
+        }
+    }
+    for (_, definition) in &plants {
+        for track in &definition.tracks {
+            for transform in &track.transforms {
+                if let Some(image) = &transform.image {
+                    symbols.insert(image.to_ascii_uppercase());
+                }
+            }
+        }
+    }
+    let mut symbols: Vec<_> = symbols.into_iter().collect();
+    symbols.sort_unstable();
+
+    let mut image_ids = HashMap::new();
+    for symbol in symbols {
+        let Some(path) = reanim_image_path(&symbol, &paths) else {
+            tracing::warn!(symbol, "reanimation image symbol is unavailable");
+            continue;
+        };
+        let id = REANIM_IMAGE_ID_BASE
+            .checked_add(u32::try_from(image_ids.len()).map_err(|_| "too many reanimation images")?)
+            .ok_or("reanimation image ID overflow")?;
+        assets.push(load_image(resources, id, &path)?);
+        image_ids.insert(symbol, id);
+    }
+    tracing::info!(
+        zombie_tracks = zombie
+            .as_ref()
+            .map_or(0, |definition| definition.tracks.len()),
+        football_tracks = football
+            .as_ref()
+            .map_or(0, |definition| definition.tracks.len()),
+        newspaper_tracks = newspaper
+            .as_ref()
+            .map_or(0, |definition| definition.tracks.len()),
+        boss_tracks = boss
+            .as_ref()
+            .map_or(0, |definition| definition.tracks.len()),
+        boss_driver_tracks = boss_driver
+            .as_ref()
+            .map_or(0, |definition| definition.tracks.len()),
+        boss_fireball_tracks = boss_fireball
+            .as_ref()
+            .map_or(0, |definition| definition.tracks.len()),
+        boss_iceball_tracks = boss_iceball
+            .as_ref()
+            .map_or(0, |definition| definition.tracks.len()),
+        fire_tracks = fire
+            .as_ref()
+            .map_or(0, |definition| definition.tracks.len()),
+        pickup_definitions = [&sun, &coin_silver, &coin_gold, &diamond,]
+            .into_iter()
+            .flatten()
+            .count(),
+        pickup_tracks = [&sun, &coin_silver, &coin_gold, &diamond,]
+            .into_iter()
+            .flatten()
+            .map(|definition| definition.tracks.len())
+            .sum::<usize>(),
+        specialized_definitions = specialized.len(),
+        specialized_tracks = specialized
+            .iter()
+            .map(|(_, definition)| definition.tracks.len())
+            .sum::<usize>(),
+        plant_definitions = plants.len(),
+        plant_tracks = plants
+            .iter()
+            .map(|(_, definition)| definition.tracks.len())
+            .sum::<usize>(),
+        images = image_ids.len(),
+        "reanimation definitions loaded"
+    );
+    Ok(ReanimCatalog {
+        zombie,
+        football,
+        newspaper,
+        boss,
+        boss_driver,
+        boss_fireball,
+        boss_iceball,
+        fire,
+        sun,
+        coin_silver,
+        coin_gold,
+        diamond,
+        specialized,
+        plants,
+        image_ids,
+    })
+}
+
+fn load_reanim_definition(
+    resources: &ResourceProvider,
+    paths: &[String],
+    file_name: &str,
+) -> Result<Option<ReanimatorDefinition>, String> {
+    let wanted = format!("compiled/reanim/{file_name}");
+    let Some(path) = paths.iter().find(|path| path.eq_ignore_ascii_case(&wanted)) else {
+        tracing::warn!(file_name, "compiled zombie reanimation is unavailable");
+        return Ok(None);
+    };
+    let compiled = resources
+        .read_compiled(path)
+        .map_err(|error| format!("{path}: {error}"))?;
+    compiled
+        .reanimation()
+        .map(Some)
+        .map_err(|error| format!("{path}: {error}"))
+}
+
+fn reanim_image_path(symbol: &str, paths: &[String]) -> Option<String> {
+    let suffix = symbol.strip_prefix("IMAGE_REANIM_")?;
+    for directory in ["REANIM", "IMAGES"] {
+        let wanted = format!("{directory}/{suffix}");
+        if let Some(path) = paths
+            .iter()
+            .find(|path| resource_stem_key(path).is_some_and(|key| key == wanted))
+        {
+            return Some(path.clone());
+        }
+    }
+    None
+}
+
+fn resource_stem_key(path: &str) -> Option<String> {
+    let normalized = path.replace('\\', "/");
+    let (directory, file) = normalized.rsplit_once('/')?;
+    let stem = file.rsplit_once('.').map_or(file, |(stem, _)| stem);
+    Some(format!("{directory}/{stem}").to_ascii_uppercase())
 }
 
 fn load_title_logo(resources: &ResourceProvider) -> Result<ImageAsset, String> {
@@ -1088,6 +2635,77 @@ fn render_colored_text_image(
     Ok(asset)
 }
 
+fn load_lawn_strings(resources: &ResourceProvider) -> HashMap<String, String> {
+    #[cfg(windows)]
+    {
+        let bytes = match resources.read("properties/LawnStrings.txt") {
+            Ok(bytes) => bytes,
+            Err(error) => {
+                tracing::warn!(%error, "almanac strings unavailable");
+                return HashMap::new();
+            }
+        };
+        let text = match windows_text::decode_gbk(&bytes) {
+            Ok(text) => text,
+            Err(error) => {
+                tracing::warn!(%error, "almanac strings decode failed");
+                return HashMap::new();
+            }
+        };
+        let strings = parse_lawn_strings(&text);
+        tracing::info!(entries = strings.len(), "almanac strings loaded");
+        strings
+    }
+    #[cfg(not(windows))]
+    {
+        let _ = resources;
+        HashMap::new()
+    }
+}
+
+fn parse_lawn_strings(text: &str) -> HashMap<String, String> {
+    let mut entries = HashMap::new();
+    let mut key = None;
+    let mut value = String::new();
+    for line in text.lines() {
+        if let Some(name) = line
+            .strip_prefix('[')
+            .and_then(|line| line.strip_suffix(']'))
+        {
+            if let Some(previous) = key.replace(name.to_owned()) {
+                entries.insert(previous, value.trim().to_owned());
+                value.clear();
+            }
+        } else if !line.is_empty() && key.is_some() {
+            if !value.is_empty() {
+                value.push('\n');
+            }
+            value.push_str(line);
+        }
+    }
+    if let Some(name) = key {
+        entries.insert(name, value.trim().to_owned());
+    }
+    entries
+}
+
+fn almanac_lawn_text(strings: &HashMap<String, String>, key: &str, fallback: &str) -> String {
+    let text = strings.get(key).map(String::as_str).unwrap_or(fallback);
+    text.replace("{SHORTLINE}\n", "")
+        .replace("\n{SHORTLINE}", "")
+        .replace("{KEYWORD}", "")
+        .replace("{STAT}", " ")
+        .replace("{FLAVOR}", "\n")
+}
+
+fn almanac_lawn_description(
+    strings: &HashMap<String, String>,
+    key: &str,
+    fallback: &str,
+) -> String {
+    almanac_lawn_text(strings, &format!("{key}_DESCRIPTION"), fallback)
+}
+
 #[cfg(windows)]
 mod windows_text {
     use std::{ffi::c_void, ptr, slice};
@@ -1174,6 +2792,18 @@ mod windows_text {
         fn DeleteDC(device_context: Handle) -> i32;
     }
 
+    #[link(name = "kernel32")]
+    unsafe extern "system" {
+        fn MultiByteToWideChar(
+            code_page: u32,
+            flags: u32,
+            multi_byte_str: *const i8,
+            multi_byte_len: i32,
+            wide_str: *mut u16,
+            wide_len: i32,
+        ) -> i32;
+    }
+
     const BI_RGB: u32 = 0;
     const DIB_RGB_COLORS: u32 = 0;
     const TRANSPARENT: i32 = 1;
@@ -1187,6 +2817,35 @@ mod windows_text {
     const DT_VCENTER: u32 = 0x0004;
     const DT_WORDBREAK: u32 = 0x0010;
     const DT_NOPREFIX: u32 = 0x0800;
+
+    pub(super) fn decode_gbk(bytes: &[u8]) -> Result<String, String> {
+        let byte_len =
+            i32::try_from(bytes.len()).map_err(|_| "LawnStrings is too large".to_owned())?;
+        if byte_len == 0 {
+            return Ok(String::new());
+        }
+        let char_len = unsafe {
+            MultiByteToWideChar(936, 0, bytes.as_ptr().cast(), byte_len, ptr::null_mut(), 0)
+        };
+        if char_len <= 0 {
+            return Err("MultiByteToWideChar failed".to_owned());
+        }
+        let mut wide = vec![0_u16; usize::try_from(char_len).unwrap()];
+        let written = unsafe {
+            MultiByteToWideChar(
+                936,
+                0,
+                bytes.as_ptr().cast(),
+                byte_len,
+                wide.as_mut_ptr(),
+                char_len,
+            )
+        };
+        if written != char_len {
+            return Err("MultiByteToWideChar returned a short string".to_owned());
+        }
+        String::from_utf16(&wide).map_err(|_| "LawnStrings contains invalid UTF-16".to_owned())
+    }
 
     pub(super) fn render(
         resource_id: u32,
@@ -1318,10 +2977,74 @@ mod windows_text {
     }
 }
 
+#[derive(Clone, Copy, Debug)]
+struct BoardVisualAnchor {
+    x: f32,
+    y: f32,
+    row: u8,
+}
+
+#[derive(Clone, Debug, Default)]
+struct BoardVisualAnchors {
+    plants: HashMap<EntityId, BoardVisualAnchor>,
+    projectiles: HashMap<EntityId, BoardVisualAnchor>,
+}
+
+impl BoardVisualAnchors {
+    fn from_state(state: &neopvz_core::GameState) -> Self {
+        Self {
+            plants: state
+                .board
+                .plants
+                .iter()
+                .map(|plant| {
+                    (
+                        plant.id,
+                        BoardVisualAnchor {
+                            x: 80.0 + f32::from(plant.column) * 80.0,
+                            y: board_row_y(plant.row),
+                            row: plant.row,
+                        },
+                    )
+                })
+                .collect(),
+            projectiles: state
+                .board
+                .projectiles
+                .iter()
+                .map(|projectile| {
+                    (
+                        projectile.id,
+                        BoardVisualAnchor {
+                            x: fixed_point_to_logical(projectile.position_x),
+                            y: board_projectile_y(
+                                projectile.position_y,
+                                projectile.row,
+                                projectile.lob_height,
+                            ),
+                            row: projectile.row,
+                        },
+                    )
+                })
+                .collect(),
+        }
+    }
+}
+
+#[derive(Clone, Copy, Debug)]
+struct BoardFireEffect {
+    x: f32,
+    y: f32,
+    start_tick: u64,
+    duration: u64,
+    z: i32,
+}
+
 struct App {
     renderer: Option<GpuRenderer>,
     assets: Vec<ImageAsset>,
     resources: ResourceProvider,
+    reanim_catalog: ReanimCatalog,
     audio: Option<KiraAudioBackend>,
     game: Game,
     pending_input: Vec<InputAction>,
@@ -1332,16 +3055,37 @@ struct App {
     tutorial_page: u8,
     seed_chooser_selection: Vec<bool>,
     seed_chooser_scroll: usize,
+    garden_tool: GardenTool,
+    store_open: bool,
+    options_open: bool,
+    help_open: bool,
+    almanac_open: bool,
+    credits_open: bool,
+    credits_frame: u32,
+    credits_paused: bool,
+    almanac_page: u8,
+    almanac_selected_plant: u8,
+    almanac_selected_zombie: u8,
+    almanac_strings: HashMap<String, String>,
+    almanac_loaded_descriptions: HashSet<u32>,
+    seed_bank_cost_plants: HashMap<u8, PlantType>,
+    sun_count_asset_value: Option<u32>,
+    progress_meter_asset_width: Option<u32>,
+    options_music_volume: u8,
+    options_effects_volume: u8,
     selected_mode: ModeKind,
     selected_level: u8,
+    debug_mode_select: bool,
     fullscreen: bool,
+    capture_path: Option<PathBuf>,
     startup_events: Vec<GameEvent>,
+    visual_effects: Vec<BoardFireEffect>,
     profile: Option<SaveProfile>,
 }
 
 impl App {
     fn new(
-        assets: Vec<ImageAsset>,
+        loaded_assets: (Vec<ImageAsset>, ReanimCatalog),
         resources: ResourceProvider,
         audio: Option<KiraAudioBackend>,
         initial_scene: SceneKind,
@@ -1349,26 +3093,64 @@ impl App {
         checkpoint: Option<Checkpoint>,
         profile: Option<SaveProfile>,
     ) -> Self {
+        let (assets, reanim_catalog) = loaded_assets;
+        let debug_mode_select = matches!(checkpoint, Some(Checkpoint::ModeSelect));
         let mut game = match checkpoint {
             Some(
-                Checkpoint::GardenWater | Checkpoint::GardenFertilize | Checkpoint::GardenFulfill,
+                Checkpoint::GardenWater
+                | Checkpoint::GardenFertilize
+                | Checkpoint::GardenFulfill
+                | Checkpoint::GardenBugSprayAudio
+                | Checkpoint::GardenPhonographAudio
+                | Checkpoint::GardenLeaveAudio,
             ) => Game::new_mode(0, ModeKind::ZenGarden, 0),
+            Some(Checkpoint::AquariumTapGlass) => Game::new_mode(0, ModeKind::ZenGarden, 2),
             Some(Checkpoint::GardenTreeGrow) => Game::new_mode(7, ModeKind::ZenGarden, 3),
             Some(Checkpoint::HugeWaveSound) => Game::new_mode(7, ModeKind::Adventure, 6),
+            Some(Checkpoint::FinalWaveSound) => Game::new_mode(7, ModeKind::Adventure, 1),
+            Some(Checkpoint::ReadySetPlantAudio) => Game::new_adventure(7, 8, true, 0, false),
+            Some(Checkpoint::FinalFanfare) => Game::new_adventure(7, 50, false, 0, false),
+            Some(
+                Checkpoint::ZombiquariumSnorkel
+                | Checkpoint::ZombiquariumBrain
+                | Checkpoint::ZombiquariumDeath,
+            ) => Game::new_mode(7, ModeKind::MiniGame, 7),
+            Some(Checkpoint::WhackAudio) => Game::new_mode(7, ModeKind::MiniGame, 14),
+            Some(Checkpoint::BodyPartAudio) => Game::new(7, SceneKind::Day),
+            Some(Checkpoint::BungeeAudio) => Game::new(7, SceneKind::Day),
+            Some(Checkpoint::BungeeLiftAudio) => Game::new(7, SceneKind::Day),
+            Some(Checkpoint::BungeeGrassstepAudio) => Game::new(7, SceneKind::Day),
+            Some(Checkpoint::VehicleExplosion) => Game::new(7, SceneKind::Day),
+            Some(Checkpoint::ZombieFallingAudio) => Game::new(7, SceneKind::Day),
             Some(Checkpoint::DancerRumble) => Game::new(0, SceneKind::Day),
+            Some(Checkpoint::GarlicYuckAudio) => Game::new(0, SceneKind::Day),
+            Some(Checkpoint::MowerHitAudio) => Game::new(7, SceneKind::Day),
+            Some(Checkpoint::MowerSquishAudio) => Game::new_mode(3, ModeKind::MiniGame, 19),
             Some(Checkpoint::FirstWaveSound) => Game::new_mode(7, ModeKind::Adventure, 1),
             Some(Checkpoint::FlagWaveSound) => Game::new_mode(7, ModeKind::Adventure, 6),
             Some(Checkpoint::BossAttack) => Game::new_mode(3, ModeKind::MiniGame, 19),
+            Some(Checkpoint::BossRVAudio) => Game::new_mode(3, ModeKind::MiniGame, 19),
+            Some(Checkpoint::BossStompAudio) => Game::new_mode(3, ModeKind::MiniGame, 19),
+            Some(Checkpoint::BossDamageAudio) => Game::new_mode(3, ModeKind::MiniGame, 19),
             Some(Checkpoint::Butter) => Game::new(0, SceneKind::Day),
             Some(Checkpoint::ProjectileImpacts) => Game::new(0, SceneKind::Day),
             Some(Checkpoint::PrizeChime) => Game::new(0, SceneKind::Day),
             Some(Checkpoint::PrizeCollection) => Game::new(0, SceneKind::Day),
+            Some(Checkpoint::AwardCollectionAudio) => Game::new_adventure(7, 4, true, 0, false),
+            Some(Checkpoint::LootDropAudio) => Game::new(0, SceneKind::Day),
+            Some(Checkpoint::LootChallengeAudio) => Game::new_adventure(7, 22, true, 0, false),
+            Some(Checkpoint::WeatherAudio) => Game::new_adventure(7, 40, false, 0, false),
             Some(Checkpoint::SunPickupCollection) => Game::new(0, SceneKind::Day),
             Some(Checkpoint::GoldCoinLanding) => Game::new(0, SceneKind::Day),
             Some(Checkpoint::DiamondCollection) => Game::new(0, SceneKind::Day),
             Some(Checkpoint::UsableSeedCollection) => Game::new(0, SceneKind::Day),
             Some(Checkpoint::SunProduction) => Game::new(0, SceneKind::Day),
             Some(Checkpoint::PlantFiring) => Game::new(0, SceneKind::Night),
+            Some(Checkpoint::PlantingAudio) => Game::new(0, SceneKind::Pool),
+            Some(Checkpoint::WallnutBowlingAudio | Checkpoint::WallnutBowlingImpactAudio) => {
+                Game::new_mode(7, ModeKind::MiniGame, 1)
+            }
+            Some(Checkpoint::PlanternAudio) => Game::new(0, SceneKind::Night),
             Some(Checkpoint::Torchwood) => Game::new(0, SceneKind::Day),
             Some(Checkpoint::VaseBreak) => Game::new_mode(0, ModeKind::Vasebreaker, 0),
             Some(Checkpoint::Rake) => Game::new(0, SceneKind::Day),
@@ -1380,9 +3162,14 @@ impl App {
                 Game::new_mode(0, ModeKind::IZombie, 0)
             }
             Some(Checkpoint::ImpThrow) => Game::new(0, SceneKind::Day),
-            Some(Checkpoint::NewspaperRip) => Game::new(0, SceneKind::Day),
+            Some(Checkpoint::NewspaperRip | Checkpoint::NewspaperRarrghAudio) => {
+                Game::new(0, SceneKind::Day)
+            }
             Some(Checkpoint::BloverChomper) => Game::new(0, SceneKind::Day),
             Some(Checkpoint::HypnoJackbox) => Game::new(0, SceneKind::Night),
+            Some(Checkpoint::JackboxAudio | Checkpoint::JackboxBoingAudio) => {
+                Game::new(7, SceneKind::Day)
+            }
             Some(Checkpoint::CobCannon) => Game::new(0, SceneKind::Day),
             Some(Checkpoint::GraveBuster) => Game::new(0, SceneKind::Day),
             Some(Checkpoint::Coffee) => Game::new(0, SceneKind::Day),
@@ -1390,16 +3177,37 @@ impl App {
             Some(Checkpoint::DolphinJump) => Game::new(0, SceneKind::Pool),
             Some(Checkpoint::PoolEntry) => Game::new(0, SceneKind::Pool),
             Some(Checkpoint::PoolMower) => Game::new(0, SceneKind::Pool),
+            Some(Checkpoint::GraveRumbleAudio) => Game::new(0, SceneKind::Night),
+            Some(Checkpoint::LadderAudio) => Game::new(0, SceneKind::Day),
             Some(Checkpoint::Spikeweed) => Game::new(0, SceneKind::Day),
             Some(Checkpoint::Digger) => Game::new(0, SceneKind::Day),
             Some(Checkpoint::Magnet) => Game::new(0, SceneKind::Night),
             Some(Checkpoint::ShieldHit) => Game::new(0, SceneKind::Day),
             Some(Checkpoint::Zamboni) => Game::new(0, SceneKind::Day),
             Some(Checkpoint::Catapult) => Game::new(0, SceneKind::Day),
-            Some(Checkpoint::BalloonAppearance) => Game::new(0, SceneKind::Day),
+            Some(Checkpoint::BalloonAppearance | Checkpoint::BalloonPopAudio) => {
+                Game::new(0, SceneKind::Day)
+            }
             Some(Checkpoint::PoleVault) => Game::new(0, SceneKind::Day),
             Some(Checkpoint::PogoBlock) => Game::new(0, SceneKind::Day),
             Some(Checkpoint::UmbrellaDeflect) => Game::new(0, SceneKind::Day),
+            Some(Checkpoint::Complete) => {
+                let mut game = Game::new_adventure(7, 1, true, 0, false);
+                game.debug_prepare_game_won();
+                game.advance(InputFrame::default());
+                game
+            }
+            Some(Checkpoint::CompletePaper) => {
+                let mut game = Game::new_adventure(7, 10, true, 0, false);
+                game.debug_prepare_game_won();
+                game
+            }
+            Some(Checkpoint::Credits) => {
+                let mut game = Game::new_adventure(7, 50, true, 0, false);
+                game.debug_prepare_game_won();
+                game.advance(InputFrame::default());
+                game
+            }
             _ => new_scene_game(initial_scene),
         };
         apply_profile_to_game(&mut game, profile.as_ref());
@@ -1408,7 +3216,12 @@ impl App {
         match checkpoint {
             Some(Checkpoint::GameOver) => game.debug_force_game_over(),
             Some(Checkpoint::GameLost) => game.debug_prepare_game_lost(),
+            Some(Checkpoint::GameLostAudio) => {
+                startup_events = game.debug_prepare_game_lost_audio()
+            }
             Some(Checkpoint::GameWon) => game.debug_prepare_game_won(),
+            Some(Checkpoint::FinalFanfare) => game.debug_prepare_game_won(),
+            Some(Checkpoint::CompletePaper) => startup_events = game.advance(InputFrame::default()),
             Some(Checkpoint::Pickups) => {
                 let (sun, coin) = game.debug_prepare_pickups();
                 pending_input.push(InputAction::CollectSun { entity: sun });
@@ -1418,11 +3231,35 @@ impl App {
             Some(Checkpoint::PlantFiring) => {
                 startup_events = game.debug_prepare_plant_firing_audio()
             }
+            Some(Checkpoint::PlantingAudio) => startup_events = game.debug_prepare_planting_audio(),
+            Some(Checkpoint::WallnutBowlingAudio) => {
+                pending_input.extend([
+                    InputAction::SelectSeed { slot: 0 },
+                    InputAction::Plant { row: 2, column: 0 },
+                ]);
+            }
+            Some(Checkpoint::WallnutBowlingImpactAudio) => {
+                startup_events = game.debug_prepare_wallnut_bowling_impact()
+            }
+            Some(Checkpoint::PlanternAudio) => startup_events = game.debug_prepare_plantern_audio(),
+            Some(Checkpoint::ReadySetPlantAudio) => {
+                startup_events = game.debug_prepare_ready_set_plant_audio()
+            }
             Some(Checkpoint::Torchwood) => startup_events = game.debug_prepare_torchwood(),
             Some(Checkpoint::PrizeChime) => startup_events = game.debug_prepare_prize_chime(),
             Some(Checkpoint::PrizeCollection) => {
                 startup_events = game.debug_prepare_prize_collection()
             }
+            Some(Checkpoint::AwardCollectionAudio) => {
+                startup_events = game.debug_prepare_award_collection_audio()
+            }
+            Some(Checkpoint::LootDropAudio) => {
+                startup_events = game.debug_prepare_loot_drop_audio()
+            }
+            Some(Checkpoint::LootChallengeAudio) => {
+                startup_events = game.debug_prepare_loot_challenge_audio()
+            }
+            Some(Checkpoint::WeatherAudio) => game.debug_prepare_weather_audio(),
             Some(Checkpoint::SunPickupCollection) => {
                 startup_events = game.debug_prepare_sun_pickup_collection()
             }
@@ -1444,11 +3281,55 @@ impl App {
             Some(Checkpoint::GardenFulfill) => {
                 startup_events = game.debug_prepare_garden_fulfill();
             }
+            Some(Checkpoint::GardenBugSprayAudio) => {
+                startup_events = game.debug_prepare_garden_tool_audio(GardenTool::BugSpray);
+            }
+            Some(Checkpoint::GardenPhonographAudio) => {
+                startup_events = game.debug_prepare_garden_tool_audio(GardenTool::Phonograph);
+            }
+            Some(Checkpoint::GardenLeaveAudio) => {
+                startup_events = game.debug_prepare_garden_leave_audio();
+            }
+            Some(Checkpoint::AquariumTapGlass) => {
+                startup_events = game.debug_prepare_aquarium_tap_glass();
+            }
             Some(Checkpoint::GardenTreeGrow) => {
                 startup_events = game.debug_prepare_garden_tree_grow();
             }
             Some(Checkpoint::HugeWaveSound) => game.debug_prepare_huge_wave_sound(),
+            Some(Checkpoint::FinalWaveSound) => game.debug_prepare_final_wave_sound(),
+            Some(Checkpoint::ZombiquariumSnorkel) => {
+                startup_events = game.debug_prepare_zombiquarium_snorkel()
+            }
+            Some(Checkpoint::ZombiquariumBrain) => {
+                startup_events = game.debug_prepare_zombiquarium_brain()
+            }
+            Some(Checkpoint::ZombiquariumDeath) => {
+                startup_events = game.debug_prepare_zombiquarium_death()
+            }
+            Some(Checkpoint::WhackAudio) => startup_events = game.debug_prepare_whack_audio(),
+            Some(Checkpoint::BodyPartAudio) => {
+                startup_events = game.debug_prepare_body_part_audio()
+            }
+            Some(Checkpoint::BungeeAudio) => startup_events = game.debug_prepare_bungee_audio(),
+            Some(Checkpoint::BungeeLiftAudio) => {
+                startup_events = game.debug_prepare_bungee_lift_audio()
+            }
+            Some(Checkpoint::BungeeGrassstepAudio) => {
+                startup_events = game.debug_prepare_bungee_grassstep_audio()
+            }
+            Some(Checkpoint::VehicleExplosion) => {
+                startup_events = game.debug_prepare_vehicle_explosion()
+            }
+            Some(Checkpoint::ZombieFallingAudio) => {
+                startup_events = game.debug_prepare_zombie_falling_audio()
+            }
             Some(Checkpoint::DancerRumble) => startup_events = game.debug_prepare_dancer_rumble(),
+            Some(Checkpoint::GarlicYuckAudio) => startup_events = game.debug_prepare_garlic_yuck(),
+            Some(Checkpoint::MowerHitAudio) => startup_events = game.debug_prepare_mower_hit(),
+            Some(Checkpoint::MowerSquishAudio) => {
+                startup_events = game.debug_prepare_mower_squish()
+            }
             Some(Checkpoint::FirstWaveSound) => {
                 startup_events = game.debug_prepare_first_wave_sound()
             }
@@ -1456,6 +3337,13 @@ impl App {
                 startup_events = game.debug_prepare_flag_wave_sound()
             }
             Some(Checkpoint::BossAttack) => startup_events = game.debug_prepare_boss_attack(),
+            Some(Checkpoint::BossRVAudio) => startup_events = game.debug_prepare_boss_rv_audio(),
+            Some(Checkpoint::BossStompAudio) => {
+                startup_events = game.debug_prepare_boss_stomp_audio()
+            }
+            Some(Checkpoint::BossDamageAudio) => {
+                startup_events = game.debug_prepare_boss_damage_audio()
+            }
             Some(Checkpoint::IceShroom) => game.debug_prepare_ice_shroom(),
             Some(Checkpoint::PotatoMine) => game.debug_prepare_potato_mine(),
             Some(Checkpoint::ExplosionPlants) => {
@@ -1474,6 +3362,9 @@ impl App {
             Some(Checkpoint::BrainEaten) => game.debug_prepare_brain_finished(),
             Some(Checkpoint::ImpThrow) => game.debug_prepare_imp_throw(),
             Some(Checkpoint::NewspaperRip) => startup_events = game.debug_prepare_newspaper_rip(),
+            Some(Checkpoint::NewspaperRarrghAudio) => {
+                startup_events = game.debug_prepare_newspaper_rarrgh()
+            }
             Some(Checkpoint::Butter) => startup_events = game.debug_prepare_butter(),
             Some(Checkpoint::ProjectileImpacts) => {
                 startup_events = game.debug_prepare_projectile_impacts()
@@ -1482,6 +3373,10 @@ impl App {
             Some(Checkpoint::Rake) => startup_events = game.debug_prepare_rake(),
             Some(Checkpoint::BloverChomper) => game.debug_prepare_blover_chomper(),
             Some(Checkpoint::HypnoJackbox) => game.debug_prepare_hypno_jackbox(),
+            Some(Checkpoint::JackboxAudio) => startup_events = game.debug_prepare_jackbox_audio(),
+            Some(Checkpoint::JackboxBoingAudio) => {
+                startup_events = game.debug_prepare_jackbox_boing()
+            }
             Some(Checkpoint::CobCannon) => game.debug_prepare_cob_cannon(),
             Some(Checkpoint::Portal) => startup_events = game.debug_prepare_portal(),
             Some(Checkpoint::GraveBuster) => game.debug_prepare_gravebuster(),
@@ -1490,6 +3385,10 @@ impl App {
             Some(Checkpoint::DolphinJump) => startup_events = game.debug_prepare_dolphin_jump(),
             Some(Checkpoint::PoolEntry) => startup_events = game.debug_prepare_pool_entry(),
             Some(Checkpoint::PoolMower) => startup_events = game.debug_prepare_pool_mower(),
+            Some(Checkpoint::GraveRumbleAudio) => {
+                startup_events = game.debug_prepare_gravestone_rumble()
+            }
+            Some(Checkpoint::LadderAudio) => startup_events = game.debug_prepare_ladder_audio(),
             Some(Checkpoint::Spikeweed) => game.debug_prepare_spikeweed(),
             Some(Checkpoint::Digger) => game.debug_prepare_digger(),
             Some(Checkpoint::Magnet) => game.debug_prepare_magnet(),
@@ -1499,16 +3398,23 @@ impl App {
             Some(Checkpoint::BalloonAppearance) => {
                 startup_events = game.debug_prepare_balloon_appearance()
             }
+            Some(Checkpoint::BalloonPopAudio) => {
+                startup_events = game.debug_prepare_balloon_pop_audio()
+            }
             Some(Checkpoint::PoleVault) => game.debug_prepare_pole_vault(),
             Some(Checkpoint::PogoBlock) => game.debug_prepare_pogo_block(),
             Some(Checkpoint::PogoBounce) => startup_events = game.debug_prepare_pogo_bounce(),
             Some(Checkpoint::UmbrellaDeflect) => game.debug_prepare_umbrella_deflect(),
+            Some(Checkpoint::Store) => game.debug_prepare_store(),
+            Some(Checkpoint::PauseMenu) => game.debug_prepare_pause_menu(),
             _ => {}
         }
+        let almanac_strings = load_lawn_strings(&resources);
         let mut app = Self {
             renderer: None,
             assets,
             resources,
+            reanim_catalog,
             audio,
             game,
             pending_input,
@@ -1519,12 +3425,38 @@ impl App {
             tutorial_page: 0,
             seed_chooser_selection: vec![false; 2],
             seed_chooser_scroll: 0,
+            garden_tool: GardenTool::WateringCan,
+            store_open: matches!(checkpoint, Some(Checkpoint::Store)),
+            options_open: matches!(checkpoint, Some(Checkpoint::Options)),
+            help_open: matches!(checkpoint, Some(Checkpoint::Help)),
+            almanac_open: matches!(checkpoint, Some(Checkpoint::Almanac)),
+            credits_open: matches!(checkpoint, Some(Checkpoint::Credits)),
+            credits_frame: 0,
+            credits_paused: false,
+            almanac_page: 0,
+            almanac_selected_plant: 0,
+            almanac_selected_zombie: 0,
+            almanac_strings,
+            almanac_loaded_descriptions: HashSet::new(),
+            seed_bank_cost_plants: HashMap::new(),
+            sun_count_asset_value: None,
+            progress_meter_asset_width: None,
+            options_music_volume: profile
+                .as_ref()
+                .map_or(100, |profile| profile.settings.music_volume_percent),
+            options_effects_volume: profile
+                .as_ref()
+                .map_or(100, |profile| profile.settings.effects_volume_percent),
             selected_mode: ModeKind::MiniGame,
             selected_level: 0,
+            debug_mode_select,
             fullscreen,
+            capture_path: None,
             startup_events,
+            visual_effects: Vec::new(),
             profile,
         };
+        app.apply_audio_settings();
         app.reset_seed_chooser_selection();
         app
     }
@@ -1560,6 +3492,10 @@ impl App {
                 return;
             }
         };
+        self.ensure_almanac_description_asset(true);
+        self.ensure_almanac_description_asset(false);
+        self.ensure_board_hud_assets();
+        self.ensure_board_progress_asset();
         for asset in self.assets.drain(..) {
             if let Err(error) = renderer.add_image(asset) {
                 tracing::error!(%error, "GPU image upload failed");
@@ -1571,7 +3507,13 @@ impl App {
         self.renderer = Some(renderer);
         self.last_update = Some(Instant::now());
         let startup_events = std::mem::take(&mut self.startup_events);
+        let startup_tick = self.game.state().tick;
+        let startup_anchors = BoardVisualAnchors::from_state(self.game.state());
+        self.record_visual_events(startup_tick, &startup_events, &startup_anchors);
         self.play_audio(0, &startup_events);
+        if self.credits_open {
+            self.play_music_resource("sounds/ZombiesOnYourLawn.ogg");
+        }
     }
 
     fn title_start_hovered(&self) -> bool {
@@ -1591,10 +3533,161 @@ impl App {
         .is_some_and(|(x, y)| title_start_contains(x, y))
     }
 
+    fn can_open_store(&self) -> bool {
+        self.game.state().adventure_finished
+            || self
+                .profile
+                .as_ref()
+                .is_some_and(|profile| profile.adventure_level >= 25)
+    }
+
+    fn can_open_almanac(&self) -> bool {
+        self.game.state().adventure_finished
+            || self
+                .profile
+                .as_ref()
+                .is_some_and(|profile| profile.adventure_level >= 15)
+    }
+
+    fn can_open_mode(&self, mode: ModeKind) -> bool {
+        if self.debug_mode_select {
+            return true;
+        }
+        mode_is_unlocked(
+            mode,
+            self.game.state().adventure_finished,
+            self.profile
+                .as_ref()
+                .map_or(0, |profile| profile.adventure_level),
+            self.game.state().unlocked_modes,
+        )
+    }
+
+    fn apply_audio_settings(&mut self) {
+        if let Some(audio) = &mut self.audio {
+            audio.set_volume(
+                AudioKind::Music,
+                volume_percent_to_decibels(self.options_music_volume),
+            );
+            audio.set_volume(
+                AudioKind::Effect,
+                volume_percent_to_decibels(self.options_effects_volume),
+            );
+        }
+    }
+
+    fn sync_profile_settings(&mut self) {
+        if let Some(profile) = &mut self.profile {
+            profile.settings.music_volume_percent = self.options_music_volume;
+            profile.settings.effects_volume_percent = self.options_effects_volume;
+            profile.settings.fullscreen = self.fullscreen;
+        }
+    }
+
+    fn close_options(&mut self) {
+        self.sync_profile_settings();
+        self.options_open = false;
+    }
+
+    fn set_options_volume(&mut self, kind: AudioKind, x: f32) {
+        let value = (((x - 387.0) / 113.0) * 100.0).round().clamp(0.0, 100.0) as u8;
+        match kind {
+            AudioKind::Music => self.options_music_volume = value,
+            AudioKind::Effect => self.options_effects_volume = value,
+        }
+        self.apply_audio_settings();
+        self.sync_profile_settings();
+    }
+
     fn handle_key(&mut self, event_loop: &ActiveEventLoop, key: PhysicalKey) {
         let PhysicalKey::Code(key) = key else {
             return;
         };
+
+        if self.almanac_open {
+            match key {
+                KeyCode::Escape | KeyCode::Enter => self.almanac_open = false,
+                KeyCode::F11 => self.toggle_fullscreen(),
+                _ => {}
+            }
+            return;
+        }
+        if self.help_open {
+            match key {
+                KeyCode::Escape | KeyCode::Enter | KeyCode::Space => self.help_open = false,
+                KeyCode::F11 => self.toggle_fullscreen(),
+                _ => {}
+            }
+            return;
+        }
+        if self.options_open {
+            match key {
+                KeyCode::Escape | KeyCode::Enter => self.close_options(),
+                KeyCode::F11 => self.toggle_fullscreen(),
+                _ => {}
+            }
+            return;
+        }
+        if self.store_open {
+            match key {
+                KeyCode::Escape => self.store_open = false,
+                KeyCode::F11 => self.toggle_fullscreen(),
+                KeyCode::Digit1 => self.purchase_store_slot(0),
+                KeyCode::Digit2 => self.purchase_store_slot(1),
+                KeyCode::Digit3 => self.purchase_store_slot(2),
+                KeyCode::Digit4 => self.purchase_store_slot(3),
+                KeyCode::Digit5 => self.purchase_store_slot(4),
+                _ => {}
+            }
+            return;
+        }
+        if is_board_scene(self.game.state().scene) && self.game.state().paused {
+            match key {
+                KeyCode::Escape | KeyCode::Enter | KeyCode::Space => {
+                    self.pending_input.push(InputAction::Resume)
+                }
+                KeyCode::F11 => self.toggle_fullscreen(),
+                _ => {}
+            }
+            return;
+        }
+        if self.game.state().scene == SceneKind::GameOver {
+            if game_lost_cutscene_active(self.game.state().game_lost_cutscene_time) {
+                if key == KeyCode::F11 {
+                    self.toggle_fullscreen();
+                }
+                return;
+            }
+            match key {
+                KeyCode::Enter | KeyCode::Space | KeyCode::KeyR => {
+                    self.pending_input.push(InputAction::Restart)
+                }
+                KeyCode::Escape => self.start_scene(SceneKind::AdventureSelect),
+                KeyCode::F11 => self.toggle_fullscreen(),
+                _ => {}
+            }
+            return;
+        }
+        if self.credits_open {
+            match key {
+                KeyCode::Enter | KeyCode::Space => self.credits_paused = !self.credits_paused,
+                KeyCode::KeyR => self.restart_credits(),
+                KeyCode::Escape => self.start_scene(SceneKind::AdventureSelect),
+                KeyCode::F11 => self.toggle_fullscreen(),
+                _ => {}
+            }
+            return;
+        }
+        if self.game.state().scene == SceneKind::Complete {
+            match key {
+                KeyCode::Enter | KeyCode::Space => self.continue_after_completion(),
+                KeyCode::KeyR => self.pending_input.push(InputAction::Restart),
+                KeyCode::Escape => self.start_scene(SceneKind::AdventureSelect),
+                KeyCode::F11 => self.toggle_fullscreen(),
+                _ => {}
+            }
+            return;
+        }
 
         match key {
             KeyCode::Escape if self.game.state().scene == SceneKind::ModeSelect => {
@@ -1610,12 +3703,22 @@ impl App {
                 SceneKind::AdventureSelect => self.start_scene(SceneKind::AdventureTutorial),
                 SceneKind::AdventureTutorial => self.advance_tutorial(),
                 SceneKind::ModeSelect => self.start_selected_mode(),
-                SceneKind::Complete => self.continue_after_completion(),
+                SceneKind::SeedChooser
+                    if self.game.state().challenge.kind == ChallengeKind::LastStand =>
+                {
+                    self.confirm_last_stand_selection()
+                }
                 SceneKind::SeedChooser if self.game.state().mode == ModeKind::Survival => {
                     self.pending_input.push(InputAction::ConfirmSurvivalRepick)
                 }
                 SceneKind::SeedChooser => self.confirm_adventure_selection(),
                 SceneKind::Garden => self.pending_input.push(InputAction::GardenLeave),
+                _ if self.game.state().challenge.kind == ChallengeKind::LastStand
+                    && is_board_scene(self.game.state().scene)
+                    && !self.game.state().challenge.last_stand_onslaught =>
+                {
+                    self.pending_input.push(InputAction::StartLastStand)
+                }
                 _ => {}
             },
             KeyCode::ArrowLeft if self.game.state().scene == SceneKind::ModeSelect => {
@@ -1676,6 +3779,18 @@ impl App {
             }
             KeyCode::Digit9 if self.game.state().scene == SceneKind::SeedChooser => {
                 self.toggle_seed_choice(8);
+            }
+            KeyCode::KeyW if self.game.state().scene == SceneKind::Garden => {
+                self.garden_tool = GardenTool::WateringCan;
+            }
+            KeyCode::KeyF if self.game.state().scene == SceneKind::Garden => {
+                self.garden_tool = GardenTool::Fertilizer;
+            }
+            KeyCode::KeyB if self.game.state().scene == SceneKind::Garden => {
+                self.garden_tool = GardenTool::BugSpray;
+            }
+            KeyCode::KeyP if self.game.state().scene == SceneKind::Garden => {
+                self.garden_tool = GardenTool::Phonograph;
             }
             KeyCode::KeyH if self.game.state().scene == SceneKind::Garden => {
                 self.pending_input
@@ -1798,6 +3913,12 @@ impl App {
         });
     }
 
+    fn purchase_store_slot(&mut self, slot: usize) {
+        if let Some(item) = store_item_at_slot(slot) {
+            self.pending_input.push(InputAction::StorePurchase { item });
+        }
+    }
+
     fn start_scene(&mut self, scene: SceneKind) {
         let mut game = if self.game.state().mode == ModeKind::Adventure
             && matches!(scene, SceneKind::Day | SceneKind::SeedChooser)
@@ -1808,6 +3929,17 @@ impl App {
         };
         carry_profile(&self.game, &mut game, self.profile.as_mut());
         self.game = game;
+        self.reset_board_hud_assets();
+        self.store_open = false;
+        self.options_open = false;
+        self.help_open = false;
+        self.almanac_open = false;
+        self.credits_open = false;
+        self.credits_frame = 0;
+        self.credits_paused = false;
+        self.almanac_page = 0;
+        self.almanac_selected_plant = 0;
+        self.almanac_selected_zombie = 0;
         self.tutorial_page = 0;
         self.pending_input.clear();
         self.simulation_accumulator = Duration::ZERO;
@@ -1818,23 +3950,44 @@ impl App {
     }
 
     fn continue_after_completion(&mut self) {
+        if self.game.state().mode == ModeKind::Adventure
+            && self.game.state().level == 50
+            && self.game.state().adventure_first_time
+        {
+            self.credits_open = true;
+            self.credits_frame = 0;
+            self.credits_paused = false;
+            self.pending_input.clear();
+            self.simulation_accumulator = Duration::ZERO;
+            self.last_update = Some(Instant::now());
+            self.play_music_resource("sounds/ZombiesOnYourLawn.ogg");
+            return;
+        }
         if self.game.state().mode != ModeKind::Adventure || self.game.state().level >= 50 {
             self.start_scene(SceneKind::AdventureSelect);
             return;
         }
 
         let next_level = self.game.state().level.saturating_add(1);
-        let (first_time, packet_upgrades) = if let Some(profile) = self.profile.as_mut() {
-            self.game.update_profile(profile);
-            (profile.adventure_rounds == 0, profile.packet_upgrades)
-        } else {
-            (true, 0)
-        };
-        let mut game = Game::new_adventure(0, next_level, first_time, packet_upgrades);
+        let (first_time, packet_upgrades, stinky_purchased) =
+            if let Some(profile) = self.profile.as_mut() {
+                self.game.update_profile(profile);
+                (
+                    profile.adventure_rounds == 0,
+                    profile.packet_upgrades,
+                    profile.stinky_purchased,
+                )
+            } else {
+                (true, 0, false)
+            };
+        let mut game =
+            Game::new_adventure(0, next_level, first_time, packet_upgrades, stinky_purchased);
+        game.carry_almanac_defeats_from(&self.game);
         if let Some(profile) = self.profile.as_ref() {
             game.apply_profile(profile);
         }
         self.game = game;
+        self.reset_board_hud_assets();
         self.tutorial_page = 0;
         self.pending_input.clear();
         self.simulation_accumulator = Duration::ZERO;
@@ -1844,7 +3997,20 @@ impl App {
         self.selected_level = 0;
     }
 
+    fn restart_credits(&mut self) {
+        self.credits_open = true;
+        self.credits_frame = 0;
+        self.credits_paused = false;
+        self.pending_input.clear();
+        self.simulation_accumulator = Duration::ZERO;
+        self.last_update = Some(Instant::now());
+        self.play_music_resource("sounds/ZombiesOnYourLawn.ogg");
+    }
+
     fn start_mode_select(&mut self, mode: ModeKind) {
+        if !self.can_open_mode(mode) {
+            return;
+        }
         let mut game = Game::new(0, SceneKind::ModeSelect);
         carry_profile(&self.game, &mut game, self.profile.as_mut());
         self.game = game;
@@ -1856,15 +4022,19 @@ impl App {
     }
 
     fn start_selected_mode(&mut self) {
-        if mode_level_name(self.selected_mode, self.selected_level).is_none() {
+        if !self.can_open_mode(self.selected_mode)
+            || mode_level_name(self.selected_mode, self.selected_level).is_none()
+        {
             return;
         }
         let mut game = Game::new_mode(0, self.selected_mode, self.selected_level);
         carry_profile(&self.game, &mut game, self.profile.as_mut());
         self.game = game;
+        self.reset_board_hud_assets();
         self.pending_input.clear();
         self.simulation_accumulator = Duration::ZERO;
         self.last_update = Some(Instant::now());
+        self.reset_seed_chooser_selection();
     }
 
     fn select_mode_level(&mut self, delta: i32) {
@@ -1887,13 +4057,25 @@ impl App {
         }
     }
 
+    fn seed_chooser_has_seven_rows(&self) -> bool {
+        let state = self.game.state();
+        seed_chooser_has_seven_rows_at(
+            state.adventure_finished || state.challenge.kind == ChallengeKind::LastStand,
+            &state.unlocked_plants,
+        )
+    }
+
     fn reset_seed_chooser_selection(&mut self) {
         let count = if self.game.state().scene == SceneKind::SeedChooser {
-            adventure_seed_choices(
-                self.game.state().level,
-                self.game.state().adventure_first_time,
-            )
-            .len()
+            if self.game.state().challenge.kind == ChallengeKind::LastStand {
+                last_stand_seed_choices().len()
+            } else {
+                adventure_seed_choices(
+                    self.game.state().level,
+                    self.game.state().adventure_first_time,
+                )
+                .len()
+            }
         } else {
             2
         };
@@ -1923,6 +4105,22 @@ impl App {
         {
             self.pending_input
                 .push(InputAction::ConfirmAdventureSeeds { seeds: selected });
+        }
+    }
+
+    fn confirm_last_stand_selection(&mut self) {
+        if self.game.state().challenge.kind != ChallengeKind::LastStand {
+            return;
+        }
+        let choices = last_stand_seed_choices();
+        let selected = choices
+            .iter()
+            .zip(&self.seed_chooser_selection)
+            .filter_map(|(plant, selected)| (*selected).then_some(*plant))
+            .collect::<Vec<_>>();
+        if selected.len() == usize::from(last_stand_seed_slots(self.game.state().packet_upgrades)) {
+            self.pending_input
+                .push(InputAction::ConfirmLastStandSeeds { seeds: selected });
         }
     }
 
@@ -1992,12 +4190,9 @@ impl App {
             && scene != SceneKind::ModeSelect
             && scene != SceneKind::Garden
             && scene != SceneKind::Complete
+            && scene != SceneKind::GameOver
             && !is_board_scene(scene)
         {
-            return;
-        }
-        if scene == SceneKind::Title {
-            self.start_scene(SceneKind::AdventureSelect);
             return;
         }
         let Some(position) = self.cursor_position else {
@@ -2014,6 +4209,111 @@ impl App {
         }) else {
             return;
         };
+        if scene == SceneKind::Title {
+            if title_mouse_starts(button, x, y) {
+                self.start_scene(SceneKind::AdventureSelect);
+            }
+            return;
+        }
+        if self.almanac_open {
+            if button == MouseButton::Left {
+                if almanac_close_contains(x, y) {
+                    self.almanac_open = false;
+                } else if almanac_index_contains(x, y) {
+                    self.almanac_page = 0;
+                } else if self.almanac_page == 0 && almanac_plant_contains(x, y) {
+                    self.almanac_page = 1;
+                    self.almanac_selected_plant = 0;
+                } else if self.almanac_page == 0 && almanac_zombie_contains(x, y) {
+                    self.almanac_page = 2;
+                    self.almanac_selected_zombie = 0;
+                } else if self.almanac_page == 1
+                    && let Some(slot) = almanac_plant_slot_at(x, y)
+                    && let Some(plant_type) = almanac_plant_type(slot)
+                    && self.almanac_plant_available(plant_type)
+                {
+                    self.almanac_selected_plant = slot;
+                    self.ensure_almanac_description_asset(true);
+                } else if self.almanac_page == 2
+                    && let Some(index) = almanac_zombie_index_at(x, y)
+                    && let Some(zombie_type) = almanac_zombie_type(index)
+                    && self.almanac_zombie_is_shown(zombie_type)
+                {
+                    self.almanac_selected_zombie = index;
+                    self.ensure_almanac_description_asset(false);
+                }
+            }
+            return;
+        }
+        if self.help_open {
+            if button == MouseButton::Left && help_button_contains(x, y) {
+                self.help_open = false;
+            }
+            return;
+        }
+        if self.options_open {
+            if button == MouseButton::Left
+                && (215.0..585.0).contains(&x)
+                && (420.0..545.0).contains(&y)
+            {
+                self.close_options();
+            } else if button == MouseButton::Left && (375.0..540.0).contains(&x) {
+                if (155.0..215.0).contains(&y) {
+                    self.set_options_volume(AudioKind::Music, x);
+                } else if (205.0..270.0).contains(&y) {
+                    self.set_options_volume(AudioKind::Effect, x);
+                }
+            } else if button == MouseButton::Left
+                && (450.0..535.0).contains(&x)
+                && (235.0..315.0).contains(&y)
+            {
+                self.toggle_fullscreen();
+                self.sync_profile_settings();
+            }
+            return;
+        }
+        if self.store_open {
+            if button == MouseButton::Left
+                && (315.0..500.0).contains(&x)
+                && (525.0..595.0).contains(&y)
+            {
+                self.store_open = false;
+            } else if button == MouseButton::Left
+                && let Some(item) = store_item_at(x, y)
+            {
+                self.pending_input.push(InputAction::StorePurchase { item });
+            }
+            return;
+        }
+        if is_board_scene(scene) && self.game.state().paused {
+            if button == MouseButton::Left {
+                self.pending_input.push(InputAction::Resume);
+            }
+            return;
+        }
+        if scene == SceneKind::GameOver {
+            if game_lost_cutscene_active(self.game.state().game_lost_cutscene_time) {
+                return;
+            }
+            if button == MouseButton::Left {
+                if game_over_main_menu_contains(x, y) {
+                    self.start_scene(SceneKind::AdventureSelect);
+                } else if game_over_try_again_contains(x, y) {
+                    self.pending_input.push(InputAction::Restart);
+                }
+            }
+            return;
+        }
+        if self.credits_open {
+            if button == MouseButton::Left && credits_controls_visible(self.credits_frame) {
+                if credits_replay_contains(x, y) {
+                    self.restart_credits();
+                } else if credits_main_menu_contains(x, y) {
+                    self.start_scene(SceneKind::AdventureSelect);
+                }
+            }
+            return;
+        }
         if scene == SceneKind::AdventureSelect {
             if (400.0..730.0).contains(&x) && (55.0..175.0).contains(&y) {
                 self.start_scene(SceneKind::AdventureTutorial);
@@ -2025,6 +4325,26 @@ impl App {
                 self.start_mode_select(ModeKind::Vasebreaker);
             } else if (150.0..330.0).contains(&x) && (385.0..485.0).contains(&y) {
                 self.start_mode_select(ModeKind::ZenGarden);
+            } else if button == MouseButton::Left
+                && (390.0..540.0).contains(&x)
+                && (450.0..570.0).contains(&y)
+                && self.can_open_store()
+            {
+                self.store_open = true;
+            } else if button == MouseButton::Left
+                && (320.0..390.0).contains(&x)
+                && (420.0..530.0).contains(&y)
+                && self.can_open_almanac()
+            {
+                self.almanac_open = true;
+                self.almanac_page = 0;
+            } else if button == MouseButton::Left
+                && (535.0..685.0).contains(&x)
+                && (445.0..570.0).contains(&y)
+            {
+                self.options_open = true;
+            } else if button == MouseButton::Left && help_selector_contains(x, y) {
+                self.help_open = true;
             }
             return;
         }
@@ -2063,36 +4383,90 @@ impl App {
             return;
         }
         if scene == SceneKind::SeedChooser {
-            if (20.0..450.0).contains(&x) && (115.0..560.0).contains(&y) {
-                let column = ((x - 22.0) / 53.0).floor() as usize;
-                let row = ((y - 128.0) / 73.0).floor() as usize + self.seed_chooser_scroll;
-                let index = row.saturating_mul(8).saturating_add(column);
+            if let Some(index) = seed_chooser_slot_at(
+                x,
+                y,
+                self.seed_chooser_scroll,
+                self.seed_chooser_has_seven_rows(),
+            ) {
                 self.toggle_seed_choice(index);
                 return;
             }
             if (322.0..478.0).contains(&x) && (535.0..577.0).contains(&y) {
-                self.confirm_adventure_selection();
+                if self.game.state().challenge.kind == ChallengeKind::LastStand {
+                    self.confirm_last_stand_selection();
+                } else {
+                    self.confirm_adventure_selection();
+                }
             }
             return;
         }
         if scene == SceneKind::Complete {
             if button == MouseButton::Left {
-                self.continue_after_completion();
+                if complete_main_menu_contains(x, y) {
+                    self.start_scene(SceneKind::AdventureSelect);
+                } else if complete_continue_contains(x, y) {
+                    self.continue_after_completion();
+                }
             }
             return;
         }
         if scene == SceneKind::Garden {
-            if button == MouseButton::Left {
-                if self.game.state().garden_service == Some(GardenServiceKind::TreeOfWisdom) {
-                    self.pending_input.push(InputAction::GardenFeedTree);
+            if button == MouseButton::Left && (510.0..590.0).contains(&y) {
+                self.garden_tool = if (80.0..160.0).contains(&x) {
+                    GardenTool::WateringCan
+                } else if (240.0..320.0).contains(&x) {
+                    GardenTool::Fertilizer
+                } else if (400.0..480.0).contains(&x) {
+                    GardenTool::BugSpray
+                } else if (560.0..640.0).contains(&x) {
+                    GardenTool::Phonograph
                 } else {
-                    self.pending_input
-                        .push(InputAction::GardenWater { plant: 0 });
-                }
-            } else if button == MouseButton::Right {
-                self.pending_input
-                    .push(InputAction::GardenFertilize { plant: 0 });
+                    self.garden_tool
+                };
+                return;
             }
+            let plant_hit =
+                self.game
+                    .state()
+                    .garden
+                    .plants
+                    .iter()
+                    .enumerate()
+                    .find_map(|(index, _)| {
+                        let center_x = 250.0 + index as f32 * 120.0;
+                        ((x - center_x).abs() <= 40.0 && (y - 300.0).abs() <= 40.0)
+                            .then(|| u8::try_from(index).ok())
+                            .flatten()
+                    });
+            if button == MouseButton::Left
+                && self.game.state().garden_service == Some(GardenServiceKind::Aquarium)
+                && plant_hit.is_none()
+            {
+                self.pending_input.push(InputAction::GardenTapGlass);
+            } else if button == MouseButton::Left
+                && self.game.state().garden_service == Some(GardenServiceKind::TreeOfWisdom)
+            {
+                self.pending_input.push(InputAction::GardenFeedTree);
+            } else if let Some(plant) = plant_hit {
+                self.pending_input.push(InputAction::GardenUseTool {
+                    plant,
+                    tool: if button == MouseButton::Right {
+                        GardenTool::Fertilizer
+                    } else {
+                        self.garden_tool
+                    },
+                });
+            }
+            return;
+        }
+        if self.game.state().challenge.kind == ChallengeKind::LastStand
+            && !self.game.state().challenge.last_stand_onslaught
+            && button == MouseButton::Left
+            && (270.0..530.0).contains(&x)
+            && (550.0..620.0).contains(&y)
+        {
+            self.pending_input.push(InputAction::StartLastStand);
             return;
         }
         if self.game.state().challenge.kind == ChallengeKind::SlotMachine
@@ -2132,6 +4506,13 @@ impl App {
                     .push(InputAction::CollectCoin { entity: coin.id });
                 return;
             }
+        }
+        if button == MouseButton::Left
+            && is_board_scene(scene)
+            && let Some(slot) = board_seed_packet_at(self.game.state(), x, y)
+        {
+            self.pending_input.push(InputAction::SelectSeed { slot });
+            return;
         }
         if self.game.state().challenge.kind == ChallengeKind::Zombiquarium
             && button == MouseButton::Left
@@ -2221,14 +4602,92 @@ impl App {
             .min(Duration::from_millis(250));
 
         while self.simulation_accumulator >= SIMULATION_STEP {
+            if self.credits_open {
+                if !self.credits_paused {
+                    self.credits_frame = self.credits_frame.saturating_add(1);
+                }
+                self.pending_input.clear();
+                self.simulation_accumulator -= SIMULATION_STEP;
+                continue;
+            }
             let input = InputFrame {
                 actions: std::mem::take(&mut self.pending_input),
             };
             let tick = self.game.state().tick;
+            let visual_anchors = BoardVisualAnchors::from_state(self.game.state());
             let events = self.game.advance(input);
+            self.ensure_board_hud_assets();
+            self.ensure_board_progress_asset();
+            self.record_visual_events(tick, &events, &visual_anchors);
             self.play_audio(tick, &events);
             self.simulation_accumulator -= SIMULATION_STEP;
         }
+    }
+
+    fn record_visual_events(
+        &mut self,
+        tick: u64,
+        events: &[GameEvent],
+        anchors: &BoardVisualAnchors,
+    ) {
+        let current_anchors = BoardVisualAnchors::from_state(self.game.state());
+        let scene = self.game.state().scene;
+        for event in events {
+            match event {
+                GameEvent::PlantSpecialTriggered {
+                    entity,
+                    plant_type: PlantType::Other(20),
+                } => {
+                    let Some(anchor) = anchors
+                        .plants
+                        .get(entity)
+                        .or_else(|| current_anchors.plants.get(entity))
+                    else {
+                        continue;
+                    };
+                    for (x, y) in jalapeno_fire_effect_positions(scene, anchor.row) {
+                        self.visual_effects.push(BoardFireEffect {
+                            x,
+                            y,
+                            start_tick: tick,
+                            duration: JALAPENO_FIRE_DURATION,
+                            z: 11,
+                        });
+                    }
+                    tracing::info!(
+                        tick,
+                        row = anchor.row,
+                        effects = 12,
+                        "jalapeno fire reanimations queued"
+                    );
+                }
+                GameEvent::ProjectileImpact {
+                    projectile,
+                    kind: ProjectileImpactSound::Ignite,
+                    ..
+                } => {
+                    let Some(anchor) = anchors
+                        .projectiles
+                        .get(projectile)
+                        .or_else(|| current_anchors.projectiles.get(projectile))
+                    else {
+                        continue;
+                    };
+                    self.visual_effects.push(BoardFireEffect {
+                        x: anchor.x + 38.0,
+                        y: anchor.y - 20.0,
+                        start_tick: tick,
+                        duration: PROJECTILE_FIRE_DURATION,
+                        z: 13,
+                    });
+                    tracing::info!(tick, projectile, "projectile fire reanimation queued");
+                }
+                _ => {}
+            }
+        }
+        let current_tick = self.game.state().tick;
+        self.visual_effects
+            .retain(|effect| current_tick.saturating_sub(effect.start_tick) < effect.duration);
     }
 
     fn play_audio(&mut self, tick: u64, events: &[GameEvent]) {
@@ -2246,6 +4705,19 @@ impl App {
                         Err(error) => tracing::warn!(%error, path, "audio playback failed"),
                     }
                 }
+            }
+        }
+    }
+
+    fn play_music_resource(&mut self, path: &str) {
+        let Some(bytes) = self.resources.read(path).ok() else {
+            tracing::debug!(path, "music resource is unavailable");
+            return;
+        };
+        if let Some(audio) = &mut self.audio {
+            match audio.play_bytes(AudioKind::Music, path, bytes) {
+                Ok(()) => tracing::info!(path, "music playback started"),
+                Err(error) => tracing::warn!(%error, path, "music playback failed"),
             }
         }
     }
@@ -2348,6 +4820,1644 @@ impl App {
                 alpha: 1.0,
             });
         }
+    }
+
+    fn render_store(&self, frame: &mut RenderFrame) {
+        frame.sprites.push(SpriteCommand {
+            resource_id: STORE_BACKGROUND_IMAGE_ID,
+            x: 0.0,
+            y: 0.0,
+            z: 30,
+            scale: 1.0,
+            alpha: 1.0,
+        });
+        frame.sprites.push(SpriteCommand {
+            resource_id: STORE_CAR_IMAGE_ID,
+            x: 98.0,
+            y: 300.0,
+            z: 31,
+            scale: 1.0,
+            alpha: 1.0,
+        });
+        frame.sprites.push(SpriteCommand {
+            resource_id: STORE_SIGN_IMAGE_ID,
+            x: 144.0,
+            y: 8.0,
+            z: 32,
+            scale: 0.82,
+            alpha: 1.0,
+        });
+
+        for &(item, x, y) in &STORE_ITEM_LAYOUT {
+            let sold_out = store_item_sold_out(self.game.state(), item);
+            let affordable =
+                self.game.state().coins >= store_item_cost(item, self.game.state().packet_upgrades);
+            let alpha = if sold_out {
+                0.35
+            } else if affordable {
+                1.0
+            } else {
+                0.55
+            };
+            let (resource_id, scale) = store_item_image(item);
+            frame.sprites.push(SpriteCommand {
+                resource_id,
+                x,
+                y,
+                z: 33,
+                scale,
+                alpha,
+            });
+            frame.sprites.push(SpriteCommand {
+                resource_id: store_item_name_image(item),
+                x: x - 14.0,
+                y: y + 76.0,
+                z: 34,
+                scale: 0.8,
+                alpha,
+            });
+            frame.sprites.push(SpriteCommand {
+                resource_id: STORE_PRICE_TAG_IMAGE_ID,
+                x: x + 4.0,
+                y: y + 101.0,
+                z: 34,
+                scale: 0.55,
+                alpha,
+            });
+            frame.sprites.push(SpriteCommand {
+                resource_id: store_item_price_image(item, self.game.state().packet_upgrades),
+                x: x + 22.0,
+                y: y + 108.0,
+                z: 35,
+                scale: 0.65,
+                alpha,
+            });
+        }
+
+        frame.sprites.push(SpriteCommand {
+            resource_id: STORE_MAIN_MENU_BUTTON_IMAGE_ID,
+            x: 318.0,
+            y: 540.0,
+            z: 36,
+            scale: 1.0,
+            alpha: 1.0,
+        });
+        frame.sprites.push(SpriteCommand {
+            resource_id: STORE_BACK_TEXT_IMAGE_ID,
+            x: 350.0,
+            y: 550.0,
+            z: 37,
+            scale: 0.8,
+            alpha: 1.0,
+        });
+    }
+
+    fn render_dialog_shell(frame: &mut RenderFrame) {
+        for (resource_id, x, y) in [
+            (PAUSE_DIALOG_TOP_LEFT_IMAGE_ID, 240.0, 145.0),
+            (PAUSE_DIALOG_TOP_MIDDLE_IMAGE_ID, 347.0, 145.0),
+            (PAUSE_DIALOG_TOP_RIGHT_IMAGE_ID, 440.0, 145.0),
+            (PAUSE_DIALOG_HEADER_IMAGE_ID, 306.0, 145.0),
+            (PAUSE_DIALOG_CENTER_LEFT_IMAGE_ID, 240.0, 209.0),
+            (PAUSE_DIALOG_CENTER_MIDDLE_IMAGE_ID, 347.0, 209.0),
+            (PAUSE_DIALOG_CENTER_RIGHT_IMAGE_ID, 440.0, 209.0),
+            (PAUSE_DIALOG_BOTTOM_LEFT_IMAGE_ID, 240.0, 263.0),
+            (PAUSE_DIALOG_BOTTOM_MIDDLE_IMAGE_ID, 347.0, 263.0),
+            (PAUSE_DIALOG_BOTTOM_RIGHT_IMAGE_ID, 440.0, 263.0),
+        ] {
+            frame.sprites.push(SpriteCommand {
+                resource_id,
+                x,
+                y,
+                z: 30,
+                scale: 1.0,
+                alpha: 1.0,
+            });
+        }
+    }
+
+    fn render_pause(&self, frame: &mut RenderFrame) {
+        Self::render_dialog_shell(frame);
+        frame.sprites.push(SpriteCommand {
+            resource_id: PAUSE_HEADER_TEXT_IMAGE_ID,
+            x: 278.0,
+            y: 164.0,
+            z: 31,
+            scale: 0.8,
+            alpha: 1.0,
+        });
+        frame.sprites.push(SpriteCommand {
+            resource_id: PAUSE_BODY_TEXT_IMAGE_ID,
+            x: 278.0,
+            y: 224.0,
+            z: 31,
+            scale: 0.75,
+            alpha: 1.0,
+        });
+        frame.sprites.push(SpriteCommand {
+            resource_id: PAUSE_RESUME_BUTTON_IMAGE_ID,
+            x: 220.0,
+            y: 388.0,
+            z: 32,
+            scale: 1.0,
+            alpha: 1.0,
+        });
+        frame.sprites.push(SpriteCommand {
+            resource_id: PAUSE_RESUME_TEXT_IMAGE_ID,
+            x: 300.0,
+            y: 424.0,
+            z: 33,
+            scale: 0.9,
+            alpha: 1.0,
+        });
+    }
+
+    fn render_game_over(&self, frame: &mut RenderFrame) {
+        let lost_time = self.game.state().game_lost_cutscene_time;
+        if lost_time.is_some_and(|time| time >= GAME_LOST_GRAPHIC_START) {
+            frame.sprites.push(SpriteCommand {
+                resource_id: SCREEN_PIXEL_IMAGE_ID,
+                x: 0.0,
+                y: 0.0,
+                z: 20,
+                scale: 800.0,
+                alpha: 1.0,
+            });
+        }
+        if game_lost_cutscene_active(lost_time) {
+            if lost_time.is_some_and(|time| time >= GAME_LOST_GRAPHIC_START) {
+                frame.sprites.push(SpriteCommand {
+                    resource_id: ZOMBIES_WON_IMAGE_ID,
+                    x: 118.0,
+                    y: 66.0,
+                    z: 21,
+                    scale: 1.0,
+                    alpha: 1.0,
+                });
+            }
+            return;
+        }
+        frame.sprites.push(SpriteCommand {
+            resource_id: SCREEN_PIXEL_IMAGE_ID,
+            x: 0.0,
+            y: 0.0,
+            z: 20,
+            scale: 800.0,
+            alpha: 0.65,
+        });
+        Self::render_dialog_shell(frame);
+        frame.sprites.push(SpriteCommand {
+            resource_id: GAME_OVER_HEADER_TEXT_IMAGE_ID,
+            x: 278.0,
+            y: 164.0,
+            z: 31,
+            scale: 0.8,
+            alpha: 1.0,
+        });
+        frame.sprites.push(SpriteCommand {
+            resource_id: GAME_OVER_BODY_TEXT_IMAGE_ID,
+            x: 278.0,
+            y: 224.0,
+            z: 31,
+            scale: 0.75,
+            alpha: 1.0,
+        });
+        frame.sprites.push(SpriteCommand {
+            resource_id: PAUSE_RESUME_BUTTON_IMAGE_ID,
+            x: 220.0,
+            y: 388.0,
+            z: 32,
+            scale: 1.0,
+            alpha: 1.0,
+        });
+        frame.sprites.push(SpriteCommand {
+            resource_id: GAME_OVER_TRY_AGAIN_TEXT_IMAGE_ID,
+            x: 300.0,
+            y: 424.0,
+            z: 33,
+            scale: 0.9,
+            alpha: 1.0,
+        });
+        frame.sprites.push(SpriteCommand {
+            resource_id: ALMANAC_INDEX_BUTTON_IMAGE_ID,
+            x: 595.0,
+            y: 145.0,
+            z: 32,
+            scale: 1.0,
+            alpha: 1.0,
+        });
+        frame.sprites.push(SpriteCommand {
+            resource_id: GAME_OVER_MAIN_MENU_TEXT_IMAGE_ID,
+            x: 595.0,
+            y: 145.0,
+            z: 33,
+            scale: 1.0,
+            alpha: 1.0,
+        });
+    }
+
+    fn render_credits(&self, frame: &mut RenderFrame) {
+        let (phase, phase_frame) = credits_phase_at(self.credits_frame);
+        if phase == 3 {
+            frame.sprites.push(SpriteCommand {
+                resource_id: SCREEN_PIXEL_IMAGE_ID,
+                x: 0.0,
+                y: 0.0,
+                z: 0,
+                scale: 800.0,
+                alpha: 1.0,
+            });
+            let scroll = credits_scroll_offset(self.credits_frame);
+            for (index, resource_id) in [
+                CREDITS_TITLE_TEXT_IMAGE_ID,
+                CREDITS_LINE1_TEXT_IMAGE_ID,
+                CREDITS_LINE2_TEXT_IMAGE_ID,
+                CREDITS_LINE3_TEXT_IMAGE_ID,
+                CREDITS_LINE4_TEXT_IMAGE_ID,
+                CREDITS_LINE5_TEXT_IMAGE_ID,
+                CREDITS_LINE6_TEXT_IMAGE_ID,
+            ]
+            .into_iter()
+            .enumerate()
+            {
+                frame.sprites.push(SpriteCommand {
+                    resource_id,
+                    x: if index == 0 { 140.0 } else { 40.0 },
+                    y: 560.0 + index as f32 * 62.0 - scroll,
+                    z: 2,
+                    scale: if index == 0 { 1.0 } else { 0.85 },
+                    alpha: 1.0,
+                });
+            }
+        } else {
+            frame.sprites.push(SpriteCommand {
+                resource_id: match phase {
+                    0 => DAY_BACKGROUND_IMAGE_ID,
+                    1 => POOL_BACKGROUND_IMAGE_ID,
+                    _ => NIGHT_BACKGROUND_IMAGE_ID,
+                },
+                x: 0.0,
+                y: 0.0,
+                z: 0,
+                scale: 1.0,
+                alpha: 1.0,
+            });
+            frame.sprites.push(SpriteCommand {
+                resource_id: CREDITS_STAGE_IMAGE_ID,
+                x: 248.0,
+                y: 335.0,
+                z: 1,
+                scale: 1.0,
+                alpha: 1.0,
+            });
+            frame.sprites.push(SpriteCommand {
+                resource_id: CREDITS_TITLE_TEXT_IMAGE_ID,
+                x: 140.0,
+                y: 24.0,
+                z: 5,
+                scale: 1.0,
+                alpha: 1.0,
+            });
+            let brain_x = 310.0 + (phase_frame * 0.035).sin() * 190.0;
+            let brain_y = 120.0 + (phase_frame * 0.05).sin() * 18.0;
+            frame.sprites.push(SpriteCommand {
+                resource_id: CREDITS_BIG_BRAIN_IMAGE_ID,
+                x: brain_x,
+                y: brain_y,
+                z: 4,
+                scale: 0.7,
+                alpha: 1.0,
+            });
+            let phase_asset = match phase {
+                0 => CREDITS_LINE1_TEXT_IMAGE_ID,
+                1 => CREDITS_LINE3_TEXT_IMAGE_ID,
+                _ => CREDITS_LINE5_TEXT_IMAGE_ID,
+            };
+            frame.sprites.push(SpriteCommand {
+                resource_id: phase_asset,
+                x: 40.0,
+                y: 220.0,
+                z: 5,
+                scale: 0.85,
+                alpha: 1.0,
+            });
+            frame.sprites.push(SpriteCommand {
+                resource_id: match phase {
+                    0 => CREDITS_LINE2_TEXT_IMAGE_ID,
+                    1 => CREDITS_ZOMBIE_NOTE_IMAGE_ID,
+                    _ => CREDITS_MTV_IMAGE_ID,
+                },
+                x: if phase == 1 { 130.0 } else { 270.0 },
+                y: if phase == 1 { 70.0 } else { 90.0 },
+                z: 3,
+                scale: if phase == 1 { 0.65 } else { 1.0 },
+                alpha: 1.0,
+            });
+            if phase == 2 {
+                frame.sprites.push(SpriteCommand {
+                    resource_id: CREDITS_WE_ARE_UNDEAD_IMAGE_ID,
+                    x: 80.0,
+                    y: 480.0,
+                    z: 3,
+                    scale: 0.8,
+                    alpha: 1.0,
+                });
+            }
+        }
+        if credits_controls_visible(self.credits_frame) {
+            frame.sprites.push(SpriteCommand {
+                resource_id: CREDITS_PLAY_BUTTON_IMAGE_ID,
+                x: 10.0,
+                y: 530.0,
+                z: 20,
+                scale: 1.0,
+                alpha: 1.0,
+            });
+            frame.sprites.push(SpriteCommand {
+                resource_id: CREDITS_REPLAY_TEXT_IMAGE_ID,
+                x: 42.0,
+                y: 550.0,
+                z: 21,
+                scale: 1.0,
+                alpha: 1.0,
+            });
+            frame.sprites.push(SpriteCommand {
+                resource_id: PAUSE_RESUME_BUTTON_IMAGE_ID,
+                x: 298.0,
+                y: 554.0,
+                z: 20,
+                scale: 1.0,
+                alpha: 1.0,
+            });
+            frame.sprites.push(SpriteCommand {
+                resource_id: CREDITS_MAIN_MENU_TEXT_IMAGE_ID,
+                x: 312.0,
+                y: 562.0,
+                z: 21,
+                scale: 1.0,
+                alpha: 1.0,
+            });
+        }
+    }
+
+    fn render_complete(&self, frame: &mut RenderFrame) {
+        if self.credits_open {
+            self.render_credits(frame);
+            return;
+        }
+        let reward = completion_award_coin(self.game.state());
+        let note = reward == Some(CoinType::Note);
+        frame.sprites.push(SpriteCommand {
+            resource_id: if note {
+                if matches!(self.game.state().level, 19 | 39) {
+                    NIGHT_BACKGROUND_IMAGE_ID
+                } else {
+                    DAY_BACKGROUND_IMAGE_ID
+                }
+            } else {
+                AWARD_SCREEN_BACKGROUND_IMAGE_ID
+            },
+            x: if note { -700.0 } else { 0.0 },
+            y: if note { -300.0 } else { 0.0 },
+            z: 0,
+            scale: if note { 2.0 } else { 1.0 },
+            alpha: 1.0,
+        });
+        if note {
+            frame.sprites.push(SpriteCommand {
+                resource_id: HELP_ZOMBIE_NOTE_IMAGE_ID,
+                x: 80.0,
+                y: 80.0,
+                z: 1,
+                scale: 1.0,
+                alpha: 1.0,
+            });
+            frame.sprites.push(SpriteCommand {
+                resource_id: completion_note_asset(self.game.state().level),
+                x: 131.0,
+                y: 132.0,
+                z: 2,
+                scale: 1.0,
+                alpha: 1.0,
+            });
+        }
+        frame.sprites.push(SpriteCommand {
+            resource_id: AWARD_TITLE_TEXT_BASE_IMAGE_ID + completion_award_text_slot(reward),
+            x: 200.0,
+            y: 42.0,
+            z: 3,
+            scale: 1.0,
+            alpha: 1.0,
+        });
+        if let Some((resource_id, x, y, scale)) = completion_award_asset(self.game.state(), reward)
+        {
+            frame.sprites.push(SpriteCommand {
+                resource_id,
+                x,
+                y,
+                z: 2,
+                scale,
+                alpha: 1.0,
+            });
+        }
+        if reward == Some(CoinType::FinalSeedPacket) {
+            frame.sprites.push(SpriteCommand {
+                resource_id: SEED_PACKET_NORMAL_IMAGE_ID,
+                x: 322.0,
+                y: 135.0,
+                z: 2,
+                scale: 1.0,
+                alpha: 1.0,
+            });
+            if let Some(plant_type) = adventure_seed_choices(self.game.state().level, false)
+                .into_iter()
+                .nth(usize::from(adventure_award_seed(self.game.state().level)))
+                && let Some((resource_id, offset_x, offset_y, scale)) =
+                    board_plant_image(plant_type)
+            {
+                frame.sprites.push(SpriteCommand {
+                    resource_id,
+                    x: 322.0 + offset_x,
+                    y: 135.0 + offset_y,
+                    z: 3,
+                    scale: scale * 0.75,
+                    alpha: 1.0,
+                });
+            }
+        }
+        frame.sprites.push(SpriteCommand {
+            resource_id: AWARD_BODY_TEXT_BASE_IMAGE_ID + completion_award_text_slot(reward),
+            x: 250.0,
+            y: 365.0,
+            z: 4,
+            scale: 1.0,
+            alpha: 1.0,
+        });
+        frame.sprites.push(SpriteCommand {
+            resource_id: SEED_CHOOSER_BUTTON_IMAGE_ID,
+            x: 324.0,
+            y: 500.0,
+            z: 2,
+            scale: 1.0,
+            alpha: 1.0,
+        });
+        frame.sprites.push(SpriteCommand {
+            resource_id: AWARD_CONTINUE_TEXT_IMAGE_ID,
+            x: 324.0,
+            y: 500.0,
+            z: 3,
+            scale: 1.0,
+            alpha: 1.0,
+        });
+        frame.sprites.push(SpriteCommand {
+            resource_id: HELP_MENU_BUTTON_IMAGE_ID,
+            x: 677.0,
+            y: 16.0,
+            z: 2,
+            scale: 1.0,
+            alpha: 1.0,
+        });
+        frame.sprites.push(SpriteCommand {
+            resource_id: AWARD_MAIN_MENU_TEXT_IMAGE_ID,
+            x: 677.0,
+            y: 16.0,
+            z: 3,
+            scale: 1.0,
+            alpha: 1.0,
+        });
+    }
+
+    fn render_options(&self, frame: &mut RenderFrame) {
+        frame.sprites.push(SpriteCommand {
+            resource_id: OPTIONS_BACKGROUND_IMAGE_ID,
+            x: 188.0,
+            y: 50.0,
+            z: 30,
+            scale: 1.0,
+            alpha: 1.0,
+        });
+        for (resource_id, x, y) in [
+            (OPTIONS_MUSIC_LABEL_IMAGE_ID, 220.0, 180.0),
+            (OPTIONS_SFX_LABEL_IMAGE_ID, 220.0, 225.0),
+            (OPTIONS_ACCELERATION_LABEL_IMAGE_ID, 195.0, 275.0),
+            (OPTIONS_FULLSCREEN_LABEL_IMAGE_ID, 225.0, 320.0),
+        ] {
+            frame.sprites.push(SpriteCommand {
+                resource_id,
+                x,
+                y,
+                z: 31,
+                scale: 0.9,
+                alpha: 1.0,
+            });
+        }
+        for (volume, y) in [
+            (self.options_music_volume, 166.0),
+            (self.options_effects_volume, 211.0),
+        ] {
+            frame.sprites.push(SpriteCommand {
+                resource_id: OPTIONS_SLIDER_SLOT_IMAGE_ID,
+                x: 387.0,
+                y,
+                z: 31,
+                scale: 1.0,
+                alpha: 1.0,
+            });
+            frame.sprites.push(SpriteCommand {
+                resource_id: OPTIONS_SLIDER_KNOB_IMAGE_ID,
+                x: 387.0 + 113.0 * f32::from(volume) / 100.0,
+                y: y - 9.0,
+                z: 32,
+                scale: 1.0,
+                alpha: 1.0,
+            });
+        }
+        frame.sprites.push(SpriteCommand {
+            resource_id: OPTIONS_CHECKBOX_ON_IMAGE_ID,
+            x: 472.0,
+            y: 225.0,
+            z: 32,
+            scale: 1.0,
+            alpha: 1.0,
+        });
+        frame.sprites.push(SpriteCommand {
+            resource_id: if self.fullscreen {
+                OPTIONS_CHECKBOX_ON_IMAGE_ID
+            } else {
+                OPTIONS_CHECKBOX_OFF_IMAGE_ID
+            },
+            x: 472.0,
+            y: 256.0,
+            z: 32,
+            scale: 1.0,
+            alpha: 1.0,
+        });
+        frame.sprites.push(SpriteCommand {
+            resource_id: PAUSE_RESUME_BUTTON_IMAGE_ID,
+            x: 218.0,
+            y: 431.0,
+            z: 32,
+            scale: 1.0,
+            alpha: 1.0,
+        });
+        frame.sprites.push(SpriteCommand {
+            resource_id: OPTIONS_BACK_TEXT_IMAGE_ID,
+            x: 290.0,
+            y: 466.0,
+            z: 33,
+            scale: 0.9,
+            alpha: 1.0,
+        });
+    }
+
+    fn almanac_plant_available(&self, plant_type: PlantType) -> bool {
+        let unlocked = &self.game.state().unlocked_plants;
+        // ponytail: profile-less checkpoints keep the two starter cards; the
+        // save-backed list supplies the real SeedTypeAvailable state.
+        if unlocked.is_empty() {
+            matches!(plant_type, PlantType::Peashooter | PlantType::Sunflower)
+        } else {
+            unlocked.contains(&plant_type)
+        }
+    }
+
+    fn almanac_zombie_is_shown(&self, zombie_type: ZombieType) -> bool {
+        almanac_zombie_is_shown_at(
+            self.profile
+                .as_ref()
+                .map_or(self.game.state().level.max(1), |profile| {
+                    profile.adventure_level
+                }),
+            self.profile
+                .as_ref()
+                .map_or(0, |profile| profile.adventure_rounds),
+            self.game.state().adventure_finished,
+            self.game.state().defeated_zombies.contains(&zombie_type),
+            zombie_type,
+        )
+    }
+
+    fn almanac_zombie_has_silhouette(&self, zombie_type: ZombieType) -> bool {
+        almanac_zombie_has_silhouette_at(
+            self.profile
+                .as_ref()
+                .map_or(self.game.state().level.max(1), |profile| {
+                    profile.adventure_level
+                }),
+            self.profile
+                .as_ref()
+                .map_or(0, |profile| profile.adventure_rounds),
+            self.game.state().adventure_finished,
+            zombie_type,
+        )
+    }
+
+    fn almanac_zombie_has_description(&self, zombie_type: ZombieType) -> bool {
+        almanac_zombie_has_description_at(
+            self.profile
+                .as_ref()
+                .map_or(self.game.state().level.max(1), |profile| {
+                    profile.adventure_level
+                }),
+            self.profile
+                .as_ref()
+                .map_or(0, |profile| profile.adventure_rounds),
+            self.game.state().adventure_finished,
+            self.game.state().defeated_zombies.contains(&zombie_type),
+            zombie_type,
+        )
+    }
+
+    fn add_runtime_asset(&mut self, asset: ImageAsset) -> bool {
+        if let Some(renderer) = &mut self.renderer {
+            if let Err(error) = renderer.add_image(asset) {
+                tracing::error!(%error, "runtime image upload failed");
+                return false;
+            }
+        } else {
+            self.assets.push(asset);
+        }
+        true
+    }
+
+    fn ensure_board_hud_assets(&mut self) {
+        let sun = self.game.state().sun;
+        if self.sun_count_asset_value != Some(sun)
+            && let Ok(asset) = render_colored_text_image(
+                BOARD_SUN_COUNT_IMAGE_ID,
+                &sun.to_string(),
+                50,
+                18,
+                14,
+                [0, 0, 0],
+            )
+            && self.add_runtime_asset(asset)
+        {
+            self.sun_count_asset_value = Some(sun);
+        }
+
+        let packets: Vec<_> = self
+            .game
+            .state()
+            .board
+            .seed_packets
+            .iter()
+            .take(10)
+            .map(|packet| (packet.slot, packet.plant_type))
+            .collect();
+        for (slot, plant_type) in packets {
+            if self.seed_bank_cost_plants.get(&slot) == Some(&plant_type) {
+                continue;
+            }
+            let Ok(asset) = render_colored_text_image(
+                BOARD_SEED_COST_BASE_IMAGE_ID + u32::from(slot),
+                &seed_packet_cost(plant_type).to_string(),
+                50,
+                15,
+                12,
+                [0, 0, 0],
+            ) else {
+                continue;
+            };
+            if self.add_runtime_asset(asset) {
+                self.seed_bank_cost_plants.insert(slot, plant_type);
+            }
+        }
+    }
+
+    fn reset_board_hud_assets(&mut self) {
+        self.seed_bank_cost_plants.clear();
+        self.sun_count_asset_value = None;
+        self.progress_meter_asset_width = None;
+        self.ensure_board_hud_assets();
+        self.ensure_board_progress_asset();
+    }
+
+    fn ensure_board_progress_asset(&mut self) {
+        let width = progress_meter_width(self.game.state());
+        if self.progress_meter_asset_width == width {
+            return;
+        }
+        let Some(width) = width else {
+            self.progress_meter_asset_width = None;
+            return;
+        };
+        let source_x = 158 - width - 7;
+        let Ok(asset) = load_cropped_image(
+            &self.resources,
+            BOARD_PROGRESS_FILL_IMAGE_ID,
+            "images/FlagMeter.png",
+            source_x,
+            27,
+            width,
+            27,
+        ) else {
+            return;
+        };
+        if self.add_runtime_asset(asset) {
+            self.progress_meter_asset_width = Some(width);
+        }
+    }
+
+    fn ensure_almanac_description_asset(&mut self, plant: bool) {
+        let slot = if plant {
+            self.almanac_selected_plant
+        } else {
+            self.almanac_selected_zombie
+        };
+        let id = if plant {
+            ALMANAC_PLANT_DESCRIPTION_BASE_IMAGE_ID + u32::from(slot)
+        } else {
+            ALMANAC_ZOMBIE_DESCRIPTION_BASE_IMAGE_ID + u32::from(slot)
+        };
+        if self.almanac_loaded_descriptions.contains(&id) {
+            return;
+        }
+        let (description, height) = if plant {
+            (
+                almanac_lawn_description(
+                    &self.almanac_strings,
+                    almanac_plant_string_key(slot),
+                    "Plant description unavailable.",
+                ),
+                230,
+            )
+        } else {
+            let description = match almanac_zombie_type(slot) {
+                Some(zombie_type) if self.almanac_zombie_has_description(zombie_type) => {
+                    almanac_lawn_description(
+                        &self.almanac_strings,
+                        almanac_zombie_string_key(slot),
+                        "Zombie description unavailable.",
+                    )
+                }
+                _ => almanac_lawn_text(
+                    &self.almanac_strings,
+                    "NOT_ENCOUNTERED_YET",
+                    "Not encountered yet.",
+                ),
+            };
+            (description, 170)
+        };
+        let asset = match render_colored_text_image(id, &description, 258, height, 12, [40, 50, 90])
+        {
+            Ok(asset) => asset,
+            Err(error) => {
+                tracing::error!(%error, "almanac description rendering failed");
+                return;
+            }
+        };
+        if let Some(renderer) = &mut self.renderer {
+            if let Err(error) = renderer.add_image(asset) {
+                tracing::error!(%error, "almanac description upload failed");
+                return;
+            }
+        } else {
+            self.assets.push(asset);
+        }
+        self.almanac_loaded_descriptions.insert(id);
+    }
+
+    fn render_almanac_plants(&self, frame: &mut RenderFrame) {
+        frame.sprites.push(SpriteCommand {
+            resource_id: ALMANAC_PLANTS_TEXT_IMAGE_ID,
+            x: 322.0,
+            y: 30.0,
+            z: 31,
+            scale: 1.0,
+            alpha: 1.0,
+        });
+        for slot in 0..ALMANAC_PLANT_COUNT {
+            let Some(plant_type) = almanac_plant_type(slot) else {
+                continue;
+            };
+            if !self.almanac_plant_available(plant_type) {
+                continue;
+            }
+            let (x, y) = almanac_plant_position(slot);
+            if plant_type == PlantType::Other(ALMANAC_IMITATER_SLOT) {
+                frame.sprites.push(SpriteCommand {
+                    resource_id: ALMANAC_IMITATER_IMAGE_ID,
+                    x,
+                    y,
+                    z: 32,
+                    scale: 1.0,
+                    alpha: 1.0,
+                });
+            } else {
+                frame.sprites.push(SpriteCommand {
+                    resource_id: SEED_PACKET_NORMAL_IMAGE_ID,
+                    x,
+                    y,
+                    z: 31,
+                    scale: 1.0,
+                    alpha: 1.0,
+                });
+                if let Some((resource_id, scale)) = almanac_plant_icon(plant_type) {
+                    frame.sprites.push(SpriteCommand {
+                        resource_id,
+                        x: x + 4.0,
+                        y: y + 9.0,
+                        z: 32,
+                        scale,
+                        alpha: 1.0,
+                    });
+                }
+            }
+        }
+        frame.sprites.push(SpriteCommand {
+            resource_id: ALMANAC_PLANT_CARD_IMAGE_ID,
+            x: 459.0,
+            y: 86.0,
+            z: 33,
+            scale: 1.0,
+            alpha: 1.0,
+        });
+        if let Some(plant_type) = almanac_plant_type(self.almanac_selected_plant)
+            .filter(|plant_type| self.almanac_plant_available(*plant_type))
+        {
+            let slot_id = u32::from(self.almanac_selected_plant);
+            frame.sprites.push(SpriteCommand {
+                resource_id: ALMANAC_PLANT_NAME_BASE_IMAGE_ID + slot_id,
+                x: 488.0,
+                y: 274.0,
+                z: 34,
+                scale: 1.0,
+                alpha: 1.0,
+            });
+            if plant_type != PlantType::Other(ALMANAC_IMITATER_SLOT) {
+                frame.sprites.push(SpriteCommand {
+                    resource_id: ALMANAC_PLANT_COST_BASE_IMAGE_ID + slot_id,
+                    x: 485.0,
+                    y: 520.0,
+                    z: 34,
+                    scale: 1.0,
+                    alpha: 1.0,
+                });
+                frame.sprites.push(SpriteCommand {
+                    resource_id: ALMANAC_PLANT_RECHARGE_BASE_IMAGE_ID + slot_id,
+                    x: 600.0,
+                    y: 520.0,
+                    z: 34,
+                    scale: 1.0,
+                    alpha: 1.0,
+                });
+            }
+        }
+        if let Some(plant_type) = almanac_plant_type(self.almanac_selected_plant)
+            .filter(|plant_type| self.almanac_plant_available(*plant_type))
+            && let Some((resource_id, offset_x, offset_y, scale)) = board_plant_image(plant_type)
+        {
+            frame.sprites.push(SpriteCommand {
+                resource_id,
+                x: 578.0 + offset_x,
+                y: 140.0 + offset_y,
+                z: 32,
+                scale: scale * 1.2,
+                alpha: 1.0,
+            });
+        }
+        frame.sprites.push(SpriteCommand {
+            resource_id: ALMANAC_PLANT_DESCRIPTION_BASE_IMAGE_ID
+                + u32::from(self.almanac_selected_plant),
+            x: 485.0,
+            y: 309.0,
+            z: 34,
+            scale: 1.0,
+            alpha: 1.0,
+        });
+    }
+
+    fn render_almanac_zombies(&self, frame: &mut RenderFrame) {
+        frame.sprites.push(SpriteCommand {
+            resource_id: ALMANAC_ZOMBIES_TEXT_IMAGE_ID,
+            x: 295.0,
+            y: 34.0,
+            z: 31,
+            scale: 1.0,
+            alpha: 1.0,
+        });
+        for index in 0..ALMANAC_ZOMBIE_COUNT {
+            let Some(zombie_type) = almanac_zombie_type(index) else {
+                continue;
+            };
+            let (x, y) = almanac_zombie_position(index);
+            frame.sprites.push(SpriteCommand {
+                resource_id: ALMANAC_ZOMBIE_WINDOW_IMAGE_ID,
+                x,
+                y,
+                z: 31,
+                scale: 1.0,
+                alpha: 1.0,
+            });
+            if !self.almanac_zombie_is_shown(zombie_type) {
+                frame.sprites.push(SpriteCommand {
+                    resource_id: ALMANAC_ZOMBIE_BLANK_IMAGE_ID,
+                    x,
+                    y,
+                    z: 32,
+                    scale: 1.0,
+                    alpha: 1.0,
+                });
+            } else if let Some(resource_id) = board_zombie_image(zombie_type) {
+                frame.sprites.push(SpriteCommand {
+                    resource_id,
+                    x: x + 8.0,
+                    y: y + 4.0,
+                    z: 32,
+                    scale: 0.5,
+                    alpha: 1.0,
+                });
+                frame.sprites.push(SpriteCommand {
+                    resource_id: ALMANAC_ZOMBIE_WINDOW2_IMAGE_ID,
+                    x,
+                    y,
+                    z: 33,
+                    scale: 1.0,
+                    alpha: 1.0,
+                });
+            } else {
+                // ponytail: blank unsupported entries until the reanimation
+                // catalog is wired; the source list and hit regions are real.
+                frame.sprites.push(SpriteCommand {
+                    resource_id: ALMANAC_ZOMBIE_BLANK_IMAGE_ID,
+                    x,
+                    y,
+                    z: 32,
+                    scale: 1.0,
+                    alpha: 1.0,
+                });
+            }
+        }
+        if let Some(zombie_type) = almanac_zombie_type(self.almanac_selected_zombie)
+            && let Some(resource_id) = board_zombie_image(zombie_type)
+        {
+            frame.sprites.push(SpriteCommand {
+                resource_id,
+                x: 559.0,
+                y: 175.0,
+                z: 31,
+                scale: 0.9,
+                alpha: 1.0,
+            });
+        }
+        frame.sprites.push(SpriteCommand {
+            resource_id: ALMANAC_ZOMBIE_CARD_IMAGE_ID,
+            x: 455.0,
+            y: 78.0,
+            z: 33,
+            scale: 1.0,
+            alpha: 1.0,
+        });
+        let selected_zombie_name_id = if almanac_zombie_type(self.almanac_selected_zombie)
+            .is_some_and(|zombie_type| self.almanac_zombie_has_silhouette(zombie_type))
+        {
+            ALMANAC_ZOMBIE_SILHOUETTE_NAME_BASE_IMAGE_ID
+        } else {
+            ALMANAC_ZOMBIE_NAME_BASE_IMAGE_ID
+        } + u32::from(self.almanac_selected_zombie);
+        frame.sprites.push(SpriteCommand {
+            resource_id: selected_zombie_name_id,
+            x: 484.0,
+            y: 348.0,
+            z: 34,
+            scale: 1.0,
+            alpha: 1.0,
+        });
+        frame.sprites.push(SpriteCommand {
+            resource_id: ALMANAC_ZOMBIE_DESCRIPTION_BASE_IMAGE_ID
+                + u32::from(self.almanac_selected_zombie),
+            x: 484.0,
+            y: 377.0,
+            z: 34,
+            scale: 1.0,
+            alpha: 1.0,
+        });
+    }
+
+    fn render_almanac(&self, frame: &mut RenderFrame) {
+        let background = match self.almanac_page {
+            1 => ALMANAC_PLANT_BACKGROUND_IMAGE_ID,
+            2 => ALMANAC_ZOMBIE_BACKGROUND_IMAGE_ID,
+            _ => ALMANAC_INDEX_BACKGROUND_IMAGE_ID,
+        };
+        frame.sprites.push(SpriteCommand {
+            resource_id: background,
+            x: 0.0,
+            y: 0.0,
+            z: 30,
+            scale: 1.0,
+            alpha: 1.0,
+        });
+        match self.almanac_page {
+            1 => {
+                self.render_almanac_plants(frame);
+            }
+            2 => {
+                self.render_almanac_zombies(frame);
+            }
+            _ => {
+                frame.sprites.push(SpriteCommand {
+                    resource_id: ALMANAC_TITLE_TEXT_IMAGE_ID,
+                    x: 200.0,
+                    y: 44.0,
+                    z: 31,
+                    scale: 1.0,
+                    alpha: 1.0,
+                });
+                frame.sprites.push(SpriteCommand {
+                    resource_id: SEED_SUNFLOWER_IMAGE_ID,
+                    x: 170.0,
+                    y: 250.0,
+                    z: 31,
+                    scale: 1.0,
+                    alpha: 1.0,
+                });
+                frame.sprites.push(SpriteCommand {
+                    resource_id: BOARD_ZOMBIE_BODY_IMAGE_ID,
+                    x: 560.0,
+                    y: 245.0,
+                    z: 31,
+                    scale: 0.8,
+                    alpha: 1.0,
+                });
+                frame.sprites.push(SpriteCommand {
+                    resource_id: SEED_CHOOSER_BUTTON_IMAGE_ID,
+                    x: 130.0,
+                    y: 345.0,
+                    z: 32,
+                    scale: 1.0,
+                    alpha: 1.0,
+                });
+                frame.sprites.push(SpriteCommand {
+                    resource_id: ALMANAC_PLANTS_TEXT_IMAGE_ID,
+                    x: 130.0,
+                    y: 350.0,
+                    z: 33,
+                    scale: 1.0,
+                    alpha: 1.0,
+                });
+                frame.sprites.push(SpriteCommand {
+                    resource_id: ALMANAC_NAV_BUTTON_IMAGE_ID,
+                    x: 487.0,
+                    y: 345.0,
+                    z: 32,
+                    scale: 1.0,
+                    alpha: 1.0,
+                });
+                frame.sprites.push(SpriteCommand {
+                    resource_id: ALMANAC_ZOMBIES_TEXT_IMAGE_ID,
+                    x: 460.0,
+                    y: 350.0,
+                    z: 33,
+                    scale: 0.7,
+                    alpha: 1.0,
+                });
+            }
+        }
+        if self.almanac_page != 0 {
+            frame.sprites.push(SpriteCommand {
+                resource_id: ALMANAC_INDEX_BUTTON_IMAGE_ID,
+                x: 32.0,
+                y: 567.0,
+                z: 32,
+                scale: 1.0,
+                alpha: 1.0,
+            });
+            frame.sprites.push(SpriteCommand {
+                resource_id: ALMANAC_INDEX_TEXT_IMAGE_ID,
+                x: 32.0,
+                y: 567.0,
+                z: 33,
+                scale: 1.0,
+                alpha: 1.0,
+            });
+        }
+        frame.sprites.push(SpriteCommand {
+            resource_id: ALMANAC_CLOSE_BUTTON_IMAGE_ID,
+            x: 676.0,
+            y: 567.0,
+            z: 32,
+            scale: 1.0,
+            alpha: 1.0,
+        });
+        frame.sprites.push(SpriteCommand {
+            resource_id: ALMANAC_CLOSE_TEXT_IMAGE_ID,
+            x: 676.0,
+            y: 567.0,
+            z: 33,
+            scale: 1.0,
+            alpha: 1.0,
+        });
+    }
+
+    fn render_help(&self, frame: &mut RenderFrame) {
+        frame.sprites.push(SpriteCommand {
+            resource_id: DAY_BACKGROUND_IMAGE_ID,
+            x: -700.0,
+            y: -300.0,
+            z: 30,
+            scale: 2.0,
+            alpha: 1.0,
+        });
+        frame.sprites.push(SpriteCommand {
+            resource_id: HELP_ZOMBIE_NOTE_IMAGE_ID,
+            x: 80.0,
+            y: 80.0,
+            z: 31,
+            scale: 1.0,
+            alpha: 1.0,
+        });
+        frame.sprites.push(SpriteCommand {
+            resource_id: HELP_CONTENT_IMAGE_ID,
+            x: 131.0,
+            y: 132.0,
+            z: 32,
+            scale: 1.0,
+            alpha: 1.0,
+        });
+        frame.sprites.push(SpriteCommand {
+            resource_id: SEED_CHOOSER_BUTTON_IMAGE_ID,
+            x: 324.0,
+            y: 520.0,
+            z: 33,
+            scale: 1.0,
+            alpha: 1.0,
+        });
+        frame.sprites.push(SpriteCommand {
+            resource_id: HELP_MENU_BUTTON_IMAGE_ID,
+            x: 677.0,
+            y: 16.0,
+            z: 33,
+            scale: 1.0,
+            alpha: 1.0,
+        });
+        frame.sprites.push(SpriteCommand {
+            resource_id: HELP_MAIN_MENU_TEXT_IMAGE_ID,
+            x: 677.0,
+            y: 16.0,
+            z: 34,
+            scale: 1.0,
+            alpha: 1.0,
+        });
+    }
+
+    fn render_board_hud(&self, frame: &mut RenderFrame) {
+        let state = self.game.state();
+        let conveyor = has_conveyor_seed_bank(state);
+        let slot_machine = state.challenge.kind == ChallengeKind::SlotMachine;
+        let packet_count = state.board.seed_packets.len().min(10);
+        let background = if slot_machine {
+            BOARD_SUN_BANK_IMAGE_ID
+        } else if conveyor {
+            BOARD_CONVEYOR_BELT_BACKDROP_IMAGE_ID
+        } else {
+            BOARD_SEED_BANK_IMAGE_ID
+        };
+        let (background_x, background_z) = if conveyor { (83.0, 18) } else { (0.0, 18) };
+        frame.sprites.push(SpriteCommand {
+            resource_id: background,
+            x: background_x,
+            y: 0.0,
+            z: background_z,
+            scale: 1.0,
+            alpha: 1.0,
+        });
+
+        if !conveyor
+            && !slot_machine
+            && let Some((resource_id, x)) = seed_bank_extension_image(packet_count)
+        {
+            frame.sprites.push(SpriteCommand {
+                resource_id,
+                x,
+                y: 0.0,
+                z: 18,
+                scale: 1.0,
+                alpha: 1.0,
+            });
+        }
+        if conveyor {
+            let belt_frame = (state.tick / 4) % 6;
+            frame.sprites.push(SpriteCommand {
+                resource_id: BOARD_CONVEYOR_BELT_BASE_IMAGE_ID + belt_frame as u32,
+                x: 90.0,
+                y: 63.0,
+                z: 19,
+                scale: 1.0,
+                alpha: 1.0,
+            });
+        }
+        if !conveyor && self.sun_count_asset_value.is_some() {
+            frame.sprites.push(SpriteCommand {
+                resource_id: BOARD_SUN_COUNT_IMAGE_ID,
+                x: 9.0,
+                y: 66.0,
+                z: 20,
+                scale: 1.0,
+                alpha: 1.0,
+            });
+        }
+
+        for (index, packet) in state.board.seed_packets.iter().take(10).enumerate() {
+            let x = seed_packet_position_x(index, packet_count, conveyor, slot_machine);
+            let alpha = if packet.refresh_remaining != 0 {
+                0.55
+            } else if !conveyor && seed_packet_cost(packet.plant_type) > state.sun {
+                0.72
+            } else {
+                1.0
+            };
+            frame.sprites.push(SpriteCommand {
+                resource_id: SEED_PACKET_NORMAL_IMAGE_ID,
+                x,
+                y: 0.0,
+                z: 20,
+                scale: 1.0,
+                alpha,
+            });
+            if let Some((resource_id, icon_x, icon_y, scale)) =
+                seed_bank_plant_image(packet.plant_type)
+            {
+                frame.sprites.push(SpriteCommand {
+                    resource_id,
+                    x: x + icon_x,
+                    y: icon_y,
+                    z: 21,
+                    scale,
+                    alpha,
+                });
+            }
+            if !conveyor
+                && !slot_machine
+                && self.seed_bank_cost_plants.get(&packet.slot) == Some(&packet.plant_type)
+            {
+                frame.sprites.push(SpriteCommand {
+                    resource_id: BOARD_SEED_COST_BASE_IMAGE_ID + u32::from(packet.slot),
+                    x,
+                    y: 53.0,
+                    z: 22,
+                    scale: 1.0,
+                    alpha,
+                });
+            }
+        }
+
+        let shovel_x = if slot_machine {
+            600.0
+        } else {
+            456.0 + seed_bank_extra_width(packet_count) as f32
+        };
+        frame.sprites.push(SpriteCommand {
+            resource_id: BOARD_SHOVEL_BANK_IMAGE_ID,
+            x: shovel_x,
+            y: 0.0,
+            z: 19,
+            scale: 1.0,
+            alpha: 1.0,
+        });
+        self.render_progress_meter(frame);
+    }
+
+    fn render_progress_meter(&self, frame: &mut RenderFrame) {
+        let state = self.game.state();
+        let Some(width) = progress_meter_width(state) else {
+            return;
+        };
+        frame.sprites.push(SpriteCommand {
+            resource_id: BOARD_PROGRESS_METER_IMAGE_ID,
+            x: 600.0,
+            y: 575.0,
+            z: 23,
+            scale: 1.0,
+            alpha: 1.0,
+        });
+        if self.progress_meter_asset_width == Some(width) {
+            frame.sprites.push(SpriteCommand {
+                resource_id: BOARD_PROGRESS_FILL_IMAGE_ID,
+                x: 751.0 - width as f32,
+                y: 575.0,
+                z: 24,
+                scale: 1.0,
+                alpha: 1.0,
+            });
+        }
+        frame.sprites.push(SpriteCommand {
+            resource_id: BOARD_PROGRESS_LEVEL_IMAGE_ID,
+            x: 638.0,
+            y: 589.0,
+            z: 25,
+            scale: 1.0,
+            alpha: 1.0,
+        });
+        if let Some((flag_count, waves_per_flag)) = progress_meter_flag_layout(state) {
+            for flag_wave in 1..=flag_count {
+                let wave = flag_wave * waves_per_flag;
+                let x = 748.0 - wave as f32 * 142.0 / state.board.wave.total as f32;
+                let raised = wave < state.board.wave.current;
+                frame.sprites.push(SpriteCommand {
+                    resource_id: BOARD_PROGRESS_POLE_IMAGE_ID,
+                    x,
+                    y: 571.0,
+                    z: 26,
+                    scale: 1.0,
+                    alpha: 1.0,
+                });
+                frame.sprites.push(SpriteCommand {
+                    resource_id: BOARD_PROGRESS_FLAG_IMAGE_ID,
+                    x,
+                    y: if raised { 558.0 } else { 572.0 },
+                    z: 27,
+                    scale: 1.0,
+                    alpha: 1.0,
+                });
+            }
+        }
+        if matches!(state.mode, ModeKind::Adventure | ModeKind::Survival)
+            && state.scene != SceneKind::Boss
+        {
+            let head_progress = 135 * width / 150;
+            frame.sprites.push(SpriteCommand {
+                resource_id: BOARD_PROGRESS_HEAD_IMAGE_ID,
+                x: 738.0 - head_progress as f32,
+                y: 572.0,
+                z: 28,
+                scale: 1.0,
+                alpha: 1.0,
+            });
+        }
+    }
+
+    fn render_board_effects(&self, frame: &mut RenderFrame) {
+        let Some(definition) = self.reanim_catalog.fire.as_ref() else {
+            return;
+        };
+        let tick = self.game.state().tick;
+        for effect in &self.visual_effects {
+            let age = tick.saturating_sub(effect.start_tick);
+            if age >= effect.duration {
+                continue;
+            }
+            let action = if effect.duration > PROJECTILE_FIRE_DURATION && age >= 50 {
+                "anim_done"
+            } else {
+                "anim_flame"
+            };
+            let Some(frame_position) = reanim_frame_position(definition, action, age)
+                .or_else(|| reanim_frame_position(definition, "anim_flame", age))
+            else {
+                continue;
+            };
+            push_reanim_tracks(
+                frame,
+                definition,
+                &self.reanim_catalog.image_ids,
+                frame_position,
+                (effect.x, effect.y, 1.0),
+                |_| Some((effect.z, BlendMode::Alpha)),
+            );
+        }
+    }
+
+    fn render_board_pickup_reanim(
+        &self,
+        frame: &mut RenderFrame,
+        definition: Option<&ReanimatorDefinition>,
+        x: f32,
+        y: f32,
+        tick: u64,
+    ) -> bool {
+        let Some(definition) = definition else {
+            return false;
+        };
+        let Some(frame_position) = reanim_frame_position(definition, "anim_idle", tick) else {
+            return false;
+        };
+        // ponytail: share the board clock for pickup reanimations; exact source random phase/rate needs persisted visual state.
+        push_reanim_tracks(
+            frame,
+            definition,
+            &self.reanim_catalog.image_ids,
+            frame_position,
+            (x, y, 1.0),
+            |_| Some((6, BlendMode::Alpha)),
+        )
+    }
+
+    fn render_board_plant_reanim(
+        &self,
+        frame: &mut RenderFrame,
+        plant: &neopvz_core::PlantState,
+        x: f32,
+        y: f32,
+    ) -> bool {
+        let Some((_, definition)) = self
+            .reanim_catalog
+            .plants
+            .iter()
+            .find(|(plant_type, _)| *plant_type == plant.plant_type)
+        else {
+            return false;
+        };
+        let tick = self.game.state().tick;
+        let Some((action, frame_position)) = board_plant_reanim_actions(
+            plant.plant_type,
+            plant.asleep,
+            plant.special_counter,
+            plant.special_armed,
+            plant.shooting_counter,
+            plant.production_stage,
+        )
+        .iter()
+        .find_map(|action| {
+            reanim_frame_position(definition, action, tick).map(|position| (*action, position))
+        }) else {
+            return false;
+        };
+        let body_drawn = push_reanim_tracks(
+            frame,
+            definition,
+            &self.reanim_catalog.image_ids,
+            frame_position,
+            (x, y, 1.0),
+            |name| {
+                board_plant_reanim_track_style(
+                    plant.plant_type,
+                    plant.special_armed,
+                    plant.kernel_pult_projectile,
+                    name,
+                )
+            },
+        );
+        body_drawn
+            || push_board_plant_reanim_attachments(
+                frame,
+                definition,
+                &self.reanim_catalog.image_ids,
+                board_plant_reanim_attachment_specs(
+                    plant.plant_type,
+                    action,
+                    plant.firing_directions,
+                ),
+                tick,
+                (x, y, frame_position),
+            )
+    }
+
+    fn render_board_zombie_reanim(
+        &self,
+        frame: &mut RenderFrame,
+        zombie: &ZombieState,
+        x: f32,
+        y: f32,
+    ) -> bool {
+        if zombie.zombie_type == ZombieType::Boss {
+            return self.render_board_boss_reanim(frame, zombie, x, y);
+        }
+        let (definition, specialized) = match zombie.zombie_type {
+            ZombieType::Football => (self.reanim_catalog.football.as_ref(), true),
+            ZombieType::Newspaper => (self.reanim_catalog.newspaper.as_ref(), true),
+            ZombieType::Normal
+            | ZombieType::Flag
+            | ZombieType::Conehead
+            | ZombieType::Buckethead
+            | ZombieType::ScreenDoor => (self.reanim_catalog.zombie.as_ref(), false),
+            zombie_type => (
+                self.reanim_catalog
+                    .specialized
+                    .iter()
+                    .find(|(known_type, _)| {
+                        *known_type == zombie_type
+                            || (zombie_type == ZombieType::Gigagargantuar
+                                && *known_type == ZombieType::Gargantuar)
+                    })
+                    .map(|(_, definition)| definition),
+                true,
+            ),
+        };
+        let Some(definition) = definition else {
+            return false;
+        };
+        let action = board_zombie_reanim_action(zombie);
+        let Some(frame_position) =
+            reanim_frame_position(definition, action, self.game.state().tick)
+                .or_else(|| reanim_frame_position(definition, "anim_walk", self.game.state().tick))
+                .or_else(|| reanim_frame_position(definition, "anim_idle", self.game.state().tick))
+        else {
+            return false;
+        };
+        let drawn = push_reanim_tracks(
+            frame,
+            definition,
+            &self.reanim_catalog.image_ids,
+            frame_position,
+            (x, y, 1.0),
+            |name| {
+                if specialized {
+                    board_specialized_zombie_reanim_track_visible(
+                        name,
+                        zombie.zombie_type,
+                        zombie.armor_intact,
+                        zombie.has_head,
+                        zombie.has_arm,
+                    )
+                    .then_some((7, BlendMode::Alpha))
+                } else {
+                    board_zombie_reanim_track_visible(
+                        name,
+                        zombie.zombie_type,
+                        zombie.armor_intact,
+                        zombie.has_head,
+                        zombie.has_arm,
+                    )
+                    .then_some((7, BlendMode::Alpha))
+                }
+            },
+        );
+        if drawn && zombie.zombie_type == ZombieType::Flag {
+            push_board_zombie_flag(&mut *frame, x, y);
+        }
+        drawn
+    }
+
+    fn render_board_boss_reanim(
+        &self,
+        frame: &mut RenderFrame,
+        zombie: &ZombieState,
+        x: f32,
+        y: f32,
+    ) -> bool {
+        let Some(body) = self.reanim_catalog.boss.as_ref() else {
+            return false;
+        };
+        let tick = self.game.state().tick;
+        let action = board_boss_reanim_action(zombie);
+        let Some(body_frame_position) = reanim_frame_position(body, action, tick)
+            .or_else(|| reanim_frame_position(body, "anim_idle", tick))
+        else {
+            return false;
+        };
+        let body_drawn = push_reanim_tracks(
+            frame,
+            body,
+            &self.reanim_catalog.image_ids,
+            body_frame_position,
+            (x, y, 1.0),
+            |name| Some((board_boss_reanim_track_z(name), BlendMode::Alpha)),
+        );
+        let driver_drawn = self
+            .reanim_catalog
+            .boss_driver
+            .as_ref()
+            .and_then(|driver| {
+                let anchor = body
+                    .tracks
+                    .iter()
+                    .find(|track| track.name.eq_ignore_ascii_case("Boss_head2"))
+                    .and_then(|track| reanim_transform_at(track, body_frame_position))?;
+                let driver_frame_position = reanim_frame_position(driver, "anim_idle", tick)?;
+                Some(push_reanim_tracks(
+                    frame,
+                    driver,
+                    &self.reanim_catalog.image_ids,
+                    driver_frame_position,
+                    (x + anchor.x + 28.0, y + anchor.y - 84.0, 1.2),
+                    |_| Some((7, BlendMode::Alpha)),
+                ))
+            })
+            .unwrap_or(false);
+        let ball_drawn = if zombie.boss_ball_active {
+            let ball = if zombie.boss_ball_fire {
+                self.reanim_catalog.boss_fireball.as_ref()
+            } else {
+                self.reanim_catalog.boss_iceball.as_ref()
+            };
+            ball.and_then(|definition| {
+                let frame_position = reanim_frame_position(definition, "anim_form", tick)
+                    .or_else(|| reanim_frame_position(definition, "anim_role", tick))?;
+                Some(push_reanim_tracks(
+                    frame,
+                    definition,
+                    &self.reanim_catalog.image_ids,
+                    frame_position,
+                    (
+                        fixed_point_to_logical(zombie.boss_ball_x),
+                        board_row_y(zombie.boss_ball_row) - 90.0,
+                        1.0,
+                    ),
+                    |name| {
+                        Some((
+                            board_boss_ball_track_z(name),
+                            board_boss_ball_blend_mode(name),
+                        ))
+                    },
+                ))
+            })
+            .unwrap_or(false)
+        } else {
+            false
+        };
+        body_drawn || driver_drawn || ball_drawn
     }
 
     fn render_frame(&self) -> RenderFrame {
@@ -2464,11 +6574,26 @@ impl App {
                         alpha: 1.0,
                     });
                 }
-                for (resource_id, x, y) in [
-                    (SELECTOR_ADVENTURE_IMAGE_ID, 405.0, 79.0),
-                    (SELECTOR_SURVIVAL_IMAGE_ID, 406.0, 173.0),
-                    (SELECTOR_CHALLENGES_IMAGE_ID, 410.0, 257.0),
-                    (SELECTOR_VASEBREAKER_IMAGE_ID, 413.0, 328.0),
+                for (resource_id, x, y, mode) in [
+                    (
+                        SELECTOR_ADVENTURE_IMAGE_ID,
+                        405.0,
+                        79.0,
+                        ModeKind::Adventure,
+                    ),
+                    (SELECTOR_SURVIVAL_IMAGE_ID, 406.0, 173.0, ModeKind::Survival),
+                    (
+                        SELECTOR_CHALLENGES_IMAGE_ID,
+                        410.0,
+                        257.0,
+                        ModeKind::MiniGame,
+                    ),
+                    (
+                        SELECTOR_VASEBREAKER_IMAGE_ID,
+                        413.0,
+                        328.0,
+                        ModeKind::Vasebreaker,
+                    ),
                 ] {
                     frame.sprites.push(SpriteCommand {
                         resource_id,
@@ -2476,13 +6601,15 @@ impl App {
                         y,
                         z: 5,
                         scale: 1.0,
-                        alpha: 1.0,
+                        // ponytail: alpha-only lock tint; the original greys the button art.
+                        alpha: if self.can_open_mode(mode) { 1.0 } else { 0.5 },
                     });
                 }
             }
             SceneKind::AdventureTutorial => self.render_tutorial(&mut frame),
             SceneKind::ModeSelect => self.render_mode_select(&mut frame),
             SceneKind::SeedChooser => {
+                let has_seven_rows = self.seed_chooser_has_seven_rows();
                 frame.sprites.push(SpriteCommand {
                     resource_id: SCREEN_PIXEL_IMAGE_ID,
                     x: 0.0,
@@ -2507,25 +6634,28 @@ impl App {
                     scale: 1.0,
                     alpha: 1.0,
                 });
-                for index in 0..48 {
-                    let column = index % 8;
-                    let row = index / 8;
-                    if row < self.seed_chooser_scroll || row >= self.seed_chooser_scroll + 6 {
-                        continue;
+                for index in 0..seed_chooser_grid_slots(has_seven_rows) {
+                    if let Some((x, y)) =
+                        seed_chooser_slot_position(index, self.seed_chooser_scroll, has_seven_rows)
+                    {
+                        frame.sprites.push(SpriteCommand {
+                            resource_id: SEED_PACKET_SILHOUETTE_IMAGE_ID,
+                            x,
+                            y,
+                            z: 2,
+                            scale: 1.0,
+                            alpha: 1.0,
+                        });
                     }
-                    frame.sprites.push(SpriteCommand {
-                        resource_id: SEED_PACKET_SILHOUETTE_IMAGE_ID,
-                        x: 189.5 + column as f32 * 53.0,
-                        y: 171.5 + (row - self.seed_chooser_scroll) as f32 * 73.0,
-                        z: 2,
-                        scale: 1.0,
-                        alpha: 1.0,
-                    });
                 }
-                let choices = adventure_seed_choices(
-                    self.game.state().level,
-                    self.game.state().adventure_first_time,
-                );
+                let choices = if self.game.state().challenge.kind == ChallengeKind::LastStand {
+                    last_stand_seed_choices()
+                } else {
+                    adventure_seed_choices(
+                        self.game.state().level,
+                        self.game.state().adventure_first_time,
+                    )
+                };
                 let selected_count = self
                     .seed_chooser_selection
                     .iter()
@@ -2533,8 +6663,6 @@ impl App {
                     .count();
                 let mut selected_index = 0usize;
                 for (slot, plant_type) in choices.iter().copied().enumerate() {
-                    let column = slot % 8;
-                    let row = slot / 8;
                     let (x, y) = if self
                         .seed_chooser_selection
                         .get(slot)
@@ -2545,18 +6673,14 @@ impl App {
                         selected_index += 1;
                         (288.0 + position as f32 * 53.0, 445.0)
                     } else {
-                        if row < self.seed_chooser_scroll || row >= self.seed_chooser_scroll + 6 {
+                        let Some(position) = seed_chooser_slot_position(
+                            slot,
+                            self.seed_chooser_scroll,
+                            has_seven_rows,
+                        ) else {
                             continue;
-                        }
-                        (
-                            189.5 + column as f32 * 53.0,
-                            171.5 + (row - self.seed_chooser_scroll) as f32 * 73.0,
-                        )
-                    };
-                    let (resource_id, icon_x, icon_y, scale) = match plant_type {
-                        PlantType::Peashooter => (SEED_PEASHOOTER_IMAGE_ID, 7.0, 9.5, 0.5),
-                        PlantType::Sunflower => (SEED_SUNFLOWER_IMAGE_ID, 8.0, 12.0, 0.6),
-                        _ => (SEED_PACKET_NORMAL_IMAGE_ID, 8.0, 10.0, 0.45),
+                        };
+                        position
                     };
                     frame.sprites.push(SpriteCommand {
                         resource_id: SEED_PACKET_NORMAL_IMAGE_ID,
@@ -2566,14 +6690,18 @@ impl App {
                         scale: 1.0,
                         alpha: 1.0,
                     });
-                    frame.sprites.push(SpriteCommand {
-                        resource_id,
-                        x: x + icon_x,
-                        y: y + icon_y,
-                        z: 4,
-                        scale,
-                        alpha: 1.0,
-                    });
+                    if let Some((resource_id, icon_x, icon_y, scale)) =
+                        seed_chooser_plant_image(plant_type)
+                    {
+                        frame.sprites.push(SpriteCommand {
+                            resource_id,
+                            x: x + icon_x,
+                            y: y + icon_y,
+                            z: 4,
+                            scale,
+                            alpha: 1.0,
+                        });
+                    }
                 }
                 frame.sprites.push(SpriteCommand {
                     resource_id: SEED_CHOOSER_BUTTON_IMAGE_ID,
@@ -2582,11 +6710,15 @@ impl App {
                     z: 3,
                     scale: 1.0,
                     alpha: if selected_count
-                        == usize::from(adventure_seed_slots(
-                            self.game.state().level,
-                            self.game.state().adventure_first_time,
-                            self.game.state().packet_upgrades,
-                        )) {
+                        == if self.game.state().challenge.kind == ChallengeKind::LastStand {
+                            usize::from(last_stand_seed_slots(self.game.state().packet_upgrades))
+                        } else {
+                            usize::from(adventure_seed_slots(
+                                self.game.state().level,
+                                self.game.state().adventure_first_time,
+                                self.game.state().packet_upgrades,
+                            ))
+                        } {
                         1.0
                     } else {
                         0.55
@@ -2595,21 +6727,82 @@ impl App {
             }
             SceneKind::Garden => {
                 frame.sprites.push(SpriteCommand {
-                    resource_id: SCREEN_PIXEL_IMAGE_ID,
+                    resource_id: if self.game.state().garden_service
+                        == Some(GardenServiceKind::Mushroom)
+                    {
+                        GARDEN_MUSHROOM_BACKGROUND_IMAGE_ID
+                    } else {
+                        GARDEN_BACKGROUND_IMAGE_ID
+                    },
                     x: 0.0,
                     y: 0.0,
                     z: 0,
-                    scale: 800.0,
+                    scale: 1.0,
                     alpha: 1.0,
                 });
                 for (index, plant) in self.game.state().garden.plants.iter().enumerate() {
+                    let x = 250.0 + index as f32 * 120.0;
+                    let y = 300.0;
+                    if let Some((resource_id, offset_x, offset_y, scale)) =
+                        board_plant_image(plant.plant_type)
+                    {
+                        frame.sprites.push(SpriteCommand {
+                            resource_id,
+                            x: x + offset_x,
+                            y: y + offset_y,
+                            z: 2,
+                            scale,
+                            alpha: if plant.watered { 1.0 } else { 0.8 },
+                        });
+                    } else {
+                        frame.sprites.push(SpriteCommand {
+                            resource_id: UI_PIXEL_IMAGE_ID,
+                            x: x - 32.0,
+                            y: y - 32.0,
+                            z: 2,
+                            scale: 64.0 + (plant.age_ticks.min(100) as f32 * 0.2),
+                            alpha: if plant.watered { 1.0 } else { 0.75 },
+                        });
+                    }
+                    if let Some(resource_id) = garden_need_image(plant.need) {
+                        frame.sprites.push(SpriteCommand {
+                            resource_id: GARDEN_NEED_BUBBLE_IMAGE_ID,
+                            x: x + 26.0,
+                            y: y - 72.0,
+                            z: 4,
+                            scale: 0.8,
+                            alpha: 1.0,
+                        });
+                        frame.sprites.push(SpriteCommand {
+                            resource_id,
+                            x: x + 36.0,
+                            y: y - 62.0,
+                            z: 5,
+                            scale: 0.8,
+                            alpha: 1.0,
+                        });
+                    }
+                }
+                for (tool, x) in [
+                    (GardenTool::WateringCan, 80.0),
+                    (GardenTool::Fertilizer, 240.0),
+                    (GardenTool::BugSpray, 400.0),
+                    (GardenTool::Phonograph, 560.0),
+                ] {
+                    let available = garden_tool_available(self.game.state(), tool);
                     frame.sprites.push(SpriteCommand {
-                        resource_id: UI_PIXEL_IMAGE_ID,
-                        x: 250.0 + index as f32 * 120.0,
-                        y: 300.0,
-                        z: 2,
-                        scale: 64.0 + (plant.age_ticks.min(100) as f32 * 0.2),
-                        alpha: if plant.watered { 1.0 } else { 0.75 },
+                        resource_id: garden_tool_image(tool),
+                        x,
+                        y: 510.0,
+                        z: 3,
+                        scale: 0.8,
+                        alpha: if !available {
+                            0.25
+                        } else if self.garden_tool == tool {
+                            1.0
+                        } else {
+                            0.5
+                        },
                     });
                 }
                 if self.game.state().garden_service == Some(GardenServiceKind::TreeOfWisdom) {
@@ -2628,7 +6821,8 @@ impl App {
             | SceneKind::Pool
             | SceneKind::Fog
             | SceneKind::Roof
-            | SceneKind::Boss) => {
+            | SceneKind::Boss
+            | SceneKind::GameOver) => {
                 frame.sprites.push(SpriteCommand {
                     resource_id: board_background_id(scene),
                     x: 0.0,
@@ -2637,6 +6831,7 @@ impl App {
                     scale: 1.0,
                     alpha: 1.0,
                 });
+                self.render_board_hud(&mut frame);
                 for vase in &self.game.state().board.vases {
                     frame.sprites.push(SpriteCommand {
                         resource_id: BOARD_VASE_BOTTOM_IMAGE_ID,
@@ -2698,18 +6893,54 @@ impl App {
                         });
                     }
                 }
+                let tick = self.game.state().tick;
                 for sun in &self.game.state().board.suns {
-                    frame.sprites.push(SpriteCommand {
-                        resource_id: BOARD_SUN_IMAGE_ID,
-                        x: fixed_point_to_logical(sun.position_x) - 22.0,
-                        y: fixed_point_to_logical(sun.position_y) - 22.0,
-                        z: 6,
-                        scale: 0.65,
-                        alpha: 1.0,
-                    });
+                    let position_x = fixed_point_to_logical(sun.position_x);
+                    let position_y = fixed_point_to_logical(sun.position_y);
+                    if !self.render_board_pickup_reanim(
+                        &mut frame,
+                        self.reanim_catalog.sun.as_ref(),
+                        position_x + 30.0,
+                        position_y + 30.0,
+                        tick,
+                    ) {
+                        frame.sprites.push(SpriteCommand {
+                            resource_id: BOARD_SUN_IMAGE_ID,
+                            x: position_x - 22.0,
+                            y: position_y - 22.0,
+                            z: 6,
+                            scale: 0.65,
+                            alpha: 1.0,
+                        });
+                    }
                 }
                 for coin in &self.game.state().board.coins {
-                    if let Some((resource_id, scale)) = board_coin_image(coin.coin_type) {
+                    let reanim_drawn = if board_coin_reanim_visible(
+                        coin.coin_type,
+                        coin.target_y,
+                        coin.from_present,
+                    ) {
+                        let definition = match coin.coin_type {
+                            CoinType::Silver => self.reanim_catalog.coin_silver.as_ref(),
+                            CoinType::Gold => self.reanim_catalog.coin_gold.as_ref(),
+                            CoinType::Diamond => self.reanim_catalog.diamond.as_ref(),
+                            _ => None,
+                        };
+                        let (offset_x, offset_y) = board_coin_reanim_offset(coin.coin_type)
+                            .expect("visible pickup reanimation has a source offset");
+                        self.render_board_pickup_reanim(
+                            &mut frame,
+                            definition,
+                            fixed_point_to_logical(coin.position_x) + offset_x,
+                            fixed_point_to_logical(coin.position_y) + offset_y,
+                            tick,
+                        )
+                    } else {
+                        false
+                    };
+                    if !reanim_drawn
+                        && let Some((resource_id, scale)) = board_coin_image(coin.coin_type)
+                    {
                         frame.sprites.push(SpriteCommand {
                             resource_id,
                             x: fixed_point_to_logical(coin.position_x) - 22.0,
@@ -2734,17 +6965,21 @@ impl App {
                     }
                 }
                 for zombie in &self.game.state().board.zombies {
-                    if board_zombie_image(zombie.zombie_type).is_some() {
-                        let x = fixed_point_to_logical(zombie.position_x);
-                        let y = if self.game.state().challenge.kind == ChallengeKind::Zombiquarium
-                            && zombie.position_y != 0
-                        {
-                            fixed_point_to_logical(zombie.position_y)
-                        } else {
-                            board_row_y(zombie.row)
-                        };
+                    let x = fixed_point_to_logical(zombie.position_x);
+                    let y = if zombie.zombie_type == ZombieType::Boss {
+                        0.0
+                    } else if self.game.state().challenge.kind == ChallengeKind::Zombiquarium
+                        && zombie.position_y != 0
+                    {
+                        fixed_point_to_logical(zombie.position_y)
+                    } else {
+                        board_row_y(zombie.row)
+                    };
+                    if !self.render_board_zombie_reanim(&mut frame, zombie, x, y)
+                        && let Some(body_resource_id) = board_zombie_image(zombie.zombie_type)
+                    {
                         frame.sprites.push(SpriteCommand {
-                            resource_id: BOARD_ZOMBIE_BODY_IMAGE_ID,
+                            resource_id: body_resource_id,
                             x: x - 34.0,
                             y: y + 18.0,
                             z: 7,
@@ -2752,13 +6987,20 @@ impl App {
                             alpha: 1.0,
                         });
                         frame.sprites.push(SpriteCommand {
-                            resource_id: TITLE_LOAD_BAR_ZOMBIE_HEAD_IMAGE_ID,
+                            resource_id: board_zombie_head_image(zombie.zombie_type),
                             x: x - 30.0,
                             y: y - 8.0,
                             z: 8,
                             scale: 0.75,
                             alpha: 1.0,
                         });
+                        push_board_zombie_equipment(
+                            &mut frame,
+                            x,
+                            y,
+                            zombie.zombie_type,
+                            zombie.armor_intact,
+                        );
                     }
                 }
                 if self.game.state().challenge.kind == ChallengeKind::SeeingStars {
@@ -2821,48 +7063,112 @@ impl App {
                             m11: angle.cos(),
                             z: 11,
                             alpha: 0.5,
+                            blend_mode: BlendMode::Alpha,
                         });
                     }
                 }
                 for plant in &self.game.state().board.plants {
-                    let x = 80.0 + f32::from(plant.column) * 80.0;
-                    let y = board_row_y(plant.row);
-                    if let Some((resource_id, offset_x, offset_y, scale)) =
-                        board_plant_image(plant.plant_type)
+                    let (x, y) = if self.game.state().challenge.kind
+                        == ChallengeKind::WallnutBowling
+                        && matches!(plant.plant_type, PlantType::Other(3 | 49 | 50))
                     {
-                        frame.sprites.push(SpriteCommand {
-                            resource_id,
-                            x: x + offset_x,
-                            y: y + offset_y,
-                            z: 10,
-                            scale,
-                            alpha: 1.0,
-                        });
+                        (
+                            fixed_point_to_logical(plant.position_x) - 40.0,
+                            board_row_y(plant.row) + fixed_point_to_logical(plant.position_y)
+                                - (80.0 + f32::from(plant.row) * 100.0),
+                        )
                     } else {
-                        frame.sprites.push(SpriteCommand {
-                            resource_id: UI_PIXEL_IMAGE_ID,
-                            x,
-                            y,
-                            z: 10,
-                            scale: 36.0,
-                            alpha: 1.0,
-                        });
+                        (
+                            80.0 + f32::from(plant.column) * 80.0,
+                            board_row_y(plant.row),
+                        )
+                    };
+                    if !self.render_board_plant_reanim(&mut frame, plant, x, y) {
+                        if let Some((resource_id, offset_x, offset_y, scale)) =
+                            board_plant_image(plant.plant_type)
+                        {
+                            frame.sprites.push(SpriteCommand {
+                                resource_id,
+                                x: x + offset_x,
+                                y: y + offset_y,
+                                z: 10,
+                                scale,
+                                alpha: 1.0,
+                            });
+                        } else {
+                            frame.sprites.push(SpriteCommand {
+                                resource_id: UI_PIXEL_IMAGE_ID,
+                                x,
+                                y,
+                                z: 10,
+                                scale: 36.0,
+                                alpha: 1.0,
+                            });
+                        }
                     }
                 }
                 for projectile in &self.game.state().board.projectiles {
+                    if let Some((resource_id, x, y, scale_x, scale_y)) = board_projectile_shadow(
+                        self.game.state().scene,
+                        projectile.projectile_type,
+                        projectile.row,
+                        projectile.position_x,
+                        projectile.shadow_y,
+                        projectile.lob_height,
+                    ) {
+                        frame.affine_sprites.push(AffineSpriteCommand {
+                            resource_id,
+                            x,
+                            y,
+                            m00: scale_x,
+                            m01: 0.0,
+                            m10: 0.0,
+                            m11: scale_y,
+                            z: 11,
+                            alpha: 1.0,
+                            blend_mode: BlendMode::Alpha,
+                        });
+                    }
                     if let Some((resource_id, scale)) =
                         board_projectile_image(projectile.projectile_type)
                     {
-                        let y = board_projectile_y(projectile.position_y, projectile.row);
-                        frame.sprites.push(SpriteCommand {
+                        let y = board_projectile_y(
+                            projectile.position_y,
+                            projectile.row,
+                            projectile.lob_height,
+                        );
+                        let scale =
+                            board_projectile_scale(projectile.projectile_type, projectile.age)
+                                .unwrap_or(scale);
+                        let rotation =
+                            board_projectile_rotation(projectile.projectile_type, projectile.age);
+                        let (sin, cos) = rotation.sin_cos();
+                        frame.affine_sprites.push(AffineSpriteCommand {
                             resource_id,
-                            x: fixed_point_to_logical(projectile.position_x) - 12.0,
-                            y: y - 12.0,
+                            x: fixed_point_to_logical(projectile.position_x),
+                            y,
+                            m00: cos * scale,
+                            m01: -sin * scale,
+                            m10: sin * scale,
+                            m11: cos * scale,
                             z: 12,
-                            scale,
                             alpha: 1.0,
+                            blend_mode: BlendMode::Alpha,
                         });
                     }
+                }
+                self.render_board_effects(&mut frame);
+                if self.game.state().challenge.kind == ChallengeKind::LastStand
+                    && !self.game.state().challenge.last_stand_onslaught
+                {
+                    frame.sprites.push(SpriteCommand {
+                        resource_id: SEED_CHOOSER_BUTTON_IMAGE_ID,
+                        x: 322.0,
+                        y: 535.0,
+                        z: 15,
+                        scale: 1.0,
+                        alpha: 1.0,
+                    });
                 }
                 if self.game.state().paused {
                     frame.sprites.push(SpriteCommand {
@@ -2875,7 +7181,25 @@ impl App {
                     });
                 }
             }
-            _ => {}
+            SceneKind::Complete => self.render_complete(&mut frame),
+        }
+        if self.store_open {
+            self.render_store(&mut frame);
+        }
+        if self.options_open {
+            self.render_options(&mut frame);
+        }
+        if self.almanac_open {
+            self.render_almanac(&mut frame);
+        }
+        if self.help_open {
+            self.render_help(&mut frame);
+        }
+        if self.game.state().scene == SceneKind::GameOver {
+            self.render_game_over(&mut frame);
+        }
+        if is_board_scene(self.game.state().scene) && self.game.state().paused {
+            self.render_pause(&mut frame);
         }
         frame
     }
@@ -2904,6 +7228,173 @@ fn board_background_id(scene: SceneKind) -> u32 {
     }
 }
 
+fn progress_meter_width(state: &neopvz_core::GameState) -> Option<u32> {
+    if state.scene == SceneKind::Boss {
+        let Some(boss) = state
+            .board
+            .zombies
+            .iter()
+            .find(|zombie| zombie.zombie_type == ZombieType::Boss)
+        else {
+            return Some(150);
+        };
+        if boss.max_health <= 0 {
+            return Some(150);
+        }
+        let damage = (boss.max_health - boss.health).max(0);
+        return Some(
+            (150 * u32::try_from(damage).unwrap_or(0)
+                / u32::try_from(boss.max_health).unwrap_or(1))
+            .clamp(1, 150),
+        );
+    }
+    let wave = &state.board.wave;
+    if wave.endless || wave.current == 0 || wave.total <= 1 || wave.countdown_start == 0 {
+        return None;
+    }
+    let (total_width, waves_per_flag) =
+        progress_meter_flag_layout(state).map_or((150, None), |(_, waves_per_flag)| {
+            let flag_count = wave.total / waves_per_flag;
+            (150 - 12 * flag_count, Some(waves_per_flag))
+        });
+    let denominator = wave.total - 1;
+    let mut current_start = (wave.current.saturating_sub(1) * total_width) / denominator;
+    let mut next_start = wave.current * total_width / denominator;
+    if let Some(waves_per_flag) = waves_per_flag {
+        let extra = wave.current / waves_per_flag * 12;
+        current_start += extra;
+        next_start += extra;
+    }
+    let elapsed = wave
+        .countdown_start
+        .saturating_sub(wave.countdown)
+        .min(wave.countdown_start);
+    let span = next_start.saturating_sub(current_start);
+    Some((current_start + span * elapsed / wave.countdown_start).clamp(1, 150))
+}
+
+fn progress_meter_flag_layout(state: &neopvz_core::GameState) -> Option<(u32, u32)> {
+    let waves = state.board.wave.total;
+    if state.mode == ModeKind::Adventure {
+        let flag_count = adventure_flag_wave_count(state.level, !state.adventure_first_time);
+        (flag_count > 0).then_some((flag_count, waves / flag_count))
+    } else if state.mode == ModeKind::Survival {
+        let waves_per_flag = 10;
+        let flag_count = waves / waves_per_flag;
+        (flag_count > 0).then_some((flag_count, waves_per_flag))
+    } else {
+        None
+    }
+}
+
+fn has_conveyor_seed_bank(state: &neopvz_core::GameState) -> bool {
+    (state.mode == ModeKind::MiniGame
+        && matches!(
+            state.challenge.kind,
+            ChallengeKind::WallnutBowling
+                | ChallengeKind::Invisighoul
+                | ChallengeKind::LittleTrouble
+                | ChallengeKind::PortalCombat
+                | ChallengeKind::Column
+                | ChallengeKind::FinalBoss
+        ))
+        || (state.adventure_configured
+            && state.mode == ModeKind::Adventure
+            && adventure_level_is_conveyor(state.level))
+}
+
+fn seed_bank_extra_width(packet_count: usize) -> u32 {
+    match packet_count {
+        0..=6 => 0,
+        7 => 60,
+        8 => 76,
+        9 => 112,
+        _ => 153,
+    }
+}
+
+fn seed_packet_cost(plant_type: PlantType) -> u32 {
+    match plant_type {
+        PlantType::ZombiquariumSnorkel => 100,
+        PlantType::ZombiquariumTrophy => 1_000,
+        _ => plant_type.cost(),
+    }
+}
+
+fn seed_bank_plant_image(plant_type: PlantType) -> Option<(u32, f32, f32, f32)> {
+    if let Some((resource_id, _, _, _)) = seed_chooser_plant_image(plant_type)
+        && (SEED_PACKET_PLANT_BASE_IMAGE_ID..SEED_PACKET_PLANT_BASE_IMAGE_ID + 13)
+            .contains(&resource_id)
+    {
+        return Some((resource_id, 0.0, 0.0, 1.0));
+    }
+    match plant_type {
+        PlantType::Peashooter => Some((SEED_PEASHOOTER_IMAGE_ID, 5.0, 8.0, 0.5)),
+        PlantType::Sunflower => Some((SEED_SUNFLOWER_IMAGE_ID, 5.0, 8.0, 0.5)),
+        PlantType::Other(5) => Some((BOARD_SNOWPEA_IMAGE_ID, 5.0, 8.0, 0.5)),
+        PlantType::Other(8) => Some((BOARD_PUFFSHROOM_IMAGE_ID, 8.0, 12.0, 0.4)),
+        PlantType::Other(10) => Some((BOARD_FUMESHROOM_IMAGE_ID, 8.0, 12.0, 0.4)),
+        PlantType::Other(29) => Some((BOARD_STARFRUIT_IMAGE_ID, 6.0, 8.0, 0.5)),
+        PlantType::Other(21) => Some((BOARD_WALLNUT_IMAGE_ID, 5.0, 8.0, 0.5)),
+        PlantType::Other(31) => Some((BOARD_MAGNETSHROOM_IMAGE_ID, 5.0, 12.0, 0.5)),
+        _ => None,
+    }
+}
+
+fn seed_packet_position_x(
+    index: usize,
+    packet_count: usize,
+    conveyor: bool,
+    slot_machine: bool,
+) -> f32 {
+    if slot_machine {
+        247.0 + index as f32 * 59.0
+    } else if conveyor {
+        91.0 + index as f32 * 50.0
+    } else {
+        let step = match packet_count {
+            0..=7 => 59.0,
+            8 => 54.0,
+            9 => 52.0,
+            _ => 51.0,
+        };
+        let start = match packet_count {
+            0..=7 => 85.0,
+            8 => 81.0,
+            9 => 80.0,
+            _ => 79.0,
+        };
+        start + index as f32 * step
+    }
+}
+
+fn seed_bank_extension_image(packet_count: usize) -> Option<(u32, f32)> {
+    match packet_count {
+        7 => Some((BOARD_SEED_BANK_EXTENSION_BASE_IMAGE_ID, 434.0)),
+        8 => Some((BOARD_SEED_BANK_EXTENSION_BASE_IMAGE_ID + 1, 434.0)),
+        9 => Some((BOARD_SEED_BANK_EXTENSION_BASE_IMAGE_ID + 2, 434.0)),
+        10 => Some((BOARD_SEED_BANK_EXTENSION_BASE_IMAGE_ID + 3, 434.0)),
+        _ => None,
+    }
+}
+
+fn board_seed_packet_at(state: &neopvz_core::GameState, x: f32, y: f32) -> Option<u8> {
+    let packet_count = state.board.seed_packets.len().min(10);
+    let conveyor = has_conveyor_seed_bank(state);
+    let slot_machine = state.challenge.kind == ChallengeKind::SlotMachine;
+    state
+        .board
+        .seed_packets
+        .iter()
+        .take(10)
+        .enumerate()
+        .find(|(index, _)| {
+            let packet_x = seed_packet_position_x(*index, packet_count, conveyor, slot_machine);
+            (packet_x..packet_x + 50.0).contains(&x) && (0.0..70.0).contains(&y)
+        })
+        .map(|(_, packet)| packet.slot)
+}
+
 fn board_plant_image(plant_type: PlantType) -> Option<(u32, f32, f32, f32)> {
     match plant_type {
         PlantType::Peashooter => Some((SEED_PEASHOOTER_IMAGE_ID, 10.0, 22.0, 0.8)),
@@ -2918,26 +7409,1490 @@ fn board_plant_image(plant_type: PlantType) -> Option<(u32, f32, f32, f32)> {
     }
 }
 
-fn board_row_y(row: u8) -> f32 {
-    120.0 + f32::from(row) * 90.0
+fn seed_chooser_plant_image(plant_type: PlantType) -> Option<(u32, f32, f32, f32)> {
+    let packet_plant = match plant_type {
+        PlantType::Other(4) => Some(0),
+        PlantType::Other(6) => Some(1),
+        PlantType::Other(12) => Some(2),
+        PlantType::Other(23) => Some(3),
+        PlantType::Other(27) => Some(4),
+        PlantType::Other(30) => Some(5),
+        PlantType::Other(41) => Some(6),
+        PlantType::Other(47) => Some(7),
+        PlantType::Other(32) => Some(8),
+        PlantType::Other(34) => Some(9),
+        PlantType::Other(39) => Some(10),
+        PlantType::Other(44) => Some(11),
+        PlantType::Other(46) => Some(12),
+        _ => None,
+    };
+    packet_plant
+        .map(|index| (SEED_PACKET_PLANT_BASE_IMAGE_ID + index, 0.0, 0.0, 1.0))
+        .or_else(|| board_plant_image(plant_type))
 }
 
-fn board_zombie_image(zombie_type: ZombieType) -> Option<u32> {
-    matches!(zombie_type, ZombieType::Normal | ZombieType::Snorkel)
-        .then_some(BOARD_ZOMBIE_BODY_IMAGE_ID)
+fn garden_tool_image(tool: GardenTool) -> u32 {
+    match tool {
+        GardenTool::WateringCan => GARDEN_WATERING_CAN_IMAGE_ID,
+        GardenTool::Fertilizer => GARDEN_FERTILIZER_IMAGE_ID,
+        GardenTool::BugSpray => GARDEN_BUG_SPRAY_IMAGE_ID,
+        GardenTool::Phonograph => GARDEN_PHONOGRAPH_IMAGE_ID,
+    }
 }
 
-fn board_projectile_image(projectile_type: ProjectileType) -> Option<(u32, f32)> {
-    match projectile_type {
-        ProjectileType::Pea => Some((BOARD_PROJECTILE_PEA_IMAGE_ID, 0.75)),
-        ProjectileType::SnowPea => Some((BOARD_PROJECTILE_SNOW_PEA_IMAGE_ID, 0.75)),
+fn garden_tool_available(state: &neopvz_core::GameState, tool: GardenTool) -> bool {
+    match tool {
+        GardenTool::WateringCan => true,
+        GardenTool::Fertilizer => state.fertilizer_charges > 0,
+        GardenTool::BugSpray => state.bug_spray_charges > 0,
+        GardenTool::Phonograph => state.phonograph_purchased,
+    }
+}
+
+fn garden_need_image(need: GardenNeed) -> Option<u32> {
+    match need {
+        GardenNeed::None => None,
+        GardenNeed::Water => Some(GARDEN_WATERDROP_IMAGE_ID),
+        GardenNeed::Fertilizer => Some(GARDEN_NEED_FERTILIZER_IMAGE_ID),
+        GardenNeed::BugSpray => Some(GARDEN_NEED_BUG_SPRAY_IMAGE_ID),
+        GardenNeed::Phonograph => Some(GARDEN_NEED_PHONOGRAPH_IMAGE_ID),
+    }
+}
+
+const STORE_ITEM_LAYOUT: [(StoreItem, f32, f32); 5] = [
+    (StoreItem::PacketUpgrade, 100.0, 165.0),
+    (StoreItem::Fertilizer, 250.0, 165.0),
+    (StoreItem::BugSpray, 400.0, 165.0),
+    (StoreItem::Phonograph, 550.0, 165.0),
+    (StoreItem::Stinky, 330.0, 330.0),
+];
+
+fn store_item_at_slot(slot: usize) -> Option<StoreItem> {
+    STORE_ITEM_LAYOUT.get(slot).map(|(item, _, _)| *item)
+}
+
+fn store_item_at(x: f32, y: f32) -> Option<StoreItem> {
+    STORE_ITEM_LAYOUT.iter().find_map(|(item, item_x, item_y)| {
+        ((*item_x - 40.0..*item_x + 125.0).contains(&x)
+            && (item_y - 20.0..*item_y + 145.0).contains(&y))
+        .then_some(*item)
+    })
+}
+
+fn store_item_image(item: StoreItem) -> (u32, f32) {
+    match item {
+        StoreItem::PacketUpgrade => (STORE_PACKET_UPGRADE_IMAGE_ID, 0.85),
+        StoreItem::Fertilizer => (GARDEN_FERTILIZER_IMAGE_ID, 0.7),
+        StoreItem::BugSpray => (GARDEN_BUG_SPRAY_IMAGE_ID, 0.7),
+        StoreItem::Phonograph => (GARDEN_PHONOGRAPH_IMAGE_ID, 0.65),
+        StoreItem::Stinky => (STORE_STINKY_IMAGE_ID, 0.8),
+    }
+}
+
+fn store_item_name_image(item: StoreItem) -> u32 {
+    STORE_ITEM_NAME_BASE_IMAGE_ID
+        + match item {
+            StoreItem::PacketUpgrade => 0,
+            StoreItem::Fertilizer => 1,
+            StoreItem::BugSpray => 2,
+            StoreItem::Phonograph => 3,
+            StoreItem::Stinky => 4,
+        }
+}
+
+fn store_item_price_image(item: StoreItem, packet_upgrades: u8) -> u32 {
+    STORE_ITEM_PRICE_BASE_IMAGE_ID
+        + match item {
+            StoreItem::PacketUpgrade => u32::from(packet_upgrades.min(3)),
+            StoreItem::Fertilizer => 4,
+            StoreItem::BugSpray => 5,
+            StoreItem::Phonograph => 6,
+            StoreItem::Stinky => 7,
+        }
+}
+
+fn store_item_sold_out(state: &neopvz_core::GameState, item: StoreItem) -> bool {
+    match item {
+        StoreItem::PacketUpgrade => state.packet_upgrades >= 4,
+        StoreItem::Fertilizer => state.fertilizer_charges > 15,
+        StoreItem::BugSpray => state.bug_spray_charges > 15,
+        StoreItem::Phonograph => state.phonograph_purchased,
+        StoreItem::Stinky => state.stinky_purchased,
+    }
+}
+
+fn help_selector_contains(x: f32, y: f32) -> bool {
+    (685.0..790.0).contains(&x) && (445.0..570.0).contains(&y)
+}
+
+fn help_button_contains(x: f32, y: f32) -> bool {
+    ((324.0..480.0).contains(&x) && (500.0..562.0).contains(&y))
+        || ((677.0..788.0).contains(&x) && (16.0..42.0).contains(&y))
+}
+
+const SEED_CHOOSER_COLUMN_COUNT: usize = 8;
+const SEED_CHOOSER_VISIBLE_ROW_COUNT: usize = 6;
+const SEED_CHOOSER_COLUMN_SPACING: f32 = 53.0;
+const SEED_CHOOSER_CARD_WIDTH: f32 = 50.0;
+const SEED_CHOOSER_CARD_HEIGHT: f32 = 70.0;
+const SEED_CHOOSER_SLOT_LEFT: f32 = 189.5;
+const SEED_CHOOSER_DEFAULT_SLOT_TOP: f32 = 171.5;
+const SEED_CHOOSER_SEVEN_ROWS_SLOT_TOP: f32 = 166.5;
+
+fn seed_chooser_has_seven_rows_at(finished: bool, unlocked: &[PlantType]) -> bool {
+    finished
+        || unlocked.iter().any(|plant_type| match plant_type {
+            PlantType::Other(slot) => (40..=45).contains(slot),
+            _ => false,
+        })
+}
+
+fn seed_chooser_grid_slots(has_seven_rows: bool) -> usize {
+    if has_seven_rows { 48 } else { 40 }
+}
+
+fn seed_chooser_slot_position(
+    index: usize,
+    scroll: usize,
+    has_seven_rows: bool,
+) -> Option<(f32, f32)> {
+    if index >= seed_chooser_grid_slots(has_seven_rows) {
+        return None;
+    }
+    let row = index / SEED_CHOOSER_COLUMN_COUNT;
+    if row < scroll || row >= scroll + SEED_CHOOSER_VISIBLE_ROW_COUNT {
+        return None;
+    }
+    let column = index % SEED_CHOOSER_COLUMN_COUNT;
+    let top = if has_seven_rows {
+        SEED_CHOOSER_SEVEN_ROWS_SLOT_TOP
+    } else {
+        SEED_CHOOSER_DEFAULT_SLOT_TOP
+    };
+    let row_height = if has_seven_rows { 70.0 } else { 73.0 };
+    Some((
+        SEED_CHOOSER_SLOT_LEFT + column as f32 * SEED_CHOOSER_COLUMN_SPACING,
+        top + (row - scroll) as f32 * row_height,
+    ))
+}
+
+fn seed_chooser_slot_at(x: f32, y: f32, scroll: usize, has_seven_rows: bool) -> Option<usize> {
+    let top = if has_seven_rows {
+        SEED_CHOOSER_SEVEN_ROWS_SLOT_TOP
+    } else {
+        SEED_CHOOSER_DEFAULT_SLOT_TOP
+    };
+    let row_height = if has_seven_rows { 70.0 } else { 73.0 };
+    let local_x = x - SEED_CHOOSER_SLOT_LEFT;
+    let local_y = y - top;
+    if local_x < 0.0
+        || local_y < 0.0
+        || local_x
+            >= (SEED_CHOOSER_COLUMN_COUNT - 1) as f32 * SEED_CHOOSER_COLUMN_SPACING
+                + SEED_CHOOSER_CARD_WIDTH
+        || local_y
+            >= (SEED_CHOOSER_VISIBLE_ROW_COUNT - 1) as f32 * row_height + SEED_CHOOSER_CARD_HEIGHT
+    {
+        return None;
+    }
+    let column = (local_x / SEED_CHOOSER_COLUMN_SPACING).floor() as usize;
+    let row_in_view = (local_y / row_height).floor() as usize;
+    if local_x - column as f32 * SEED_CHOOSER_COLUMN_SPACING >= SEED_CHOOSER_CARD_WIDTH
+        || local_y - row_in_view as f32 * row_height >= SEED_CHOOSER_CARD_HEIGHT
+    {
+        return None;
+    }
+    let row = row_in_view + scroll;
+    let index = row * SEED_CHOOSER_COLUMN_COUNT + column;
+    (index < seed_chooser_grid_slots(has_seven_rows)).then_some(index)
+}
+
+const ALMANAC_PLANT_COUNT: u8 = 49;
+const ALMANAC_ZOMBIE_COUNT: u8 = 26;
+const ALMANAC_IMITATER_SLOT: u8 = 48;
+
+fn almanac_zombie_spawned_only(zombie_type: ZombieType) -> bool {
+    matches!(
+        zombie_type,
+        ZombieType::BackupDancer | ZombieType::Bobsled | ZombieType::Imp
+    )
+}
+
+fn almanac_can_spawn_yetis_at(level: u8, adventure_rounds: u8, finished: bool) -> bool {
+    let (_, starting_level, _, _) = zombie_wave_stats(ZombieType::Yeti);
+    finished && (adventure_rounds >= 2 || level >= starting_level)
+}
+
+fn almanac_zombie_has_silhouette_at(
+    level: u8,
+    adventure_rounds: u8,
+    finished: bool,
+    zombie_type: ZombieType,
+) -> bool {
+    if zombie_type != ZombieType::Yeti
+        || almanac_can_spawn_yetis_at(level, adventure_rounds, finished)
+    {
+        return false;
+    }
+    let (_, starting_level, _, _) = zombie_wave_stats(ZombieType::Yeti);
+    finished || level > starting_level
+}
+
+fn almanac_zombie_is_shown_at(
+    level: u8,
+    adventure_rounds: u8,
+    finished: bool,
+    defeated: bool,
+    zombie_type: ZombieType,
+) -> bool {
+    if zombie_type == ZombieType::Yeti {
+        return almanac_can_spawn_yetis_at(level, adventure_rounds, finished)
+            || almanac_zombie_has_silhouette_at(level, adventure_rounds, finished, zombie_type);
+    }
+    if finished {
+        return true;
+    }
+    let (_, starting_level, _, _) = zombie_wave_stats(zombie_type);
+    starting_level <= level
+        && (starting_level != level || !almanac_zombie_spawned_only(zombie_type) || defeated)
+}
+
+fn almanac_zombie_has_description_at(
+    level: u8,
+    adventure_rounds: u8,
+    finished: bool,
+    defeated: bool,
+    zombie_type: ZombieType,
+) -> bool {
+    if zombie_type == ZombieType::Yeti {
+        if !almanac_can_spawn_yetis_at(level, adventure_rounds, finished) {
+            return false;
+        }
+        if adventure_rounds >= 2 {
+            return true;
+        }
+    } else if finished {
+        return true;
+    }
+
+    let (_, starting_level, _, _) = zombie_wave_stats(zombie_type);
+    starting_level <= level && (starting_level != level || defeated)
+}
+
+fn almanac_plant_string_key(slot: u8) -> &'static str {
+    [
+        "PEASHOOTER",
+        "SUNFLOWER",
+        "CHERRY_BOMB",
+        "WALL_NUT",
+        "POTATO_MINE",
+        "SNOW_PEA",
+        "CHOMPER",
+        "REPEATER",
+        "PUFF_SHROOM",
+        "SUN_SHROOM",
+        "FUME_SHROOM",
+        "GRAVE_BUSTER",
+        "HYPNO_SHROOM",
+        "SCAREDY_SHROOM",
+        "ICE_SHROOM",
+        "DOOM_SHROOM",
+        "LILY_PAD",
+        "SQUASH",
+        "THREEPEATER",
+        "TANGLE_KELP",
+        "JALAPENO",
+        "SPIKEWEED",
+        "TORCHWOOD",
+        "TALL_NUT",
+        "SEA_SHROOM",
+        "PLANTERN",
+        "CACTUS",
+        "BLOVER",
+        "SPLIT_PEA",
+        "STARFRUIT",
+        "PUMPKIN",
+        "MAGNET_SHROOM",
+        "CABBAGE_PULT",
+        "FLOWER_POT",
+        "KERNEL_PULT",
+        "COFFEE_BEAN",
+        "GARLIC",
+        "UMBRELLA_LEAF",
+        "MARIGOLD",
+        "MELON_PULT",
+        "GATLING_PEA",
+        "TWIN_SUNFLOWER",
+        "GLOOM_SHROOM",
+        "CATTAIL",
+        "WINTER_MELON",
+        "GOLD_MAGNET",
+        "SPIKEROCK",
+        "COB_CANNON",
+        "IMITATER",
+    ]
+    .get(usize::from(slot))
+    .copied()
+    .unwrap_or("PLANT")
+}
+
+fn almanac_zombie_string_key(index: u8) -> &'static str {
+    [
+        "ZOMBIE",
+        "FLAG_ZOMBIE",
+        "CONEHEAD_ZOMBIE",
+        "POLE_VAULTING_ZOMBIE",
+        "BUCKETHEAD_ZOMBIE",
+        "NEWSPAPER_ZOMBIE",
+        "SCREEN_DOOR_ZOMBIE",
+        "FOOTBALL_ZOMBIE",
+        "DANCING_ZOMBIE",
+        "BACKUP_DANCER",
+        "DUCKY_TUBE_ZOMBIE",
+        "SNORKEL_ZOMBIE",
+        "ZOMBONI",
+        "ZOMBIE_BOBSLED_TEAM",
+        "DOLPHIN_RIDER_ZOMBIE",
+        "JACK_IN_THE_BOX_ZOMBIE",
+        "BALLOON_ZOMBIE",
+        "DIGGER_ZOMBIE",
+        "POGO_ZOMBIE",
+        "ZOMBIE_YETI",
+        "BUNGEE_ZOMBIE",
+        "LADDER_ZOMBIE",
+        "CATAPULT_ZOMBIE",
+        "GARGANTUAR",
+        "IMP",
+        "BOSS",
+    ]
+    .get(usize::from(index))
+    .copied()
+    .unwrap_or("ZOMBIE")
+}
+
+fn almanac_plant_name(slot: u8) -> &'static str {
+    [
+        "Peashooter",
+        "Sunflower",
+        "Cherry Bomb",
+        "Wall-nut",
+        "Potato Mine",
+        "Snow Pea",
+        "Chomper",
+        "Repeater",
+        "Puff-shroom",
+        "Sun-shroom",
+        "Fume-shroom",
+        "Grave Buster",
+        "Hypno-shroom",
+        "Scaredy-shroom",
+        "Ice-shroom",
+        "Doom-shroom",
+        "Lily Pad",
+        "Squash",
+        "Threepeater",
+        "Tangle Kelp",
+        "Jalapeno",
+        "Spikeweed",
+        "Torchwood",
+        "Tall-nut",
+        "Sea-shroom",
+        "Plantern",
+        "Cactus",
+        "Blover",
+        "Split Pea",
+        "Starfruit",
+        "Pumpkin",
+        "Magnet-shroom",
+        "Cabbage-pult",
+        "Flower Pot",
+        "Kernel-pult",
+        "Coffee Bean",
+        "Garlic",
+        "Umbrella Leaf",
+        "Marigold",
+        "Melon-pult",
+        "Gatling Pea",
+        "Twin Sunflower",
+        "Gloom-shroom",
+        "Cattail",
+        "Winter Melon",
+        "Gold Magnet",
+        "Spikerock",
+        "Cob Cannon",
+        "Imitater",
+    ]
+    .get(usize::from(slot))
+    .copied()
+    .unwrap_or("Unknown Plant")
+}
+
+fn almanac_zombie_name(index: u8) -> &'static str {
+    [
+        "Zombie",
+        "Flag Zombie",
+        "Conehead Zombie",
+        "Pole Vaulting Zombie",
+        "Buckethead Zombie",
+        "Newspaper Zombie",
+        "Screen Door Zombie",
+        "Football Zombie",
+        "Dancing Zombie",
+        "Backup Dancer",
+        "Ducky Tube Zombie",
+        "Snorkel Zombie",
+        "Zomboni",
+        "Zombie Bobsled Team",
+        "Dolphin Rider Zombie",
+        "Jack-in-the-Box Zombie",
+        "Balloon Zombie",
+        "Digger Zombie",
+        "Pogo Zombie",
+        "Zombie Yeti",
+        "Bungee Zombie",
+        "Ladder Zombie",
+        "Catapult Zombie",
+        "Gargantuar",
+        "Imp",
+        "Dr. Zomboss",
+    ]
+    .get(usize::from(index))
+    .copied()
+    .unwrap_or("Unknown Zombie")
+}
+
+fn almanac_plant_type(slot: u8) -> Option<PlantType> {
+    match slot {
+        0 => Some(PlantType::Peashooter),
+        1 => Some(PlantType::Sunflower),
+        2..ALMANAC_PLANT_COUNT => Some(PlantType::Other(slot)),
         _ => None,
     }
 }
 
-fn board_projectile_y(position_y: i64, row: u8) -> f32 {
+fn almanac_plant_position(slot: u8) -> (f32, f32) {
+    if slot == ALMANAC_IMITATER_SLOT {
+        return (20.0, 23.0);
+    }
+    (
+        26.0 + f32::from(slot % 8) * 52.0,
+        92.0 + f32::from(slot / 8) * 78.0,
+    )
+}
+
+fn almanac_plant_slot_at(x: f32, y: f32) -> Option<u8> {
+    (0..ALMANAC_PLANT_COUNT).find(|slot| {
+        let (slot_x, slot_y) = almanac_plant_position(*slot);
+        let (width, height) = if *slot == ALMANAC_IMITATER_SLOT {
+            (34.0, 46.0)
+        } else {
+            (50.0, 70.0)
+        };
+        (slot_x..slot_x + width).contains(&x) && (slot_y..slot_y + height).contains(&y)
+    })
+}
+
+fn almanac_plant_icon(plant_type: PlantType) -> Option<(u32, f32)> {
+    board_plant_image(plant_type).map(|(resource_id, _, _, scale)| (resource_id, scale * 0.6))
+}
+
+fn almanac_zombie_type(index: u8) -> Option<ZombieType> {
+    Some(match index {
+        0 => ZombieType::Normal,
+        1 => ZombieType::Flag,
+        2 => ZombieType::Conehead,
+        3 => ZombieType::PoleVaulter,
+        4 => ZombieType::Buckethead,
+        5 => ZombieType::Newspaper,
+        6 => ZombieType::ScreenDoor,
+        7 => ZombieType::Football,
+        8 => ZombieType::Dancer,
+        9 => ZombieType::BackupDancer,
+        10 => ZombieType::DuckyTube,
+        11 => ZombieType::Snorkel,
+        12 => ZombieType::Zamboni,
+        13 => ZombieType::Bobsled,
+        14 => ZombieType::DolphinRider,
+        15 => ZombieType::Jackbox,
+        16 => ZombieType::Balloon,
+        17 => ZombieType::Digger,
+        18 => ZombieType::Pogo,
+        19 => ZombieType::Yeti,
+        20 => ZombieType::Bungee,
+        21 => ZombieType::Ladder,
+        22 => ZombieType::Catapult,
+        23 => ZombieType::Gargantuar,
+        24 => ZombieType::Imp,
+        25 => ZombieType::Boss,
+        _ => return None,
+    })
+}
+
+fn almanac_zombie_position(index: u8) -> (f32, f32) {
+    if almanac_zombie_type(index) == Some(ZombieType::Boss) {
+        return (192.0, 486.0);
+    }
+    (
+        22.0 + f32::from(index % 5) * 85.0,
+        86.0 + f32::from(index / 5) * 80.0,
+    )
+}
+
+fn almanac_zombie_index_at(x: f32, y: f32) -> Option<u8> {
+    (0..ALMANAC_ZOMBIE_COUNT).find(|index| {
+        let (slot_x, slot_y) = almanac_zombie_position(*index);
+        (slot_x..slot_x + 76.0).contains(&x) && (slot_y..slot_y + 76.0).contains(&y)
+    })
+}
+
+fn almanac_close_contains(x: f32, y: f32) -> bool {
+    (676.0..765.0).contains(&x) && (567.0..593.0).contains(&y)
+}
+
+fn almanac_index_contains(x: f32, y: f32) -> bool {
+    (32.0..196.0).contains(&x) && (567.0..593.0).contains(&y)
+}
+
+fn almanac_plant_contains(x: f32, y: f32) -> bool {
+    (130.0..286.0).contains(&x) && (345.0..387.0).contains(&y)
+}
+
+fn almanac_zombie_contains(x: f32, y: f32) -> bool {
+    (487.0..697.0).contains(&x) && (345.0..393.0).contains(&y)
+}
+
+fn game_over_try_again_contains(x: f32, y: f32) -> bool {
+    (220.0..480.0).contains(&x) && (388.0..450.0).contains(&y)
+}
+
+fn game_over_main_menu_contains(x: f32, y: f32) -> bool {
+    (595.0..759.0).contains(&x) && (140.0..191.0).contains(&y)
+}
+
+fn complete_continue_contains(x: f32, y: f32) -> bool {
+    (324.0..480.0).contains(&x) && (500.0..542.0).contains(&y)
+}
+
+fn complete_main_menu_contains(x: f32, y: f32) -> bool {
+    (677.0..788.0).contains(&x) && (16.0..42.0).contains(&y)
+}
+
+fn is_completion_award_coin(coin: CoinType) -> bool {
+    matches!(
+        coin,
+        CoinType::FinalSeedPacket
+            | CoinType::Trophy
+            | CoinType::Shovel
+            | CoinType::Almanac
+            | CoinType::CarKeys
+            | CoinType::WateringCan
+            | CoinType::Taco
+            | CoinType::Note
+            | CoinType::AwardMoneyBag
+            | CoinType::AwardBagDiamond
+            | CoinType::AwardSilverSunflower
+            | CoinType::AwardGoldSunflower
+            | CoinType::AwardPresent
+            | CoinType::AwardChocolate
+    )
+}
+
+fn completion_award_coin(state: &neopvz_core::GameState) -> Option<CoinType> {
+    state
+        .board
+        .coins
+        .iter()
+        .rev()
+        .map(|coin| coin.coin_type)
+        .find(|coin| is_completion_award_coin(*coin))
+        .or_else(|| {
+            state
+                .pickup_inventory
+                .iter()
+                .rev()
+                .copied()
+                .find(|coin| is_completion_award_coin(*coin))
+        })
+        .or_else(|| {
+            if state.mode == ModeKind::Adventure {
+                adventure_completion_award(state.level, state.adventure_first_time)
+            } else {
+                None
+            }
+        })
+}
+
+fn completion_award_text_slot(reward: Option<CoinType>) -> u32 {
+    match reward {
+        Some(CoinType::FinalSeedPacket) => 0,
+        Some(CoinType::Shovel) => 1,
+        Some(CoinType::Almanac) => 2,
+        Some(CoinType::CarKeys) => 3,
+        Some(CoinType::Taco) => 4,
+        Some(CoinType::WateringCan) => 5,
+        Some(CoinType::Note) => 6,
+        Some(CoinType::Trophy | CoinType::AwardSilverSunflower | CoinType::AwardGoldSunflower) => 7,
+        _ => 8,
+    }
+}
+
+fn completion_note_asset(level: u8) -> u32 {
+    match level {
+        9 => AWARD_NOTE1_IMAGE_ID,
+        19 => AWARD_NOTE2_IMAGE_ID,
+        29 => AWARD_NOTE3_IMAGE_ID,
+        39 => AWARD_NOTE4_IMAGE_ID,
+        _ => {
+            // ponytail: final note art is absent from the supplied resources; use the last page.
+            AWARD_NOTE4_IMAGE_ID
+        }
+    }
+}
+
+fn completion_award_asset(
+    _state: &neopvz_core::GameState,
+    reward: Option<CoinType>,
+) -> Option<(u32, f32, f32, f32)> {
+    let resource_id = match reward {
+        Some(CoinType::Shovel) => AWARD_SHOVEL_IMAGE_ID,
+        Some(CoinType::Almanac) => AWARD_ALMANAC_IMAGE_ID,
+        Some(CoinType::CarKeys) => AWARD_CAR_KEYS_IMAGE_ID,
+        Some(CoinType::Taco) => AWARD_TACO_IMAGE_ID,
+        Some(CoinType::WateringCan) => AWARD_WATERING_CAN_IMAGE_ID,
+        Some(CoinType::Note | CoinType::FinalSeedPacket) => return None,
+        Some(
+            CoinType::Trophy
+            | CoinType::AwardMoneyBag
+            | CoinType::AwardBagDiamond
+            | CoinType::AwardSilverSunflower
+            | CoinType::AwardGoldSunflower
+            | CoinType::AwardPresent
+            | CoinType::AwardChocolate,
+        )
+        | None => AWARD_TROPHY_IMAGE_ID,
+        _ => AWARD_TROPHY_IMAGE_ID,
+    };
+    Some((resource_id, 317.0, 118.0, 0.55))
+}
+
+fn volume_percent_to_decibels(percent: u8) -> f32 {
+    if percent == 0 {
+        -60.0
+    } else {
+        20.0 * (f32::from(percent) / 100.0).log10()
+    }
+}
+
+fn board_row_y(row: u8) -> f32 {
+    120.0 + f32::from(row) * 90.0
+}
+
+fn jalapeno_fire_effect_positions(scene: SceneKind, row: u8) -> [(f32, f32); 12] {
+    std::array::from_fn(|index| {
+        let x = 750.0 * index as f32 / 11.0 + 10.0;
+        let source_x = x + 10.0;
+        let roof_offset = if scene == SceneKind::Roof && source_x < 440.0 {
+            (440.0 - source_x) * 0.25
+        } else {
+            0.0
+        };
+        (x, board_row_y(row) + roof_offset - 10.0)
+    })
+}
+
+fn board_zombie_image(zombie_type: ZombieType) -> Option<u32> {
+    (!matches!(zombie_type, ZombieType::Boss)).then_some(BOARD_ZOMBIE_BODY_IMAGE_ID)
+}
+
+fn board_zombie_reanim_action(zombie: &ZombieState) -> &'static str {
+    match zombie.zombie_type {
+        ZombieType::Newspaper if zombie.newspaper_mad_pending => "anim_gasp",
+        ZombieType::Newspaper if !zombie.armor_intact => {
+            if zombie.eating {
+                "anim_eat_nopaper"
+            } else {
+                "anim_walk_nopaper"
+            }
+        }
+        ZombieType::Digger if zombie.digger_underground => "anim_dig",
+        ZombieType::PoleVaulter if !zombie.has_vaulted => "anim_run",
+        ZombieType::Pogo => "anim_pogo",
+        ZombieType::Bobsled if zombie.bobsled_sliding => "anim_push",
+        ZombieType::Zamboni => "anim_drive",
+        ZombieType::DolphinRider if zombie.in_pool => "anim_swim",
+        ZombieType::DolphinRider => "anim_walkdolphin",
+        ZombieType::Snorkel if zombie.in_pool && !zombie.eating => "anim_swim",
+        ZombieType::Ladder if zombie.eating && !zombie.ladder_placed => "anim_laddereat",
+        ZombieType::Ladder if !zombie.ladder_placed => "anim_ladderwalk",
+        ZombieType::Bungee => "anim_drop",
+        ZombieType::Catapult if zombie.catapult_armed => "anim_shoot",
+        ZombieType::Balloon | ZombieType::Gargantuar | ZombieType::Gigagargantuar => "anim_idle",
+        ZombieType::Imp if zombie.imp_flight_ticks > 0 => "anim_thrown",
+        ZombieType::Digger if zombie.digger_counter > 0 => "anim_drill",
+        _ if zombie.eating => "anim_eat",
+        _ => "anim_walk",
+    }
+}
+
+fn board_plant_reanim_actions(
+    plant_type: PlantType,
+    asleep: bool,
+    special_counter: u32,
+    special_armed: bool,
+    shooting_counter: u32,
+    production_stage: u8,
+) -> &'static [&'static str] {
+    if asleep {
+        if plant_type == PlantType::Other(9) {
+            return &["anim_bigsleep", "anim_sleep", "anim_idle"];
+        }
+        return &["anim_sleep", "anim_idle"];
+    }
+    if plant_type == PlantType::Other(4) && special_armed {
+        return &["anim_armed", "anim_idle"];
+    }
+    if plant_type == PlantType::Other(27) && special_counter > 0 {
+        return &["anim_blow", "anim_idle"];
+    }
+    if matches!(plant_type, PlantType::Other(2 | 14 | 15 | 20)) && special_counter > 0 {
+        return &["anim_explode", "anim_idle"];
+    }
+    if plant_type == PlantType::Other(47) && special_counter > 0 && !special_armed {
+        return &["anim_unarmed_idle", "anim_idle"];
+    }
+    if shooting_counter > 0 {
+        return &["anim_shooting", "anim_shoot", "anim_idle"];
+    }
+    if plant_type == PlantType::Other(9) && production_stage > 0 {
+        return &["anim_bigidle", "anim_idle"];
+    }
+    &["anim_idle", "anim_walk", "anim_shoot"]
+}
+
+fn board_plant_reanim_track_style(
+    plant_type: PlantType,
+    special_armed: bool,
+    kernel_pult_projectile: Option<ProjectileType>,
+    name: &str,
+) -> Option<(i32, BlendMode)> {
+    if board_plant_reanim_head_track(plant_type, name) {
+        return None;
+    }
+    if plant_type == PlantType::Other(4) && name.eq_ignore_ascii_case("anim_glow") && !special_armed
+    {
+        return None;
+    }
+    if plant_type == PlantType::Other(30) && name.eq_ignore_ascii_case("Pumpkin_back") {
+        return Some((9, BlendMode::Alpha));
+    }
+    if plant_type == PlantType::Other(34) {
+        if name.starts_with("Cornpult_butter") {
+            return (kernel_pult_projectile == Some(ProjectileType::Butter))
+                .then_some((10, BlendMode::Alpha));
+        }
+        if name.starts_with("Cornpult_kernal") {
+            return (kernel_pult_projectile != Some(ProjectileType::Butter))
+                .then_some((10, BlendMode::Alpha));
+        }
+    }
+    Some((10, BlendMode::Alpha))
+}
+
+fn board_plant_reanim_head_track(plant_type: PlantType, name: &str) -> bool {
+    match plant_type {
+        PlantType::Peashooter | PlantType::Other(5 | 7 | 40) => name.starts_with("anim_head"),
+        PlantType::Other(28) => name.starts_with("anim_head") || name.starts_with("anim_splitpea"),
+        PlantType::Other(18) => name.starts_with("anim_head"),
+        _ => false,
+    }
+}
+
+fn board_plant_reanim_attachment_specs(
+    plant_type: PlantType,
+    action: &str,
+    firing_directions: u8,
+) -> &'static [(&'static str, &'static str)] {
+    let shooting =
+        action.eq_ignore_ascii_case("anim_shooting") || action.eq_ignore_ascii_case("anim_shoot");
+    match plant_type {
+        PlantType::Peashooter | PlantType::Other(5 | 7 | 40) => {
+            if shooting {
+                &[("anim_stem", "anim_shooting")]
+            } else {
+                &[("anim_stem", "anim_head_idle")]
+            }
+        }
+        PlantType::Other(28) if shooting => match firing_directions & 3 {
+            1 => &[("anim_idle", "anim_shooting")],
+            2 => &[("anim_idle", "anim_splitpea_shooting")],
+            _ => &[
+                ("anim_idle", "anim_shooting"),
+                ("anim_idle", "anim_splitpea_shooting"),
+            ],
+        },
+        PlantType::Other(28) => &[
+            ("anim_idle", "anim_head_idle"),
+            ("anim_idle", "anim_splitpea_idle"),
+        ],
+        PlantType::Other(18) if shooting => &[
+            ("anim_head1", "anim_shooting1"),
+            ("anim_head2", "anim_shooting2"),
+            ("anim_head3", "anim_shooting3"),
+        ],
+        PlantType::Other(18) => &[
+            ("anim_head1", "anim_head_idle1"),
+            ("anim_head2", "anim_head_idle2"),
+            ("anim_head3", "anim_head_idle3"),
+        ],
+        _ => &[],
+    }
+}
+
+fn board_plant_reanim_attached_track_visible(action: &str, name: &str) -> bool {
+    name.eq_ignore_ascii_case(action)
+}
+
+#[derive(Clone, Copy)]
+struct ReanimMatrix {
+    m00: f32,
+    m01: f32,
+    m10: f32,
+    m11: f32,
+    m02: f32,
+    m12: f32,
+}
+
+fn reanim_matrix_from_transform(transform: &ReanimatorTransform) -> ReanimMatrix {
+    let skew_x = -transform.skew_x.to_radians();
+    let skew_y = -transform.skew_y.to_radians();
+    ReanimMatrix {
+        m00: skew_x.cos() * transform.scale_x,
+        m01: skew_y.sin() * transform.scale_y,
+        m10: -skew_x.sin() * transform.scale_x,
+        m11: skew_y.cos() * transform.scale_y,
+        m02: transform.x,
+        m12: transform.y,
+    }
+}
+
+fn reanim_matrix_translation(x: f32, y: f32) -> ReanimMatrix {
+    ReanimMatrix {
+        m00: 1.0,
+        m01: 0.0,
+        m10: 0.0,
+        m11: 1.0,
+        m02: x,
+        m12: y,
+    }
+}
+
+fn reanim_matrix_mul(left: ReanimMatrix, right: ReanimMatrix) -> ReanimMatrix {
+    ReanimMatrix {
+        m00: left.m00 * right.m00 + left.m01 * right.m10,
+        m01: left.m00 * right.m01 + left.m01 * right.m11,
+        m10: left.m10 * right.m00 + left.m11 * right.m10,
+        m11: left.m10 * right.m01 + left.m11 * right.m11,
+        m02: left.m00 * right.m02 + left.m01 * right.m12 + left.m02,
+        m12: left.m10 * right.m02 + left.m11 * right.m12 + left.m12,
+    }
+}
+
+fn reanim_matrix_inverse(matrix: ReanimMatrix) -> Option<ReanimMatrix> {
+    let determinant = matrix.m00 * matrix.m11 - matrix.m01 * matrix.m10;
+    if determinant.abs() < f32::EPSILON {
+        return None;
+    }
+    Some(ReanimMatrix {
+        m00: matrix.m11 / determinant,
+        m01: -matrix.m01 / determinant,
+        m10: -matrix.m10 / determinant,
+        m11: matrix.m00 / determinant,
+        m02: (matrix.m01 * matrix.m12 - matrix.m02 * matrix.m11) / determinant,
+        m12: (matrix.m02 * matrix.m10 - matrix.m00 * matrix.m12) / determinant,
+    })
+}
+
+fn push_board_plant_reanim_attachments(
+    frame: &mut RenderFrame,
+    definition: &ReanimatorDefinition,
+    image_ids: &HashMap<String, u32>,
+    specs: &[(&str, &str)],
+    tick: u64,
+    (x, y, frame_position): (f32, f32, f32),
+) -> bool {
+    if specs.is_empty() {
+        return false;
+    }
+    let Some(anchor_name) = specs.first().map(|(anchor, _)| *anchor) else {
+        return false;
+    };
+    let anchor_track = definition
+        .tracks
+        .iter()
+        .find(|track| track.name.eq_ignore_ascii_case(anchor_name))
+        .or_else(|| {
+            if anchor_name == "anim_stem" {
+                definition
+                    .tracks
+                    .iter()
+                    .find(|track| track.name.eq_ignore_ascii_case("anim_idle"))
+            } else {
+                None
+            }
+        });
+    let Some(anchor_track) = anchor_track else {
+        return false;
+    };
+    let Some((base_frame, _)) = reanim_frames(definition, "anim_idle") else {
+        return false;
+    };
+    let Some(anchor_current) = reanim_transform_at_any(anchor_track, frame_position) else {
+        return false;
+    };
+    let Some(anchor_base) = reanim_transform_at_any(anchor_track, base_frame as f32) else {
+        return false;
+    };
+    let Some(anchor_base_inverse) =
+        reanim_matrix_inverse(reanim_matrix_from_transform(&anchor_base))
+    else {
+        return false;
+    };
+    let parent_overlay = reanim_matrix_mul(
+        reanim_matrix_translation(x, y),
+        reanim_matrix_mul(
+            reanim_matrix_from_transform(&anchor_current),
+            anchor_base_inverse,
+        ),
+    );
+    let mut drawn = false;
+    for &(anchor, child_action) in specs {
+        if anchor != anchor_name {
+            continue;
+        }
+        let Some(child_position) = reanim_frame_position(definition, child_action, tick) else {
+            continue;
+        };
+        for track in &definition.tracks {
+            if !board_plant_reanim_attached_track_visible(child_action, &track.name) {
+                continue;
+            }
+            let Some(transform) = reanim_transform_at(track, child_position) else {
+                continue;
+            };
+            let Some(image) = transform.image.as_deref() else {
+                continue;
+            };
+            let Some(&resource_id) = image_ids.get(&image.to_ascii_uppercase()) else {
+                continue;
+            };
+            let matrix =
+                reanim_matrix_mul(parent_overlay, reanim_matrix_from_transform(&transform));
+            frame.affine_sprites.push(AffineSpriteCommand {
+                resource_id,
+                x: matrix.m02,
+                y: matrix.m12,
+                m00: matrix.m00,
+                m01: matrix.m01,
+                m10: matrix.m10,
+                m11: matrix.m11,
+                z: 11,
+                alpha: transform.alpha * anchor_current.alpha,
+                blend_mode: BlendMode::Alpha,
+            });
+            drawn = true;
+        }
+    }
+    drawn
+}
+
+fn reanim_frames(definition: &ReanimatorDefinition, name: &str) -> Option<(usize, usize)> {
+    let track = definition
+        .tracks
+        .iter()
+        .find(|track| track.name.eq_ignore_ascii_case(name))?;
+    let start = track
+        .transforms
+        .iter()
+        .position(|transform| transform.frame >= 0.0)?;
+    let end = track
+        .transforms
+        .iter()
+        .rposition(|transform| transform.frame >= 0.0)?;
+    Some((start, end - start + 1))
+}
+
+fn reanim_frame_position(
+    definition: &ReanimatorDefinition,
+    action: &str,
+    tick: u64,
+) -> Option<f32> {
+    let (frame_start, frame_count) = reanim_frames(definition, action)?;
+    let frame_count = frame_count.max(1);
+    let progress = (tick as f32 * 0.01 * definition.fps / frame_count as f32).fract();
+    Some(frame_start as f32 + progress * frame_count.saturating_sub(1) as f32)
+}
+
+fn reanim_transform_at(track: &ReanimatorTrack, position: f32) -> Option<ReanimatorTransform> {
+    let transform = reanim_transform_at_any(track, position)?;
+    (transform.frame >= 0.0).then_some(transform)
+}
+
+fn reanim_transform_at_any(track: &ReanimatorTrack, position: f32) -> Option<ReanimatorTransform> {
+    let before_index = (position.floor() as usize).min(track.transforms.len().saturating_sub(1));
+    let after_index = (before_index + 1).min(track.transforms.len().saturating_sub(1));
+    let before = track.transforms.get(before_index)?;
+    let after = track.transforms.get(after_index)?;
+    let fraction = position.fract();
+    let lerp = |first: f32, second: f32| first + (second - first) * fraction;
+    Some(ReanimatorTransform {
+        x: lerp(before.x, after.x),
+        y: lerp(before.y, after.y),
+        skew_x: lerp(before.skew_x, after.skew_x),
+        skew_y: lerp(before.skew_y, after.skew_y),
+        scale_x: lerp(before.scale_x, after.scale_x),
+        scale_y: lerp(before.scale_y, after.scale_y),
+        frame: before.frame,
+        alpha: lerp(before.alpha, after.alpha),
+        image: before.image.clone(),
+    })
+}
+
+fn push_reanim_tracks(
+    frame: &mut RenderFrame,
+    definition: &ReanimatorDefinition,
+    image_ids: &HashMap<String, u32>,
+    frame_position: f32,
+    (x, y, scale): (f32, f32, f32),
+    track_style: impl Fn(&str) -> Option<(i32, BlendMode)>,
+) -> bool {
+    let mut drawn = false;
+    for track in &definition.tracks {
+        let Some((z, blend_mode)) = track_style(&track.name) else {
+            continue;
+        };
+        let Some(transform) = reanim_transform_at(track, frame_position) else {
+            continue;
+        };
+        let Some(image) = transform.image.as_deref() else {
+            continue;
+        };
+        let Some(&resource_id) = image_ids.get(&image.to_ascii_uppercase()) else {
+            continue;
+        };
+        let skew_x = -transform.skew_x.to_radians();
+        let skew_y = -transform.skew_y.to_radians();
+        frame.affine_sprites.push(AffineSpriteCommand {
+            resource_id,
+            x: x + transform.x,
+            y: y + transform.y,
+            m00: skew_x.cos() * transform.scale_x * scale,
+            m01: skew_y.sin() * transform.scale_y * scale,
+            m10: -skew_x.sin() * transform.scale_x * scale,
+            m11: skew_y.cos() * transform.scale_y * scale,
+            z,
+            alpha: transform.alpha,
+            blend_mode,
+        });
+        drawn = true;
+    }
+    drawn
+}
+
+fn board_boss_reanim_action(zombie: &ZombieState) -> &'static str {
+    boss_reanim_action(
+        zombie.health,
+        zombie.special_phase != 0,
+        zombie.boss_ball_active,
+    )
+}
+
+fn boss_reanim_action(health: i32, rv_active: bool, ball_active: bool) -> &'static str {
+    if health == 0 {
+        "anim_death"
+    } else if rv_active {
+        "anim_RV_1"
+    } else if ball_active {
+        "anim_head_attack_1"
+    } else {
+        "anim_idle"
+    }
+}
+
+fn board_boss_reanim_track_z(name: &str) -> i32 {
+    if name.starts_with("Boss_innerleg") {
+        5
+    } else if name.starts_with("Boss_outerleg") || name.eq_ignore_ascii_case("Boss_body2") {
+        6
+    } else if name.starts_with("Boss_innerarm") || name.starts_with("Boss_RV") {
+        8
+    } else {
+        7
+    }
+}
+
+fn board_boss_ball_track_z(name: &str) -> i32 {
+    if name.eq_ignore_ascii_case("Layer 47") || name.eq_ignore_ascii_case("Layer 64") {
+        11
+    } else if name.eq_ignore_ascii_case("multiply") {
+        12
+    } else if name.eq_ignore_ascii_case("additive")
+        || name.eq_ignore_ascii_case("superglow")
+        || name.eq_ignore_ascii_case("ice_highlight")
+    {
+        14
+    } else {
+        13
+    }
+}
+
+fn board_boss_ball_blend_mode(name: &str) -> BlendMode {
+    if name.eq_ignore_ascii_case("additive")
+        || name.eq_ignore_ascii_case("superglow")
+        || name.eq_ignore_ascii_case("ice_highlight")
+    {
+        BlendMode::Additive
+    } else {
+        BlendMode::Alpha
+    }
+}
+
+fn board_zombie_reanim_track_visible(
+    name: &str,
+    zombie_type: ZombieType,
+    armor_intact: bool,
+    has_head: bool,
+    has_arm: bool,
+) -> bool {
+    if !has_head
+        && (name.starts_with("anim_head")
+            || name.starts_with("anim_hair")
+            || name.starts_with("Zombie_mustache"))
+    {
+        return false;
+    }
+    if !has_arm && (name.starts_with("anim_innerarm") || name.starts_with("Zombie_outerarm")) {
+        return false;
+    }
+    if name.starts_with("anim_cone") {
+        return zombie_type == ZombieType::Conehead && armor_intact;
+    }
+    if name.starts_with("anim_bucket") {
+        return zombie_type == ZombieType::Buckethead && armor_intact;
+    }
+    if name.starts_with("anim_screendoor") {
+        return zombie_type == ZombieType::ScreenDoor && armor_intact;
+    }
+    if name.starts_with("anim_hair") {
+        return !matches!(zombie_type, ZombieType::Conehead | ZombieType::Buckethead)
+            || !armor_intact;
+    }
+    if name == "Zombie_flaghand" {
+        return zombie_type == ZombieType::Flag;
+    }
+    if name.starts_with("Zombie_flag") || name.starts_with("Zombie_duckytube") {
+        return false;
+    }
+    if name.starts_with("Zombie_outerarm_screendoor") {
+        return zombie_type == ZombieType::ScreenDoor && armor_intact;
+    }
+    if name.starts_with("Zombie_innerarm_screendoor") {
+        return (zombie_type == ZombieType::ScreenDoor && armor_intact)
+            || (zombie_type == ZombieType::Flag && name == "Zombie_innerarm_screendoor");
+    }
+    if name.starts_with("anim_innerarm") {
+        return !matches!(zombie_type, ZombieType::ScreenDoor | ZombieType::Flag);
+    }
+    if name.starts_with("Zombie_outerarm") {
+        return zombie_type != ZombieType::ScreenDoor;
+    }
+    if name.starts_with("anim_tongue")
+        || name.starts_with("Zombie_mustache")
+        || name.starts_with("Zombie_paper_paper")
+        || name.starts_with("Zombie_paper")
+    {
+        return false;
+    }
+    true
+}
+
+fn board_specialized_zombie_reanim_track_visible(
+    name: &str,
+    zombie_type: ZombieType,
+    armor_intact: bool,
+    has_head: bool,
+    has_arm: bool,
+) -> bool {
+    if !has_head
+        && (name.starts_with("anim_head")
+            || name.starts_with("anim_hair")
+            || name.starts_with("anim_hairpiece"))
+    {
+        return false;
+    }
+    if !has_arm
+        && (name.eq_ignore_ascii_case("zombie_football_leftarm_lower")
+            || name.eq_ignore_ascii_case("zombie_football_leftarm_hand")
+            || name.eq_ignore_ascii_case("Zombie_paper_hands")
+            || name.eq_ignore_ascii_case("Zombie_paper_leftarm_lower"))
+    {
+        return false;
+    }
+    if name.eq_ignore_ascii_case("zombie_football_helmet") {
+        return zombie_type == ZombieType::Football && armor_intact;
+    }
+    if name.eq_ignore_ascii_case("anim_hair") {
+        return zombie_type == ZombieType::Football && !armor_intact;
+    }
+    if name.starts_with("Zombie_paper_paper") {
+        return zombie_type == ZombieType::Newspaper && armor_intact;
+    }
+    true
+}
+
+fn push_board_zombie_flag(frame: &mut RenderFrame, x: f32, y: f32) {
+    frame.sprites.extend([
+        SpriteCommand {
+            resource_id: BOARD_ZOMBIE_FLAG_POLE_IMAGE_ID,
+            x: x - 13.0,
+            y: y - 35.0,
+            z: 7,
+            scale: 0.55,
+            alpha: 1.0,
+        },
+        SpriteCommand {
+            resource_id: BOARD_ZOMBIE_FLAG_IMAGE_ID,
+            x: x - 3.0,
+            y: y - 31.0,
+            z: 9,
+            scale: 0.65,
+            alpha: 1.0,
+        },
+    ]);
+}
+
+fn board_zombie_head_image(zombie_type: ZombieType) -> u32 {
+    match zombie_type {
+        ZombieType::Football => BOARD_ZOMBIE_FOOTBALL_HEAD_IMAGE_ID,
+        ZombieType::Newspaper => BOARD_ZOMBIE_NEWSPAPER_HEAD_IMAGE_ID,
+        _ => TITLE_LOAD_BAR_ZOMBIE_HEAD_IMAGE_ID,
+    }
+}
+
+fn push_board_zombie_equipment(
+    frame: &mut RenderFrame,
+    x: f32,
+    y: f32,
+    zombie_type: ZombieType,
+    armor_intact: bool,
+) {
+    match zombie_type {
+        ZombieType::Flag => {
+            frame.sprites.push(SpriteCommand {
+                resource_id: BOARD_ZOMBIE_FLAG_POLE_IMAGE_ID,
+                x: x - 13.0,
+                y: y - 35.0,
+                z: 7,
+                scale: 0.55,
+                alpha: 1.0,
+            });
+            frame.sprites.push(SpriteCommand {
+                resource_id: BOARD_ZOMBIE_FLAG_HAND_IMAGE_ID,
+                x: x - 9.0,
+                y: y + 8.0,
+                z: 9,
+                scale: 0.7,
+                alpha: 1.0,
+            });
+            frame.sprites.push(SpriteCommand {
+                resource_id: BOARD_ZOMBIE_FLAG_IMAGE_ID,
+                x: x - 3.0,
+                y: y - 31.0,
+                z: 9,
+                scale: 0.65,
+                alpha: 1.0,
+            });
+        }
+        ZombieType::Conehead if armor_intact => frame.sprites.push(SpriteCommand {
+            resource_id: BOARD_ZOMBIE_CONE_IMAGE_ID,
+            x: x - 34.0,
+            y: y - 30.0,
+            z: 9,
+            scale: 0.75,
+            alpha: 1.0,
+        }),
+        ZombieType::Buckethead if armor_intact => frame.sprites.push(SpriteCommand {
+            resource_id: BOARD_ZOMBIE_BUCKET_IMAGE_ID,
+            x: x - 35.0,
+            y: y - 32.0,
+            z: 9,
+            scale: 0.7,
+            alpha: 1.0,
+        }),
+        ZombieType::ScreenDoor if armor_intact => frame.sprites.push(SpriteCommand {
+            resource_id: BOARD_ZOMBIE_SCREEN_DOOR_IMAGE_ID,
+            x: x - 35.0,
+            y: y - 3.0,
+            z: 9,
+            scale: 0.65,
+            alpha: 1.0,
+        }),
+        ZombieType::Football if armor_intact => {
+            frame.sprites.push(SpriteCommand {
+                resource_id: BOARD_ZOMBIE_FOOTBALL_UPPERBODY_IMAGE_ID,
+                x: x - 55.0,
+                y: y + 1.0,
+                z: 7,
+                scale: 0.4,
+                alpha: 1.0,
+            });
+            frame.sprites.push(SpriteCommand {
+                resource_id: BOARD_ZOMBIE_FOOTBALL_HELMET_IMAGE_ID,
+                x: x - 36.0,
+                y: y - 31.0,
+                z: 9,
+                scale: 0.68,
+                alpha: 1.0,
+            });
+        }
+        ZombieType::Newspaper if armor_intact => frame.sprites.push(SpriteCommand {
+            resource_id: BOARD_ZOMBIE_NEWSPAPER_IMAGE_ID,
+            x: x - 39.0,
+            y: y + 3.0,
+            z: 9,
+            scale: 0.65,
+            alpha: 1.0,
+        }),
+        _ => {}
+    }
+}
+
+fn board_projectile_image(projectile_type: ProjectileType) -> Option<(u32, f32)> {
+    match projectile_type {
+        ProjectileType::Pea | ProjectileType::ZombiePea => {
+            Some((BOARD_PROJECTILE_PEA_IMAGE_ID, 0.75))
+        }
+        ProjectileType::SnowPea => Some((BOARD_PROJECTILE_SNOW_PEA_IMAGE_ID, 0.75)),
+        ProjectileType::Puff => Some((BOARD_PROJECTILE_PUFF_IMAGE_ID, 0.75)),
+        ProjectileType::Cabbage => Some((BOARD_PROJECTILE_CABBAGE_IMAGE_ID, 1.0)),
+        ProjectileType::Melon => Some((BOARD_PROJECTILE_MELON_IMAGE_ID, 1.0)),
+        ProjectileType::WinterMelon => Some((BOARD_PROJECTILE_WINTER_MELON_IMAGE_ID, 1.0)),
+        ProjectileType::Kernel => Some((BOARD_PROJECTILE_KERNEL_IMAGE_ID, 0.95)),
+        ProjectileType::Butter => Some((BOARD_PROJECTILE_BUTTER_IMAGE_ID, 0.8)),
+        ProjectileType::Spike => Some((BOARD_PROJECTILE_SPIKE_IMAGE_ID, 1.0)),
+        ProjectileType::Star => Some((BOARD_PROJECTILE_STAR_IMAGE_ID, 1.0)),
+        ProjectileType::Fireball => Some((BOARD_PROJECTILE_FIREBALL_IMAGE_ID, 1.4)),
+        ProjectileType::Cob => Some((BOARD_PROJECTILE_COB_IMAGE_ID, 0.9)),
+        ProjectileType::Other(1) => Some((BOARD_PROJECTILE_BASKETBALL_IMAGE_ID, 1.1)),
+        ProjectileType::Other(_) => None,
+    }
+}
+
+fn board_projectile_scale(projectile_type: ProjectileType, age: u32) -> Option<f32> {
+    let (_, scale) = board_projectile_image(projectile_type)?;
+    if projectile_type == ProjectileType::Puff {
+        let progress = age.min(30) as f32 / 30.0;
+        Some(scale * (0.3 + 0.7 * progress))
+    } else {
+        Some(scale)
+    }
+}
+
+fn board_projectile_rotation(projectile_type: ProjectileType, age: u32) -> f32 {
+    // ponytail: midpoint spin for source-randomized projectile angles; persist RNG-backed visual state if exact replay fidelity needs it.
+    let age = age as f32;
+    match projectile_type {
+        ProjectileType::Cabbage | ProjectileType::Butter => {
+            -7.0 * std::f32::consts::PI / 25.0 - 0.05 * age
+        }
+        ProjectileType::Melon | ProjectileType::WinterMelon => {
+            -2.0 * std::f32::consts::PI / 5.0 - 0.05 * age
+        }
+        ProjectileType::Kernel => -0.14 * age,
+        ProjectileType::Cob => std::f32::consts::PI / 2.0,
+        ProjectileType::Other(1) | ProjectileType::Star => 0.075 * age,
+        _ => 0.0,
+    }
+}
+
+fn board_projectile_y(position_y: i64, row: u8, lob_height: i32) -> f32 {
     let core_row_y = 80.0 + f32::from(row) * 100.0;
-    board_row_y(row) + fixed_point_to_logical(position_y) - core_row_y + 18.0
+    board_row_y(row) + fixed_point_to_logical(position_y) - core_row_y
+        + 18.0
+        + lob_height as f32 / 1_000.0
+}
+
+fn board_projectile_shadow(
+    scene: SceneKind,
+    projectile_type: ProjectileType,
+    row: u8,
+    position_x: i64,
+    shadow_y: i64,
+    lob_height: i32,
+) -> Option<(u32, f32, f32, f32, f32)> {
+    let resource_id = if matches!(scene, SceneKind::Night | SceneKind::Fog | SceneKind::Boss) {
+        BOARD_PROJECTILE_SHADOW_NIGHT_IMAGE_ID
+    } else {
+        BOARD_PROJECTILE_SHADOW_DAY_IMAGE_ID
+    };
+    let (offset_x, offset_y, scale, stretch) = match projectile_type {
+        ProjectileType::Puff => return None,
+        ProjectileType::Pea | ProjectileType::ZombiePea => (3.0, 0.0, 1.0, 1.0),
+        ProjectileType::SnowPea => (-1.0, 0.0, 1.3, 1.0),
+        ProjectileType::Star => (7.0, 0.0, 1.0, 1.0),
+        ProjectileType::Cabbage
+        | ProjectileType::Kernel
+        | ProjectileType::Butter
+        | ProjectileType::Melon
+        | ProjectileType::WinterMelon => (3.0, 10.0, 1.6, 1.0),
+        ProjectileType::Cob => (57.0, 0.0, 1.0, 3.0),
+        ProjectileType::Fireball => (0.0, 0.0, 1.4, 1.0),
+        ProjectileType::Spike | ProjectileType::Other(1) => (0.0, 0.0, 1.0, 1.0),
+        ProjectileType::Other(_) => return None,
+    };
+    let lobbed = matches!(
+        projectile_type,
+        ProjectileType::Cabbage
+            | ProjectileType::Kernel
+            | ProjectileType::Butter
+            | ProjectileType::Melon
+            | ProjectileType::WinterMelon
+            | ProjectileType::Cob
+            | ProjectileType::Other(1)
+    );
+    let height = if lobbed {
+        (-(lob_height as f32) / 1_000.0).clamp(0.0, 200.0)
+    } else {
+        0.0
+    };
+    let height_scale = 200.0 / (height + 200.0);
+    let core_row_y = 80.0 + f32::from(row) * 100.0;
+    Some((
+        resource_id,
+        fixed_point_to_logical(position_x) + offset_x,
+        board_row_y(row) + fixed_point_to_logical(shadow_y) - core_row_y + offset_y,
+        scale * height_scale * stretch,
+        scale * height_scale,
+    ))
+}
+
+fn board_coin_reanim_offset(coin_type: CoinType) -> Option<(f32, f32)> {
+    match coin_type {
+        CoinType::Silver | CoinType::Gold => Some((-1.0, 1.0)),
+        CoinType::Diamond => Some((-18.0, -11.0)),
+        _ => None,
+    }
+}
+
+fn board_coin_reanim_visible(
+    coin_type: CoinType,
+    target_y: Option<i64>,
+    from_present: bool,
+) -> bool {
+    match coin_type {
+        CoinType::Silver | CoinType::Gold => !from_present && target_y.is_none(),
+        CoinType::Diamond => true,
+        _ => false,
+    }
 }
 
 fn board_coin_image(coin_type: CoinType) -> Option<(u32, f32)> {
@@ -2945,6 +8900,24 @@ fn board_coin_image(coin_type: CoinType) -> Option<(u32, f32)> {
         CoinType::Silver => Some((BOARD_COIN_SILVER_IMAGE_ID, 0.65)),
         CoinType::Gold => Some((BOARD_COIN_GOLD_IMAGE_ID, 0.65)),
         CoinType::Diamond => Some((BOARD_DIAMOND_IMAGE_ID, 0.65)),
+        CoinType::PresentPlant
+        | CoinType::AwardPresent
+        | CoinType::PresentMinigames
+        | CoinType::PresentPuzzleMode
+        | CoinType::PresentSurvivalMode => Some((BOARD_PRESENT_IMAGE_ID, 0.8)),
+        CoinType::AwardMoneyBag | CoinType::AwardBagDiamond => Some((BOARD_MONEYBAG_IMAGE_ID, 0.5)),
+        CoinType::Chocolate | CoinType::AwardChocolate => Some((BOARD_CHOCOLATE_IMAGE_ID, 0.8)),
+        CoinType::FinalSeedPacket => Some((SEED_PACKET_NORMAL_IMAGE_ID, 0.8)),
+        CoinType::Vase => Some((BOARD_VASE_IMAGE_ID, 0.8)),
+        CoinType::Note => Some((BOARD_NOTE_IMAGE_ID, 0.8)),
+        CoinType::Trophy => Some((AWARD_TROPHY_IMAGE_ID, 0.5)),
+        CoinType::Shovel => Some((AWARD_SHOVEL_IMAGE_ID, 0.5)),
+        CoinType::Almanac => Some((AWARD_ALMANAC_IMAGE_ID, 0.8)),
+        CoinType::CarKeys => Some((AWARD_CAR_KEYS_IMAGE_ID, 0.8)),
+        CoinType::WateringCan => Some((AWARD_WATERING_CAN_IMAGE_ID, 0.8)),
+        CoinType::Taco => Some((AWARD_TACO_IMAGE_ID, 0.8)),
+        CoinType::AwardSilverSunflower => Some((BOARD_SILVER_SUNFLOWER_IMAGE_ID, 0.5)),
+        CoinType::AwardGoldSunflower => Some((BOARD_GOLD_SUNFLOWER_IMAGE_ID, 0.5)),
         CoinType::UsableSeedPacket => Some((SEED_PACKET_NORMAL_IMAGE_ID, 0.8)),
         _ => None,
     }
@@ -2959,16 +8932,17 @@ fn new_scene_game(scene: SceneKind) -> Game {
 }
 
 fn new_adventure_game(current: &Game, profile: Option<&SaveProfile>) -> Game {
-    let (level, first_time, packet_upgrades) = profile
+    let (level, first_time, packet_upgrades, stinky_purchased) = profile
         .map(|profile| {
             (
                 profile.adventure_level,
                 profile.adventure_rounds == 0,
                 profile.packet_upgrades,
+                profile.stinky_purchased,
             )
         })
-        .unwrap_or((current.state().level.max(1), true, 0));
-    Game::new_adventure(0, level, first_time, packet_upgrades)
+        .unwrap_or((current.state().level.max(1), true, 0, false));
+    Game::new_adventure(0, level, first_time, packet_upgrades, stinky_purchased)
 }
 
 fn mode_level_at(mode: ModeKind, x: f32, y: f32) -> Option<u8> {
@@ -2983,8 +8957,27 @@ fn mode_level_at(mode: ModeKind, x: f32, y: f32) -> Option<u8> {
         .flatten()
 }
 
+fn mode_is_unlocked(
+    mode: ModeKind,
+    adventure_finished: bool,
+    adventure_level: u8,
+    unlocked_modes: u8,
+) -> bool {
+    if adventure_finished {
+        return true;
+    }
+    match mode {
+        ModeKind::MiniGame => unlocked_modes & CoinType::PresentMinigames.unlock_mask() != 0,
+        ModeKind::Vasebreaker => unlocked_modes & CoinType::PresentPuzzleMode.unlock_mask() != 0,
+        ModeKind::Survival => unlocked_modes & CoinType::PresentSurvivalMode.unlock_mask() != 0,
+        ModeKind::ZenGarden => adventure_unlocks(adventure_level).2,
+        ModeKind::IZombie | ModeKind::Adventure => true,
+    }
+}
+
 fn audio_for_event(event: &GameEvent) -> Option<(AudioKind, &'static str)> {
     match event {
+        GameEvent::ReadySetPlant => Some((AudioKind::Effect, "sounds/readysetplant.ogg")),
         GameEvent::SeedSelected { .. } => Some((AudioKind::Effect, "sounds/tap.ogg")),
         GameEvent::InputRejected { .. } => Some((AudioKind::Effect, "sounds/buzzer.ogg")),
         GameEvent::ChallengeAction {
@@ -2995,6 +8988,43 @@ fn audio_for_event(event: &GameEvent) -> Option<(AudioKind, &'static str)> {
             kind: ChallengeKind::Beghouled | ChallengeKind::BeghouledTwist,
             value,
         } if *value > 0 => Some((AudioKind::Effect, "sounds/diamond.au")),
+        GameEvent::ChallengeAction {
+            kind: ChallengeKind::SlotMachine,
+            value,
+        } if *value > 0 => Some((AudioKind::Effect, "sounds/slotmachine.ogg")),
+        GameEvent::ZombiquariumSnorkelPurchased { variant } => Some((
+            AudioKind::Effect,
+            if *variant == 0 {
+                "sounds/plant_water.ogg"
+            } else {
+                "sounds/zombie_entering_water.ogg"
+            },
+        )),
+        GameEvent::ZombiquariumBrainSlurped { .. } => Some((AudioKind::Effect, "sounds/slurp.ogg")),
+        GameEvent::ZombiquariumZombieDied { .. } => {
+            Some((AudioKind::Effect, "sounds/zombaquarium_die.ogg"))
+        }
+        GameEvent::WhackHammerSwung => Some((AudioKind::Effect, "sounds/swing.ogg")),
+        GameEvent::WhackHit { sound, variant } => Some((
+            AudioKind::Effect,
+            match sound {
+                WhackHitSound::Bonk => "sounds/bonk.ogg",
+                WhackHitSound::Shield => {
+                    if *variant == 0 {
+                        "sounds/shieldhit.ogg"
+                    } else {
+                        "sounds/shieldhit2.ogg"
+                    }
+                }
+                WhackHitSound::Plastic => {
+                    if *variant == 0 {
+                        "sounds/plastichit.ogg"
+                    } else {
+                        "sounds/plastichit2.ogg"
+                    }
+                }
+            },
+        )),
         GameEvent::PlantPlaced { variant, .. } | GameEvent::ZombieDeployed { variant, .. } => {
             Some((
                 AudioKind::Effect,
@@ -3006,6 +9036,7 @@ fn audio_for_event(event: &GameEvent) -> Option<(AudioKind, &'static str)> {
             ))
         }
         GameEvent::PlantShoveled { .. } => Some((AudioKind::Effect, "sounds/plant2.ogg")),
+        GameEvent::BowlingImpact { .. } => Some((AudioKind::Effect, "sounds/bowlingimpact.ogg")),
         GameEvent::SunProduced {
             source: SunSource::Plant(_),
             ..
@@ -3022,6 +9053,28 @@ fn audio_for_event(event: &GameEvent) -> Option<(AudioKind, &'static str)> {
                 | CoinType::PresentSurvivalMode,
             ..
         } => Some((AudioKind::Effect, "sounds/chime.ogg")),
+        GameEvent::LootDropSound {
+            sound: LootDropSound::SpawnSun,
+        } => Some((AudioKind::Effect, "sounds/throw.ogg")),
+        GameEvent::LootDropSound {
+            sound: LootDropSound::ArtChallenge,
+        } => Some((AudioKind::Effect, "sounds/diamond.au")),
+        GameEvent::AwardCollectionSound { sound } => Some((
+            AudioKind::Effect,
+            match sound {
+                AwardCollectionSound::Coin => "sounds/coin.ogg",
+                AwardCollectionSound::Diamond => "sounds/diamond.au",
+                AwardCollectionSound::Seedlift => "sounds/seedlift.ogg",
+                AwardCollectionSound::Tap2 => "sounds/tap2.ogg",
+                AwardCollectionSound::Shovel => "sounds/shovel.ogg",
+            },
+        )),
+        GameEvent::WeatherSound {
+            sound: WeatherSound::Rain,
+        } => Some((AudioKind::Effect, "sounds/rain.ogg")),
+        GameEvent::WeatherSound {
+            sound: WeatherSound::Thunder,
+        } => Some((AudioKind::Effect, "sounds/thunder.ogg")),
         GameEvent::CoinLanded {
             coin_type: CoinType::Gold,
             ..
@@ -3053,14 +9106,34 @@ fn audio_for_event(event: &GameEvent) -> Option<(AudioKind, &'static str)> {
         GameEvent::CoinCollected { .. } => Some((AudioKind::Effect, "sounds/coin.ogg")),
         GameEvent::GardenWatered { .. } => Some((AudioKind::Effect, "sounds/watering.ogg")),
         GameEvent::GardenFertilized { .. } => Some((AudioKind::Effect, "sounds/fertilizer.ogg")),
+        GameEvent::GardenToolUsed {
+            tool: GardenTool::BugSpray,
+            ..
+        } => Some((AudioKind::Effect, "sounds/bugspray.ogg")),
+        GameEvent::GardenToolUsed {
+            tool: GardenTool::Phonograph,
+            ..
+        } => Some((AudioKind::Effect, "sounds/phonograph.ogg")),
+        GameEvent::GardenToolUsed { .. } => None,
         GameEvent::GardenBecameHappy { .. } => Some((AudioKind::Effect, "sounds/prize.ogg")),
         GameEvent::GardenTreeGrew { .. } => Some((AudioKind::Effect, "sounds/plantgrow.ogg")),
+        GameEvent::GardenTapGlass => Some((AudioKind::Effect, "sounds/tapglass.au")),
+        GameEvent::GardenLeft => Some((AudioKind::Effect, "sounds/gravebutton.ogg")),
         GameEvent::WaveStarted { wave: 0 } => Some((AudioKind::Effect, "sounds/awooga.ogg")),
         GameEvent::FlagWaveSound { .. } => Some((AudioKind::Effect, "sounds/siren.ogg")),
         GameEvent::HugeWaveSound { .. } => Some((AudioKind::Effect, "sounds/hugewave.ogg")),
+        GameEvent::FinalWaveSound { .. } => Some((AudioKind::Effect, "sounds/finalwave.ogg")),
+        GameEvent::BossStomp { .. } => Some((AudioKind::Effect, "sounds/gargantuar_thump.ogg")),
+        GameEvent::BossRVStarted { .. } => Some((AudioKind::Effect, "sounds/hydraulic_short.ogg")),
+        GameEvent::BossRVLanded { .. } => Some((AudioKind::Effect, "sounds/RVthrow.ogg")),
+        GameEvent::BossHeadHydraulic { .. } => Some((AudioKind::Effect, "sounds/hydraulic.ogg")),
         GameEvent::BossAttackWindup { .. } => {
             Some((AudioKind::Effect, "sounds/bossboulderattack.ogg"))
         }
+        GameEvent::BossProjectileStarted { .. } => {
+            Some((AudioKind::Effect, "sounds/hydraulic_short.ogg"))
+        }
+        GameEvent::BossDamageExplosion { .. } => Some((AudioKind::Effect, "sounds/explosion.ogg")),
         GameEvent::PlantSpecialTriggered {
             plant_type: neopvz_core::PlantType::Other(14),
             ..
@@ -3081,6 +9154,7 @@ fn audio_for_event(event: &GameEvent) -> Option<(AudioKind, &'static str)> {
         GameEvent::DiggerSurfaced { .. } => Some((AudioKind::Effect, "sounds/dirt_rise.ogg")),
         GameEvent::MetalStolen { .. } => Some((AudioKind::Effect, "sounds/magnetshroom.ogg")),
         GameEvent::VehicleDisabled { .. } => Some((AudioKind::Effect, "sounds/balloon_pop.ogg")),
+        GameEvent::VehicleExploded { .. } => Some((AudioKind::Effect, "sounds/explosion.ogg")),
         GameEvent::PlantSpecialTriggered {
             plant_type: neopvz_core::PlantType::Other(21),
             ..
@@ -3142,6 +9216,24 @@ fn audio_for_event(event: &GameEvent) -> Option<(AudioKind, &'static str)> {
             Some((AudioKind::Effect, "sounds/mindcontrolled.ogg"))
         }
         GameEvent::JackboxExploded { .. } => Some((AudioKind::Effect, "sounds/explosion.ogg")),
+        GameEvent::JackboxBoing { .. } => Some((AudioKind::Effect, "sounds/boing.ogg")),
+        GameEvent::JackboxSurprise { variant, .. } => Some((
+            AudioKind::Effect,
+            if *variant < 2 {
+                "sounds/jack_surprise.ogg"
+            } else {
+                "sounds/jack_surprise2.ogg"
+            },
+        )),
+        GameEvent::DancerRumble { .. } => Some((AudioKind::Effect, "sounds/dancer.ogg")),
+        GameEvent::ZombieYuckSound { variant, .. } => Some((
+            AudioKind::Effect,
+            if *variant < 2 {
+                "sounds/yuck.ogg"
+            } else {
+                "sounds/yuck2.ogg"
+            },
+        )),
         GameEvent::BrainFinished { .. } => Some((AudioKind::Effect, "sounds/gulp.ogg")),
         GameEvent::ImpThrown { .. } => Some((AudioKind::Effect, "sounds/swing.ogg")),
         GameEvent::ZombieSpawned {
@@ -3160,6 +9252,28 @@ fn audio_for_event(event: &GameEvent) -> Option<(AudioKind, &'static str)> {
             zombie_type: neopvz_core::ZombieType::BackupDancer,
             ..
         } => Some((AudioKind::Effect, "sounds/gravestone_rumble.ogg")),
+        GameEvent::ZombieGraveRumble { .. } => {
+            Some((AudioKind::Effect, "sounds/gravestone_rumble.ogg"))
+        }
+        GameEvent::LadderPlaced { .. } => Some((AudioKind::Effect, "sounds/ladder_zombie.ogg")),
+        GameEvent::BungeeScream { variant, .. } => Some((
+            AudioKind::Effect,
+            match variant {
+                0 => "sounds/bungee_scream.ogg",
+                1 => "sounds/bungee_scream2.ogg",
+                _ => "sounds/bungee_scream3.ogg",
+            },
+        )),
+        GameEvent::BungeePlantLifted { .. } => Some((AudioKind::Effect, "sounds/floop.ogg")),
+        GameEvent::BungeeGrassStep { .. } => Some((AudioKind::Effect, "sounds/grassstep.ogg")),
+        GameEvent::ZombieFallingSound { variant, .. } => Some((
+            AudioKind::Effect,
+            if *variant == 0 {
+                "sounds/zombie_falling_1.ogg"
+            } else {
+                "sounds/zombie_falling_2.ogg"
+            },
+        )),
         GameEvent::ZombieSongStarted {
             zombie_type: neopvz_core::ZombieType::Jackbox,
             ..
@@ -3217,9 +9331,19 @@ fn audio_for_event(event: &GameEvent) -> Option<(AudioKind, &'static str)> {
                 "sounds/shieldhit2.ogg"
             },
         )),
+        GameEvent::ZombieBodyPartLost { .. } => Some((AudioKind::Effect, "sounds/limbs_pop.ogg")),
+        GameEvent::BalloonPopped { .. } => Some((AudioKind::Effect, "sounds/balloon_pop.ogg")),
         GameEvent::ZombieNewspaperRipped { .. } => {
             Some((AudioKind::Effect, "sounds/newspaper_rip.ogg"))
         }
+        GameEvent::ZombieNewspaperRarrgh { variant, .. } => Some((
+            AudioKind::Effect,
+            if *variant < 2 {
+                "sounds/newspaper_rarrgh.ogg"
+            } else {
+                "sounds/newspaper_rarrgh2.ogg"
+            },
+        )),
         GameEvent::PoleVaultGrassStep { .. } => Some((AudioKind::Effect, "sounds/grassstep.ogg")),
         GameEvent::PoleVaultSound { .. } => Some((AudioKind::Effect, "sounds/polevault.ogg")),
         GameEvent::PogoBounceSound { .. } => Some((AudioKind::Effect, "sounds/pogo_zombie.ogg")),
@@ -3302,8 +9426,45 @@ fn audio_for_event(event: &GameEvent) -> Option<(AudioKind, &'static str)> {
                 "sounds/lawnmower.ogg"
             },
         )),
+        GameEvent::MowerZombieHit { pool: true, .. } => {
+            Some((AudioKind::Effect, "sounds/shoop.ogg"))
+        }
+        GameEvent::MowerZombieHit { variant, .. } => Some((
+            AudioKind::Effect,
+            match variant {
+                0 => "sounds/splat.ogg",
+                1 => "sounds/splat2.ogg",
+                _ => "sounds/splat3.ogg",
+            },
+        )),
+        GameEvent::MowerSquished { variant, .. } => Some((
+            AudioKind::Effect,
+            if *variant == 0 {
+                "sounds/chomp.ogg"
+            } else {
+                "sounds/chomp2.ogg"
+            },
+        )),
+        GameEvent::MowerEnteredPool { variant, .. } => Some((
+            AudioKind::Effect,
+            if *variant == 0 {
+                "sounds/plant_water.ogg"
+            } else {
+                "sounds/zombie_entering_water.ogg"
+            },
+        )),
+        GameEvent::MowerExitedPool { .. } => Some((AudioKind::Effect, "sounds/plant_water.ogg")),
         GameEvent::Paused => Some((AudioKind::Effect, "sounds/pause.ogg")),
         GameEvent::GameLost { .. } => Some((AudioKind::Music, "sounds/losemusic.ogg")),
+        GameEvent::GameLostChomp { variant } => Some((
+            AudioKind::Effect,
+            if *variant == 0 {
+                "sounds/chomp.ogg"
+            } else {
+                "sounds/chomp2.ogg"
+            },
+        )),
+        GameEvent::GameLostScream => Some((AudioKind::Effect, "sounds/scream.ogg")),
         GameEvent::GameWon => Some((AudioKind::Music, "sounds/winmusic.ogg")),
         _ => None,
     }
@@ -3362,13 +9523,34 @@ fn planting_audio_for_event(
     ))
 }
 
+fn terminal_audio_for_event(
+    event: &GameEvent,
+    state: &neopvz_core::GameState,
+) -> Option<(AudioKind, &'static str)> {
+    (matches!(event, GameEvent::GameWon) && state.mode == ModeKind::Adventure && state.level == 50)
+        .then_some((AudioKind::Effect, "sounds/finalfanfare.ogg"))
+}
+
 fn audio_sequence_for_event(
     event: &GameEvent,
     state: &neopvz_core::GameState,
 ) -> [Option<(AudioKind, &'static str)>; 2] {
-    let primary = planting_audio_for_event(event, state).or_else(|| audio_for_event(event));
-    let companion = audio_companion_for_event(event);
-    let reverse_explosion = matches!(
+    let primary = planting_audio_for_event(event, state)
+        .or_else(|| terminal_audio_for_event(event, state))
+        .or_else(|| audio_for_event(event));
+    let companion = if state.challenge.kind == ChallengeKind::WallnutBowling
+        && matches!(event, GameEvent::PlantPlaced { .. })
+    {
+        Some((AudioKind::Effect, "sounds/bowling.ogg"))
+    } else if matches!(event, GameEvent::GameWon)
+        && state.mode == ModeKind::Adventure
+        && matches!(state.level, 10 | 20 | 30 | 40 | 50)
+    {
+        Some((AudioKind::Effect, "sounds/paper.ogg"))
+    } else {
+        audio_companion_for_event(event)
+    };
+    let companion_before_planting = matches!(
         event,
         GameEvent::PlantPlaced {
             plant_type: PlantType::Other(2 | 20),
@@ -3376,9 +9558,12 @@ fn audio_sequence_for_event(
         } | GameEvent::ImitaterMorphed {
             plant_type: PlantType::Other(2 | 20),
             ..
+        } | GameEvent::PlantPlaced {
+            plant_type: PlantType::Other(25),
+            ..
         }
     );
-    if reverse_explosion {
+    if companion_before_planting {
         [companion, primary]
     } else {
         [primary, companion]
@@ -3395,6 +9580,10 @@ fn audio_companion_for_event(event: &GameEvent) -> Option<(AudioKind, &'static s
             plant_type: neopvz_core::PlantType::Other(2 | 20),
             ..
         } => Some((AudioKind::Effect, "sounds/reverse_explosion.ogg")),
+        GameEvent::PlantPlaced {
+            plant_type: neopvz_core::PlantType::Other(25),
+            ..
+        } => Some((AudioKind::Effect, "sounds/plantern.ogg")),
         GameEvent::PlantSpecialTriggered {
             plant_type: neopvz_core::PlantType::Other(2),
             ..
@@ -3425,6 +9614,11 @@ fn audio_companion_for_event(event: &GameEvent) -> Option<(AudioKind, &'static s
             zombie_type: neopvz_core::ZombieType::Boss,
             ..
         } => Some((AudioKind::Effect, "sounds/gargantudeath.ogg")),
+        GameEvent::ZombieFallingSound {
+            zombie_type:
+                neopvz_core::ZombieType::Gargantuar | neopvz_core::ZombieType::Gigagargantuar,
+            ..
+        } => Some((AudioKind::Effect, "sounds/gargantuar_thump.ogg")),
         GameEvent::PlantFired {
             plant_type: neopvz_core::PlantType::Other(5 | 44),
             ..
@@ -3456,9 +9650,7 @@ impl ApplicationHandler for App {
             WindowEvent::MouseWheel { delta, .. }
                 if self.game.state().scene == SceneKind::SeedChooser =>
             {
-                let rows = self
-                    .seed_chooser_selection
-                    .len()
+                let rows = seed_chooser_grid_slots(self.seed_chooser_has_seven_rows())
                     .div_ceil(8)
                     .saturating_sub(6);
                 let direction = match delta {
@@ -3492,6 +9684,39 @@ impl ApplicationHandler for App {
             WindowEvent::RedrawRequested => {
                 self.advance_simulation();
                 let frame = self.render_frame();
+                if let Some(path) = self.capture_path.as_deref() {
+                    let capture_result = self
+                        .renderer
+                        .as_mut()
+                        .ok_or_else(|| "renderer is not initialized".to_owned())
+                        .and_then(|renderer| {
+                            renderer
+                                .capture_frame(&frame)
+                                .map_err(|error| error.to_string())
+                        })
+                        .and_then(|captured| {
+                            image::save_buffer_with_format(
+                                path,
+                                &captured.rgba8,
+                                captured.width,
+                                captured.height,
+                                image::ColorType::Rgba8,
+                                image::ImageFormat::Png,
+                            )
+                            .map_err(|error| error.to_string())
+                        });
+                    match capture_result {
+                        Ok(()) => {
+                            tracing::info!(path = ?path, "frame captured");
+                            self.capture_path = None;
+                        }
+                        Err(error) => {
+                            tracing::error!(%error, path = ?path, "frame capture failed");
+                        }
+                    }
+                    event_loop.exit();
+                    return;
+                }
                 let render_result = self
                     .renderer
                     .as_mut()
@@ -3519,6 +9744,279 @@ impl ApplicationHandler for App {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn options_volume_uses_a_bounded_decibel_scale() {
+        assert_eq!(volume_percent_to_decibels(0), -60.0);
+        assert_eq!(volume_percent_to_decibels(100), 0.0);
+        assert!((-7.0..-5.0).contains(&volume_percent_to_decibels(50)));
+    }
+
+    #[test]
+    fn help_controls_use_the_source_note_button_regions() {
+        assert!(help_selector_contains(700.0, 500.0));
+        assert!(help_button_contains(350.0, 520.0));
+        assert!(help_button_contains(700.0, 25.0));
+        assert!(!help_button_contains(500.0, 520.0));
+    }
+
+    #[test]
+    fn almanac_navigation_matches_source_button_regions() {
+        assert!(almanac_plant_contains(150.0, 360.0));
+        assert!(almanac_zombie_contains(500.0, 360.0));
+        assert!(almanac_index_contains(50.0, 580.0));
+        assert!(almanac_close_contains(700.0, 580.0));
+        assert!(!almanac_close_contains(500.0, 580.0));
+    }
+
+    #[test]
+    fn seed_chooser_layout_matches_source_unlock_threshold() {
+        assert!(!seed_chooser_has_seven_rows_at(
+            false,
+            &[PlantType::Other(39)]
+        ));
+        assert!(seed_chooser_has_seven_rows_at(
+            false,
+            &[PlantType::Other(40)]
+        ));
+        assert!(seed_chooser_has_seven_rows_at(
+            false,
+            &[PlantType::Other(45)]
+        ));
+        assert!(!seed_chooser_has_seven_rows_at(
+            false,
+            &[PlantType::Other(46)]
+        ));
+        assert!(seed_chooser_has_seven_rows_at(true, &[]));
+
+        assert_eq!(seed_chooser_grid_slots(false), 40);
+        assert_eq!(seed_chooser_grid_slots(true), 48);
+        assert_eq!(
+            seed_chooser_slot_position(0, 0, false),
+            Some((189.5, 171.5))
+        );
+        assert_eq!(seed_chooser_slot_position(0, 0, true), Some((189.5, 166.5)));
+        assert_eq!(
+            seed_chooser_slot_position(39, 0, false),
+            Some((560.5, 463.5))
+        );
+        assert_eq!(
+            seed_chooser_slot_position(47, 0, true),
+            Some((560.5, 516.5))
+        );
+        assert_eq!(seed_chooser_slot_position(40, 0, false), None);
+        assert_eq!(seed_chooser_slot_at(189.5, 166.5, 0, true), Some(0));
+        assert_eq!(seed_chooser_slot_at(609.0, 516.5, 0, true), Some(47));
+        assert_eq!(seed_chooser_slot_at(240.0, 166.5, 0, true), None);
+        assert_eq!(seed_chooser_slot_at(189.5, 242.0, 0, false), None);
+    }
+
+    #[test]
+    fn almanac_catalog_uses_source_counts_and_order() {
+        assert_eq!(almanac_plant_type(0), Some(PlantType::Peashooter));
+        assert_eq!(almanac_plant_type(1), Some(PlantType::Sunflower));
+        assert_eq!(almanac_plant_type(48), Some(PlantType::Other(48)));
+        assert_eq!(almanac_plant_type(ALMANAC_PLANT_COUNT), None);
+        assert_eq!(almanac_zombie_type(0), Some(ZombieType::Normal));
+        assert_eq!(almanac_zombie_type(1), Some(ZombieType::Flag));
+        assert_eq!(almanac_zombie_type(2), Some(ZombieType::Conehead));
+        assert_eq!(almanac_zombie_type(25), Some(ZombieType::Boss));
+        assert_eq!(almanac_zombie_type(ALMANAC_ZOMBIE_COUNT), None);
+    }
+
+    #[test]
+    fn almanac_cards_use_source_names_and_seed_definition_values() {
+        assert_eq!(almanac_plant_name(0), "Peashooter");
+        assert_eq!(almanac_plant_name(48), "Imitater");
+        assert_eq!(almanac_zombie_name(25), "Dr. Zomboss");
+        assert_eq!(PlantType::Peashooter.cost(), 100);
+        assert_eq!(PlantType::Peashooter.refresh_time(), 750);
+        assert_eq!(PlantType::Other(14).refresh_time(), 5_000);
+        assert_eq!(PlantType::Other(ALMANAC_IMITATER_SLOT).cost(), 0);
+    }
+
+    #[test]
+    fn almanac_zombie_visibility_follows_source_progression() {
+        assert!(almanac_zombie_is_shown_at(
+            1,
+            0,
+            false,
+            false,
+            ZombieType::Normal
+        ));
+        assert!(!almanac_zombie_is_shown_at(
+            1,
+            0,
+            false,
+            false,
+            ZombieType::Conehead
+        ));
+        assert!(almanac_zombie_is_shown_at(
+            18,
+            0,
+            false,
+            false,
+            ZombieType::Dancer
+        ));
+        assert!(!almanac_zombie_is_shown_at(
+            18,
+            0,
+            false,
+            false,
+            ZombieType::BackupDancer
+        ));
+        assert!(almanac_zombie_is_shown_at(
+            19,
+            0,
+            false,
+            false,
+            ZombieType::BackupDancer
+        ));
+        assert!(almanac_zombie_is_shown_at(
+            18,
+            0,
+            false,
+            true,
+            ZombieType::BackupDancer
+        ));
+        assert!(!almanac_zombie_is_shown_at(
+            40,
+            0,
+            false,
+            false,
+            ZombieType::Yeti
+        ));
+        assert!(almanac_zombie_is_shown_at(
+            41,
+            0,
+            false,
+            false,
+            ZombieType::Yeti
+        ));
+        assert!(almanac_zombie_has_silhouette_at(
+            41,
+            0,
+            false,
+            ZombieType::Yeti
+        ));
+        assert!(!almanac_zombie_has_description_at(
+            41,
+            0,
+            false,
+            false,
+            ZombieType::Yeti
+        ));
+        assert!(almanac_zombie_has_description_at(
+            41,
+            1,
+            true,
+            false,
+            ZombieType::Yeti
+        ));
+        assert!(almanac_zombie_has_description_at(
+            1,
+            2,
+            true,
+            false,
+            ZombieType::Yeti
+        ));
+        assert!(!almanac_zombie_has_description_at(
+            18,
+            0,
+            false,
+            false,
+            ZombieType::BackupDancer
+        ));
+        assert!(almanac_zombie_has_description_at(
+            18,
+            0,
+            false,
+            true,
+            ZombieType::BackupDancer
+        ));
+    }
+
+    #[test]
+    fn almanac_description_parser_resolves_source_format_tokens() {
+        let strings = parse_lawn_strings(
+            "[PEASHOOTER_DESCRIPTION]\r\nfirst line\r\n{SHORTLINE}\r\n{KEYWORD}Power{STAT} 20\r\n\r\n[OTHER]\r\nunused\r\n",
+        );
+        assert_eq!(
+            almanac_lawn_description(&strings, "PEASHOOTER", "fallback"),
+            "first line\nPower  20"
+        );
+        assert_eq!(almanac_plant_string_key(3), "WALL_NUT");
+        assert_eq!(almanac_zombie_string_key(3), "POLE_VAULTING_ZOMBIE");
+    }
+
+    #[test]
+    fn almanac_entry_hit_tests_follow_source_grids() {
+        assert_eq!(almanac_plant_slot_at(27.0, 93.0), Some(0));
+        assert_eq!(almanac_plant_slot_at(79.0, 171.0), Some(9));
+        assert_eq!(almanac_plant_position(ALMANAC_IMITATER_SLOT), (20.0, 23.0));
+        assert_eq!(
+            almanac_plant_slot_at(21.0, 24.0),
+            Some(ALMANAC_IMITATER_SLOT)
+        );
+        assert_eq!(almanac_plant_slot_at(440.0, 160.0), None);
+        assert_eq!(almanac_zombie_index_at(23.0, 87.0), Some(0));
+        assert_eq!(almanac_zombie_index_at(107.0, 167.0), Some(6));
+        assert_eq!(almanac_zombie_position(25), (192.0, 486.0));
+        assert_eq!(almanac_zombie_index_at(193.0, 487.0), Some(25));
+        assert_eq!(almanac_zombie_index_at(700.0, 90.0), None);
+    }
+
+    #[test]
+    fn game_over_buttons_use_source_result_regions() {
+        assert!(game_over_try_again_contains(300.0, 420.0));
+        assert!(game_over_main_menu_contains(650.0, 160.0));
+        assert!(!game_over_try_again_contains(500.0, 420.0));
+        assert!(!game_over_main_menu_contains(500.0, 160.0));
+    }
+
+    #[test]
+    fn game_over_cutscene_holds_result_controls_until_source_end() {
+        assert!(game_lost_cutscene_active(Some(0)));
+        assert!(game_lost_cutscene_active(Some(GAME_LOST_DIALOG_TIME - 10)));
+        assert!(!game_lost_cutscene_active(Some(GAME_LOST_DIALOG_TIME)));
+        assert!(!game_lost_cutscene_active(None));
+    }
+
+    #[test]
+    fn complete_buttons_use_source_award_screen_regions() {
+        assert!(complete_continue_contains(400.0, 520.0));
+        assert!(complete_main_menu_contains(700.0, 25.0));
+        assert!(!complete_continue_contains(500.0, 520.0));
+        assert!(!complete_main_menu_contains(600.0, 25.0));
+    }
+
+    #[test]
+    fn credits_keep_source_phase_boundaries_and_button_regions() {
+        assert_eq!(credits_phase_at(0).0, 0);
+        assert_eq!(credits_phase_at(1333).0, 0);
+        assert_eq!(credits_phase_at(1334).0, 1);
+        let main2_end = (CREDITS_MAIN2_END_FRAME / CREDITS_ANIM_RATE).ceil() as u32;
+        assert_eq!(credits_phase_at(main2_end).0, 2);
+        assert_eq!(credits_phase_at(credits_end_update_count()).0, 3);
+        assert!(!credits_controls_visible(credits_end_update_count()));
+        assert!(credits_controls_visible(
+            credits_end_update_count() + CREDITS_END_BUTTON_DELAY_UPDATES
+        ));
+        assert!(credits_replay_contains(40.0, 560.0));
+        assert!(credits_main_menu_contains(400.0, 580.0));
+        assert!(!credits_main_menu_contains(200.0, 580.0));
+    }
+
+    #[test]
+    fn complete_award_text_and_note_assets_follow_source_categories() {
+        assert_eq!(completion_award_text_slot(Some(CoinType::Shovel)), 1);
+        assert_eq!(completion_award_text_slot(Some(CoinType::Note)), 6);
+        assert_eq!(completion_award_text_slot(Some(CoinType::Trophy)), 7);
+        assert_eq!(completion_award_text_slot(None), 8);
+        assert_eq!(completion_note_asset(9), AWARD_NOTE1_IMAGE_ID);
+        assert_eq!(completion_note_asset(19), AWARD_NOTE2_IMAGE_ID);
+        assert_eq!(completion_note_asset(49), AWARD_NOTE4_IMAGE_ID);
+    }
 
     #[test]
     fn contextual_planting_audio_covers_terrain_morph_and_explosion_order() {
@@ -3578,6 +10076,13 @@ mod tests {
                 PlantType::Peashooter,
                 1,
                 "sounds/plant_water.ogg",
+            ),
+            (
+                Game::new(7, SceneKind::Night),
+                2,
+                PlantType::Other(25),
+                0,
+                "sounds/plant.ogg",
             ),
         ] {
             let event = GameEvent::PlantPlaced {
@@ -3662,6 +10167,22 @@ mod tests {
                 .collect::<Vec<_>>();
             assert_eq!(paths, vec!["sounds/reverse_explosion.ogg", planting_path]);
         }
+        let plantern = GameEvent::PlantPlaced {
+            entity: 1,
+            plant_type: PlantType::Other(25),
+            row: 2,
+            column: 2,
+            sun_remaining: 0,
+            variant: 0,
+        };
+        assert_eq!(
+            audio_sequence_for_event(&plantern, game.state())
+                .into_iter()
+                .flatten()
+                .map(|(_, path)| path)
+                .collect::<Vec<_>>(),
+            vec!["sounds/plantern.ogg", "sounds/plant.ogg"]
+        );
         let non_explosive_morph = GameEvent::ImitaterMorphed {
             entity,
             plant_type: PlantType::Sunflower,
@@ -3673,6 +10194,24 @@ mod tests {
                 .map(|(_, path)| path)
                 .collect::<Vec<_>>(),
             vec!["sounds/plant.ogg"]
+        );
+
+        let bowling = Game::new_mode(7, ModeKind::MiniGame, 1);
+        let bowling_plant = GameEvent::PlantPlaced {
+            entity: 1,
+            plant_type: PlantType::Other(3),
+            row: 2,
+            column: 0,
+            sun_remaining: 50,
+            variant: 0,
+        };
+        assert_eq!(
+            audio_sequence_for_event(&bowling_plant, bowling.state())
+                .into_iter()
+                .flatten()
+                .map(|(_, path)| path)
+                .collect::<Vec<_>>(),
+            vec!["sounds/plant.ogg", "sounds/bowling.ogg"]
         );
     }
 
@@ -3714,6 +10253,60 @@ mod tests {
                 "sounds/throw.ogg",
             ),
             (
+                GameEvent::LootDropSound {
+                    sound: LootDropSound::SpawnSun,
+                },
+                "sounds/throw.ogg",
+            ),
+            (
+                GameEvent::LootDropSound {
+                    sound: LootDropSound::ArtChallenge,
+                },
+                "sounds/diamond.au",
+            ),
+            (
+                GameEvent::AwardCollectionSound {
+                    sound: AwardCollectionSound::Coin,
+                },
+                "sounds/coin.ogg",
+            ),
+            (
+                GameEvent::AwardCollectionSound {
+                    sound: AwardCollectionSound::Diamond,
+                },
+                "sounds/diamond.au",
+            ),
+            (
+                GameEvent::AwardCollectionSound {
+                    sound: AwardCollectionSound::Seedlift,
+                },
+                "sounds/seedlift.ogg",
+            ),
+            (
+                GameEvent::AwardCollectionSound {
+                    sound: AwardCollectionSound::Tap2,
+                },
+                "sounds/tap2.ogg",
+            ),
+            (
+                GameEvent::AwardCollectionSound {
+                    sound: AwardCollectionSound::Shovel,
+                },
+                "sounds/shovel.ogg",
+            ),
+            (
+                GameEvent::WeatherSound {
+                    sound: WeatherSound::Rain,
+                },
+                "sounds/rain.ogg",
+            ),
+            (
+                GameEvent::WeatherSound {
+                    sound: WeatherSound::Thunder,
+                },
+                "sounds/thunder.ogg",
+            ),
+            (
                 GameEvent::CoinLanded {
                     entity: 1,
                     coin_type: CoinType::Gold,
@@ -3731,6 +10324,10 @@ mod tests {
             Some((AudioKind::Effect, "sounds/tap.ogg"))
         );
         assert_eq!(
+            audio_for_event(&GameEvent::ReadySetPlant),
+            Some((AudioKind::Effect, "sounds/readysetplant.ogg"))
+        );
+        assert_eq!(
             audio_for_event(&GameEvent::InputRejected {
                 action: InputAction::Pause,
                 reason: neopvz_core::InputRejectReason::OutsideBoard,
@@ -3738,12 +10335,105 @@ mod tests {
             Some((AudioKind::Effect, "sounds/buzzer.ogg"))
         );
         assert_eq!(
+            audio_for_event(&GameEvent::ChallengeAction {
+                kind: ChallengeKind::SlotMachine,
+                value: 1,
+            }),
+            Some((AudioKind::Effect, "sounds/slotmachine.ogg"))
+        );
+        assert_eq!(
+            audio_for_event(&GameEvent::ChallengeAction {
+                kind: ChallengeKind::SlotMachine,
+                value: 0,
+            }),
+            None
+        );
+        assert_eq!(
+            audio_for_event(&GameEvent::ZombiquariumSnorkelPurchased { variant: 0 }),
+            Some((AudioKind::Effect, "sounds/plant_water.ogg"))
+        );
+        assert_eq!(
+            audio_for_event(&GameEvent::ZombiquariumSnorkelPurchased { variant: 1 }),
+            Some((AudioKind::Effect, "sounds/zombie_entering_water.ogg"))
+        );
+        assert_eq!(
+            audio_for_event(&GameEvent::ZombiquariumBrainSlurped { zombie: 1, row: 2 }),
+            Some((AudioKind::Effect, "sounds/slurp.ogg"))
+        );
+        assert_eq!(
+            audio_for_event(&GameEvent::ZombiquariumZombieDied { entity: 1 }),
+            Some((AudioKind::Effect, "sounds/zombaquarium_die.ogg"))
+        );
+        for (event, path) in [
+            (GameEvent::WhackHammerSwung, "sounds/swing.ogg"),
+            (
+                GameEvent::WhackHit {
+                    sound: WhackHitSound::Bonk,
+                    variant: 0,
+                },
+                "sounds/bonk.ogg",
+            ),
+            (
+                GameEvent::WhackHit {
+                    sound: WhackHitSound::Shield,
+                    variant: 0,
+                },
+                "sounds/shieldhit.ogg",
+            ),
+            (
+                GameEvent::WhackHit {
+                    sound: WhackHitSound::Shield,
+                    variant: 1,
+                },
+                "sounds/shieldhit2.ogg",
+            ),
+            (
+                GameEvent::WhackHit {
+                    sound: WhackHitSound::Plastic,
+                    variant: 0,
+                },
+                "sounds/plastichit.ogg",
+            ),
+            (
+                GameEvent::WhackHit {
+                    sound: WhackHitSound::Plastic,
+                    variant: 1,
+                },
+                "sounds/plastichit2.ogg",
+            ),
+            (GameEvent::DancerRumble { entity: 1 }, "sounds/dancer.ogg"),
+        ] {
+            assert_eq!(audio_for_event(&event), Some((AudioKind::Effect, path)));
+        }
+        for (variant, path) in [
+            (0, "sounds/yuck.ogg"),
+            (1, "sounds/yuck.ogg"),
+            (2, "sounds/yuck2.ogg"),
+        ] {
+            assert_eq!(
+                audio_for_event(&GameEvent::ZombieYuckSound { entity: 1, variant }),
+                Some((AudioKind::Effect, path))
+            );
+        }
+        assert_eq!(
             audio_for_event(&GameEvent::GameWon),
             Some((AudioKind::Music, "sounds/winmusic.ogg"))
         );
         assert_eq!(
             audio_for_event(&GameEvent::GameLost { zombie: 1 }),
             Some((AudioKind::Music, "sounds/losemusic.ogg"))
+        );
+        assert_eq!(
+            audio_for_event(&GameEvent::GameLostChomp { variant: 0 }),
+            Some((AudioKind::Effect, "sounds/chomp.ogg"))
+        );
+        assert_eq!(
+            audio_for_event(&GameEvent::GameLostChomp { variant: 1 }),
+            Some((AudioKind::Effect, "sounds/chomp2.ogg"))
+        );
+        assert_eq!(
+            audio_for_event(&GameEvent::GameLostScream),
+            Some((AudioKind::Effect, "sounds/scream.ogg"))
         );
         assert_eq!(
             audio_for_event(&GameEvent::Paused),
@@ -3759,6 +10449,46 @@ mod tests {
         assert_eq!(
             audio_for_event(&GameEvent::MowerTriggered { row: 2, pool: true }),
             Some((AudioKind::Effect, "sounds/pool_cleaner.ogg"))
+        );
+        assert_eq!(
+            audio_for_event(&GameEvent::MowerZombieHit {
+                entity: 1,
+                pool: true,
+                variant: 0,
+            }),
+            Some((AudioKind::Effect, "sounds/shoop.ogg"))
+        );
+        for (variant, path) in [
+            (0, "sounds/splat.ogg"),
+            (1, "sounds/splat2.ogg"),
+            (2, "sounds/splat3.ogg"),
+        ] {
+            assert_eq!(
+                audio_for_event(&GameEvent::MowerZombieHit {
+                    entity: 1,
+                    pool: false,
+                    variant,
+                }),
+                Some((AudioKind::Effect, path))
+            );
+        }
+        for (variant, path) in [(0, "sounds/chomp.ogg"), (1, "sounds/chomp2.ogg")] {
+            assert_eq!(
+                audio_for_event(&GameEvent::MowerSquished { row: 2, variant }),
+                Some((AudioKind::Effect, path))
+            );
+        }
+        assert_eq!(
+            audio_for_event(&GameEvent::MowerEnteredPool { row: 2, variant: 0 }),
+            Some((AudioKind::Effect, "sounds/plant_water.ogg"))
+        );
+        assert_eq!(
+            audio_for_event(&GameEvent::MowerEnteredPool { row: 2, variant: 1 }),
+            Some((AudioKind::Effect, "sounds/zombie_entering_water.ogg"))
+        );
+        assert_eq!(
+            audio_for_event(&GameEvent::MowerExitedPool { row: 2 }),
+            Some((AudioKind::Effect, "sounds/plant_water.ogg"))
         );
         assert_eq!(
             audio_for_event(&GameEvent::SunCollected {
@@ -3912,6 +10642,20 @@ mod tests {
             Some((AudioKind::Effect, "sounds/fertilizer.ogg"))
         );
         assert_eq!(
+            audio_for_event(&GameEvent::GardenToolUsed {
+                plant: 0,
+                tool: GardenTool::BugSpray,
+            }),
+            Some((AudioKind::Effect, "sounds/bugspray.ogg"))
+        );
+        assert_eq!(
+            audio_for_event(&GameEvent::GardenToolUsed {
+                plant: 0,
+                tool: GardenTool::Phonograph,
+            }),
+            Some((AudioKind::Effect, "sounds/phonograph.ogg"))
+        );
+        assert_eq!(
             audio_for_event(&GameEvent::GardenBecameHappy {
                 plant: 0,
                 aquatic: false,
@@ -3921,6 +10665,14 @@ mod tests {
         assert_eq!(
             audio_for_event(&GameEvent::GardenTreeGrew { height: 2 }),
             Some((AudioKind::Effect, "sounds/plantgrow.ogg"))
+        );
+        assert_eq!(
+            audio_for_event(&GameEvent::GardenLeft),
+            Some((AudioKind::Effect, "sounds/gravebutton.ogg"))
+        );
+        assert_eq!(
+            audio_for_event(&GameEvent::GardenTapGlass),
+            Some((AudioKind::Effect, "sounds/tapglass.au"))
         );
         for event in [
             GameEvent::GardenWatered {
@@ -3952,6 +10704,10 @@ mod tests {
         assert_eq!(
             audio_for_event(&GameEvent::HugeWaveSound { wave: 9 }),
             Some((AudioKind::Effect, "sounds/hugewave.ogg"))
+        );
+        assert_eq!(
+            audio_for_event(&GameEvent::FinalWaveSound { wave: 9 }),
+            Some((AudioKind::Effect, "sounds/finalwave.ogg"))
         );
         assert_eq!(
             audio_for_event(&GameEvent::PlantSpecialTriggered {
@@ -4088,6 +10844,14 @@ mod tests {
             Some((AudioKind::Effect, "sounds/balloon_pop.ogg"))
         );
         assert_eq!(
+            audio_for_event(&GameEvent::BalloonPopped { entity: 1 }),
+            Some((AudioKind::Effect, "sounds/balloon_pop.ogg"))
+        );
+        assert_eq!(
+            audio_for_event(&GameEvent::VehicleExploded { entity: 1 }),
+            Some((AudioKind::Effect, "sounds/explosion.ogg"))
+        );
+        assert_eq!(
             audio_for_event(&GameEvent::BloverTriggered { entity: 1, row: 2 }),
             Some((AudioKind::Effect, "sounds/blover.ogg"))
         );
@@ -4103,6 +10867,20 @@ mod tests {
             }),
             Some((AudioKind::Effect, "sounds/explosion.ogg"))
         );
+        assert_eq!(
+            audio_for_event(&GameEvent::JackboxBoing { entity: 1 }),
+            Some((AudioKind::Effect, "sounds/boing.ogg"))
+        );
+        for (variant, path) in [
+            (0, "sounds/jack_surprise.ogg"),
+            (1, "sounds/jack_surprise.ogg"),
+            (2, "sounds/jack_surprise2.ogg"),
+        ] {
+            assert_eq!(
+                audio_for_event(&GameEvent::JackboxSurprise { entity: 1, variant }),
+                Some((AudioKind::Effect, path))
+            );
+        }
         assert_eq!(
             audio_for_event(&GameEvent::ZombieChilled {
                 entity: 1,
@@ -4146,8 +10924,22 @@ mod tests {
             audio_for_event(&GameEvent::ZombieNewspaperRipped { entity: 1 }),
             Some((AudioKind::Effect, "sounds/newspaper_rip.ogg"))
         );
+        for (variant, path) in [
+            (0, "sounds/newspaper_rarrgh.ogg"),
+            (1, "sounds/newspaper_rarrgh.ogg"),
+            (2, "sounds/newspaper_rarrgh2.ogg"),
+        ] {
+            assert_eq!(
+                audio_for_event(&GameEvent::ZombieNewspaperRarrgh { entity: 1, variant }),
+                Some((AudioKind::Effect, path))
+            );
+        }
         assert_eq!(
             audio_for_event(&GameEvent::PoleVaultGrassStep { entity: 1 }),
+            Some((AudioKind::Effect, "sounds/grassstep.ogg"))
+        );
+        assert_eq!(
+            audio_for_event(&GameEvent::BungeeGrassStep { entity: 1 }),
             Some((AudioKind::Effect, "sounds/grassstep.ogg"))
         );
         assert_eq!(
@@ -4213,6 +11005,61 @@ mod tests {
             Some((AudioKind::Effect, "sounds/gravestone_rumble.ogg"))
         );
         assert_eq!(
+            audio_for_event(&GameEvent::ZombieGraveRumble { entity: 1 }),
+            Some((AudioKind::Effect, "sounds/gravestone_rumble.ogg"))
+        );
+        assert_eq!(
+            audio_for_event(&GameEvent::LadderPlaced {
+                zombie: 1,
+                row: 2,
+                column: 0,
+            }),
+            Some((AudioKind::Effect, "sounds/ladder_zombie.ogg"))
+        );
+        for (variant, path) in [
+            (0, "sounds/bungee_scream.ogg"),
+            (1, "sounds/bungee_scream2.ogg"),
+            (2, "sounds/bungee_scream3.ogg"),
+        ] {
+            assert_eq!(
+                audio_for_event(&GameEvent::BungeeScream { entity: 1, variant }),
+                Some((AudioKind::Effect, path))
+            );
+        }
+        assert_eq!(
+            audio_for_event(&GameEvent::BungeePlantLifted {
+                zombie: 1,
+                plant: 2,
+            }),
+            Some((AudioKind::Effect, "sounds/floop.ogg"))
+        );
+        for (variant, path) in [
+            (0, "sounds/zombie_falling_1.ogg"),
+            (1, "sounds/zombie_falling_2.ogg"),
+        ] {
+            assert_eq!(
+                audio_for_event(&GameEvent::ZombieFallingSound {
+                    entity: 1,
+                    zombie_type: neopvz_core::ZombieType::Normal,
+                    variant,
+                }),
+                Some((AudioKind::Effect, path))
+            );
+        }
+        let gargantuar_fall = GameEvent::ZombieFallingSound {
+            entity: 1,
+            zombie_type: neopvz_core::ZombieType::Gargantuar,
+            variant: 0,
+        };
+        assert_eq!(
+            audio_sequence_for_event(&gargantuar_fall, Game::new(0, SceneKind::Day).state())
+                .into_iter()
+                .flatten()
+                .map(|(_, path)| path)
+                .collect::<Vec<_>>(),
+            vec!["sounds/zombie_falling_1.ogg", "sounds/gargantuar_thump.ogg"]
+        );
+        assert_eq!(
             audio_for_event(&GameEvent::ZombieShieldHit {
                 entity: 1,
                 variant: 0,
@@ -4225,6 +11072,13 @@ mod tests {
                 variant: 1,
             }),
             Some((AudioKind::Effect, "sounds/shieldhit2.ogg"))
+        );
+        assert_eq!(
+            audio_for_event(&GameEvent::ZombieBodyPartLost {
+                entity: 1,
+                head: false,
+            }),
+            Some((AudioKind::Effect, "sounds/limbs_pop.ogg"))
         );
         assert_eq!(
             audio_companion_for_event(&GameEvent::DolphinJumpStarted { entity: 1 }),
@@ -4373,6 +11227,42 @@ mod tests {
             Some((AudioKind::Effect, "sounds/bossboulderattack.ogg"))
         );
         assert_eq!(
+            audio_for_event(&GameEvent::BossHeadHydraulic { entity: 1 }),
+            Some((AudioKind::Effect, "sounds/hydraulic.ogg"))
+        );
+        assert_eq!(
+            audio_for_event(&GameEvent::BossStomp { entity: 1, row: 2 }),
+            Some((AudioKind::Effect, "sounds/gargantuar_thump.ogg"))
+        );
+        assert_eq!(
+            audio_for_event(&GameEvent::BossRVStarted {
+                entity: 1,
+                row: 2,
+                column: 1,
+            }),
+            Some((AudioKind::Effect, "sounds/hydraulic_short.ogg"))
+        );
+        assert_eq!(
+            audio_for_event(&GameEvent::BossRVLanded {
+                entity: 1,
+                row: 2,
+                column: 1,
+            }),
+            Some((AudioKind::Effect, "sounds/RVthrow.ogg"))
+        );
+        assert_eq!(
+            audio_for_event(&GameEvent::BossProjectileStarted {
+                entity: 1,
+                row: 2,
+                fire: true,
+            }),
+            Some((AudioKind::Effect, "sounds/hydraulic_short.ogg"))
+        );
+        assert_eq!(
+            audio_for_event(&GameEvent::BossDamageExplosion { entity: 1 }),
+            Some((AudioKind::Effect, "sounds/explosion.ogg"))
+        );
+        assert_eq!(
             audio_for_event(&GameEvent::PortalOpened {
                 row: 2,
                 column: 5,
@@ -4382,6 +11272,43 @@ mod tests {
         );
         assert_eq!(audio_for_event(&GameEvent::Resumed), None);
         assert_eq!(audio_for_event(&GameEvent::StateChanged), None);
+    }
+
+    #[test]
+    fn final_adventure_win_uses_the_source_fanfare_in_context() {
+        let event = GameEvent::GameWon;
+        let final_game = Game::new_adventure(7, 50, false, 0, false);
+        assert_eq!(
+            audio_sequence_for_event(&event, final_game.state())
+                .into_iter()
+                .flatten()
+                .collect::<Vec<_>>(),
+            vec![
+                (AudioKind::Effect, "sounds/finalfanfare.ogg"),
+                (AudioKind::Effect, "sounds/paper.ogg"),
+            ]
+        );
+
+        let paper_game = Game::new_adventure(7, 10, false, 0, false);
+        assert_eq!(
+            audio_sequence_for_event(&event, paper_game.state())
+                .into_iter()
+                .flatten()
+                .collect::<Vec<_>>(),
+            vec![
+                (AudioKind::Music, "sounds/winmusic.ogg"),
+                (AudioKind::Effect, "sounds/paper.ogg"),
+            ]
+        );
+
+        let ordinary_game = Game::new(7, SceneKind::Day);
+        assert_eq!(
+            audio_sequence_for_event(&event, ordinary_game.state())
+                .into_iter()
+                .flatten()
+                .collect::<Vec<_>>(),
+            vec![(AudioKind::Music, "sounds/winmusic.ogg")]
+        );
     }
 
     #[test]
@@ -4491,6 +11418,17 @@ mod tests {
             }),
             None
         );
+        assert_eq!(
+            audio_companion_for_event(&GameEvent::PlantPlaced {
+                entity: 1,
+                plant_type: neopvz_core::PlantType::Other(25),
+                row: 2,
+                column: 3,
+                sun_remaining: 50,
+                variant: 0,
+            }),
+            Some((AudioKind::Effect, "sounds/plantern.ogg"))
+        );
         for plant_type in [
             neopvz_core::PlantType::Other(2),
             neopvz_core::PlantType::Other(20),
@@ -4520,10 +11458,50 @@ mod tests {
     }
 
     #[test]
+    fn maps_wallnut_bowling_impact_to_source_sample() {
+        assert_eq!(
+            audio_for_event(&GameEvent::BowlingImpact {
+                plant: 1,
+                zombie: 2,
+            }),
+            Some((AudioKind::Effect, "sounds/bowlingimpact.ogg"))
+        );
+    }
+
+    #[test]
     fn title_start_hitbox_matches_the_source_load_bar() {
         assert!(title_start_contains(400.0, 550.0));
         assert!(!title_start_contains(242.0, 550.0));
         assert!(!title_start_contains(400.0, 579.0));
+    }
+
+    #[test]
+    fn title_mouse_start_requires_left_click_inside_load_bar() {
+        assert!(title_mouse_starts(MouseButton::Left, 400.0, 550.0));
+        assert!(!title_mouse_starts(MouseButton::Right, 400.0, 550.0));
+        assert!(!title_mouse_starts(MouseButton::Left, 242.0, 550.0));
+    }
+
+    #[test]
+    fn mode_entries_follow_unlock_state() {
+        assert!(!mode_is_unlocked(ModeKind::MiniGame, false, 1, 0));
+        assert!(mode_is_unlocked(
+            ModeKind::MiniGame,
+            false,
+            1,
+            CoinType::PresentMinigames.unlock_mask()
+        ));
+        assert!(!mode_is_unlocked(ModeKind::Vasebreaker, false, 1, 0));
+        assert!(!mode_is_unlocked(ModeKind::Survival, false, 1, 0));
+        assert!(mode_is_unlocked(
+            ModeKind::Survival,
+            false,
+            1,
+            CoinType::PresentSurvivalMode.unlock_mask()
+        ));
+        assert!(!mode_is_unlocked(ModeKind::ZenGarden, false, 44, 0));
+        assert!(mode_is_unlocked(ModeKind::ZenGarden, false, 45, 0));
+        assert!(mode_is_unlocked(ModeKind::Vasebreaker, true, 1, 0));
     }
 
     #[test]
@@ -4533,6 +11511,38 @@ mod tests {
         assert_eq!(game.state().level, 1);
         assert_eq!(game.state().scene, SceneKind::Day);
         assert_eq!(game.state().board.wave.total, 4);
+    }
+
+    #[test]
+    fn seed_bank_packet_geometry_matches_source_layouts() {
+        assert_eq!(seed_packet_position_x(0, 6, false, false), 85.0);
+        assert_eq!(seed_packet_position_x(6, 7, false, false), 439.0);
+        assert_eq!(seed_packet_position_x(7, 8, false, false), 459.0);
+        assert_eq!(seed_packet_position_x(8, 9, false, false), 496.0);
+        assert_eq!(seed_packet_position_x(9, 10, false, false), 538.0);
+        assert_eq!(seed_packet_position_x(0, 10, true, false), 91.0);
+        assert_eq!(seed_packet_position_x(0, 3, false, true), 247.0);
+        assert_eq!(seed_bank_extra_width(6), 0);
+        assert_eq!(seed_bank_extra_width(7), 60);
+        assert_eq!(seed_bank_extra_width(10), 153);
+    }
+
+    #[test]
+    fn board_seed_packet_hit_test_routes_to_core_slot() {
+        let ordinary = Game::new(0, SceneKind::Day);
+        assert_eq!(board_seed_packet_at(ordinary.state(), 80.0, 1.0), Some(0));
+        assert_eq!(board_seed_packet_at(ordinary.state(), 128.0, 69.0), Some(0));
+        assert_eq!(board_seed_packet_at(ordinary.state(), 130.0, 1.0), Some(1));
+        assert_eq!(board_seed_packet_at(ordinary.state(), 128.0, 70.0), None);
+
+        let conveyor = Game::new_mode(0, ModeKind::MiniGame, 1);
+        assert_eq!(board_seed_packet_at(conveyor.state(), 92.0, 1.0), Some(0));
+
+        let slot_machine = Game::new_mode(0, ModeKind::MiniGame, 2);
+        assert_eq!(
+            board_seed_packet_at(slot_machine.state(), 248.0, 1.0),
+            Some(0)
+        );
     }
 
     #[test]
@@ -4582,7 +11592,57 @@ mod tests {
     }
 
     #[test]
-    fn board_entity_images_use_loaded_assets_for_supported_entities() {
+    fn seed_chooser_plant_images_follow_the_source_packet_atlas() {
+        assert_eq!(
+            seed_chooser_plant_image(PlantType::Other(4)),
+            Some((SEED_PACKET_PLANT_BASE_IMAGE_ID, 0.0, 0.0, 1.0))
+        );
+        assert_eq!(
+            seed_chooser_plant_image(PlantType::Other(47)),
+            Some((SEED_PACKET_PLANT_BASE_IMAGE_ID + 7, 0.0, 0.0, 1.0))
+        );
+        assert_eq!(
+            seed_chooser_plant_image(PlantType::Other(5)),
+            Some((BOARD_SNOWPEA_IMAGE_ID, 10.0, 22.0, 0.8))
+        );
+        assert_eq!(seed_chooser_plant_image(PlantType::Other(2)), None);
+    }
+
+    #[test]
+    fn seed_bank_plant_images_use_packet_scale() {
+        assert_eq!(
+            seed_bank_plant_image(PlantType::Peashooter),
+            Some((SEED_PEASHOOTER_IMAGE_ID, 5.0, 8.0, 0.5))
+        );
+        assert_eq!(
+            seed_bank_plant_image(PlantType::Other(4)),
+            Some((SEED_PACKET_PLANT_BASE_IMAGE_ID, 0.0, 0.0, 1.0))
+        );
+    }
+
+    #[test]
+    fn progress_meter_follows_wave_countdown_and_flags() {
+        let game = Game::new_adventure(7, 6, true, 0, false);
+        let mut state = game.state().clone();
+        state.board.wave.current = 1;
+        state.board.wave.countdown_start = 100;
+        state.board.wave.countdown = 100;
+        assert_eq!(progress_meter_width(&state), Some(1));
+        state.board.wave.countdown = 0;
+        assert_eq!(progress_meter_width(&state), Some(15));
+        assert_eq!(progress_meter_flag_layout(&state), Some((1, 10)));
+    }
+
+    #[test]
+    fn progress_meter_starts_full_for_boss_without_spawned_boss() {
+        let game = Game::new_adventure(7, 50, false, 0, false);
+        let state = game.state().clone();
+        assert_eq!(state.scene, SceneKind::Boss);
+        assert_eq!(progress_meter_width(&state), Some(150));
+    }
+
+    #[test]
+    fn board_entity_images_use_loaded_assets_for_board_entities() {
         assert_eq!(
             board_zombie_image(ZombieType::Normal),
             Some(BOARD_ZOMBIE_BODY_IMAGE_ID)
@@ -4591,7 +11651,30 @@ mod tests {
             board_zombie_image(ZombieType::Snorkel),
             Some(BOARD_ZOMBIE_BODY_IMAGE_ID)
         );
-        assert_eq!(board_zombie_image(ZombieType::Conehead), None);
+        assert_eq!(
+            board_zombie_image(ZombieType::Conehead),
+            Some(BOARD_ZOMBIE_BODY_IMAGE_ID)
+        );
+        assert_eq!(board_zombie_image(ZombieType::Boss), None);
+        assert_eq!(
+            board_zombie_head_image(ZombieType::Football),
+            BOARD_ZOMBIE_FOOTBALL_HEAD_IMAGE_ID
+        );
+        assert_eq!(
+            board_zombie_head_image(ZombieType::Newspaper),
+            BOARD_ZOMBIE_NEWSPAPER_HEAD_IMAGE_ID
+        );
+        let mut equipment = RenderFrame::default();
+        push_board_zombie_equipment(&mut equipment, 400.0, 300.0, ZombieType::Conehead, true);
+        assert_eq!(
+            equipment.sprites.first().map(|sprite| sprite.resource_id),
+            Some(BOARD_ZOMBIE_CONE_IMAGE_ID)
+        );
+        equipment.sprites.clear();
+        push_board_zombie_equipment(&mut equipment, 400.0, 300.0, ZombieType::Conehead, false);
+        assert!(equipment.sprites.is_empty());
+        push_board_zombie_equipment(&mut equipment, 400.0, 300.0, ZombieType::Flag, false);
+        assert_eq!(equipment.sprites.len(), 3);
         assert_eq!(
             board_projectile_image(ProjectileType::Pea),
             Some((BOARD_PROJECTILE_PEA_IMAGE_ID, 0.75))
@@ -4600,7 +11683,15 @@ mod tests {
             board_projectile_image(ProjectileType::SnowPea),
             Some((BOARD_PROJECTILE_SNOW_PEA_IMAGE_ID, 0.75))
         );
-        assert_eq!(board_projectile_image(ProjectileType::Melon), None);
+        assert_eq!(
+            board_projectile_image(ProjectileType::Melon),
+            Some((BOARD_PROJECTILE_MELON_IMAGE_ID, 1.0))
+        );
+        assert_eq!(
+            board_projectile_image(ProjectileType::Other(1)),
+            Some((BOARD_PROJECTILE_BASKETBALL_IMAGE_ID, 1.1))
+        );
+        assert_eq!(board_projectile_image(ProjectileType::Other(2)), None);
         assert_eq!(
             board_coin_image(CoinType::Silver),
             Some((BOARD_COIN_SILVER_IMAGE_ID, 0.65))
@@ -4617,6 +11708,424 @@ mod tests {
             board_coin_image(CoinType::UsableSeedPacket),
             Some((SEED_PACKET_NORMAL_IMAGE_ID, 0.8))
         );
-        assert_eq!(board_coin_image(CoinType::Trophy), None);
+        assert_eq!(
+            board_coin_image(CoinType::PresentSurvivalMode),
+            Some((BOARD_PRESENT_IMAGE_ID, 0.8))
+        );
+        assert_eq!(
+            board_coin_image(CoinType::AwardBagDiamond),
+            Some((BOARD_MONEYBAG_IMAGE_ID, 0.5))
+        );
+        assert_eq!(
+            board_coin_image(CoinType::AwardChocolate),
+            Some((BOARD_CHOCOLATE_IMAGE_ID, 0.8))
+        );
+        assert_eq!(
+            board_coin_image(CoinType::AwardSilverSunflower),
+            Some((BOARD_SILVER_SUNFLOWER_IMAGE_ID, 0.5))
+        );
+        assert_eq!(
+            board_coin_image(CoinType::AwardGoldSunflower),
+            Some((BOARD_GOLD_SUNFLOWER_IMAGE_ID, 0.5))
+        );
+        assert_eq!(
+            board_coin_image(CoinType::FinalSeedPacket),
+            Some((SEED_PACKET_NORMAL_IMAGE_ID, 0.8))
+        );
+    }
+
+    #[test]
+    fn pickup_reanimations_follow_source_attachment_offsets() {
+        assert_eq!(
+            board_coin_reanim_offset(CoinType::Silver),
+            Some((-1.0, 1.0))
+        );
+        assert_eq!(board_coin_reanim_offset(CoinType::Gold), Some((-1.0, 1.0)));
+        assert_eq!(
+            board_coin_reanim_offset(CoinType::Diamond),
+            Some((-18.0, -11.0))
+        );
+        assert!(board_coin_reanim_visible(CoinType::Silver, None, false));
+        assert!(!board_coin_reanim_visible(
+            CoinType::Silver,
+            Some(100),
+            false
+        ));
+        assert!(!board_coin_reanim_visible(CoinType::Gold, None, true));
+        assert!(board_coin_reanim_visible(
+            CoinType::Diamond,
+            Some(100),
+            true
+        ));
+        assert!(!board_coin_reanim_visible(
+            CoinType::PresentPlant,
+            None,
+            false
+        ));
+    }
+
+    #[test]
+    fn jalapeno_fire_matches_source_row_fwoosh_layout() {
+        let positions = jalapeno_fire_effect_positions(SceneKind::Day, 0);
+        assert_eq!(positions.len(), 12);
+        assert_eq!(positions[0], (10.0, 110.0));
+        assert_eq!(positions[11], (760.0, 110.0));
+
+        let roof_positions = jalapeno_fire_effect_positions(SceneKind::Roof, 0);
+        assert!(roof_positions[0].1 > positions[0].1);
+        assert_eq!(roof_positions[11].1, positions[11].1);
+    }
+
+    #[test]
+    fn board_projectiles_follow_source_scale_and_rotation_rules() {
+        assert!((board_projectile_scale(ProjectileType::Puff, 0).unwrap() - 0.225).abs() < 0.0001);
+        assert!((board_projectile_scale(ProjectileType::Puff, 30).unwrap() - 0.75).abs() < 0.0001);
+        assert_eq!(
+            board_projectile_rotation(ProjectileType::Cob, 0),
+            std::f32::consts::PI / 2.0
+        );
+        assert!(
+            board_projectile_rotation(ProjectileType::Cabbage, 10)
+                < board_projectile_rotation(ProjectileType::Cabbage, 0)
+        );
+        assert!(
+            board_projectile_rotation(ProjectileType::Kernel, 10)
+                < board_projectile_rotation(ProjectileType::Kernel, 0)
+        );
+    }
+
+    #[test]
+    fn board_projectile_shadows_follow_source_offsets_and_lob_height() {
+        let day_pea =
+            board_projectile_shadow(SceneKind::Day, ProjectileType::Pea, 0, 0, 80 * 1_000_000, 0)
+                .unwrap();
+        assert_eq!(day_pea.0, BOARD_PROJECTILE_SHADOW_DAY_IMAGE_ID);
+        assert!((day_pea.1 - 3.0).abs() < 0.0001);
+        assert!((day_pea.2 - 120.0).abs() < 0.0001);
+        assert!((day_pea.3 - 1.0).abs() < 0.0001);
+        assert!((day_pea.4 - 1.0).abs() < 0.0001);
+
+        let night_snowpea = board_projectile_shadow(
+            SceneKind::Fog,
+            ProjectileType::SnowPea,
+            0,
+            0,
+            80 * 1_000_000,
+            0,
+        )
+        .unwrap();
+        assert_eq!(night_snowpea.0, BOARD_PROJECTILE_SHADOW_NIGHT_IMAGE_ID);
+        assert!((night_snowpea.1 + 1.0).abs() < 0.0001);
+        assert!((night_snowpea.3 - 1.3).abs() < 0.0001);
+
+        let lobbed = board_projectile_shadow(
+            SceneKind::Day,
+            ProjectileType::Melon,
+            0,
+            0,
+            80 * 1_000_000,
+            -100_000,
+        )
+        .unwrap();
+        assert!(lobbed.3 < 1.6);
+        assert!(
+            board_projectile_shadow(
+                SceneKind::Day,
+                ProjectileType::Puff,
+                0,
+                0,
+                80 * 1_000_000,
+                0,
+            )
+            .is_none()
+        );
+    }
+
+    #[test]
+    fn compiled_zombie_layers_follow_source_equipment_visibility() {
+        assert!(board_zombie_reanim_track_visible(
+            "anim_cone",
+            ZombieType::Conehead,
+            true,
+            true,
+            true
+        ));
+        assert!(!board_zombie_reanim_track_visible(
+            "anim_cone",
+            ZombieType::Conehead,
+            false,
+            true,
+            true
+        ));
+        assert!(board_zombie_reanim_track_visible(
+            "Zombie_outerarm_screendoor",
+            ZombieType::ScreenDoor,
+            true,
+            true,
+            true
+        ));
+        assert!(!board_zombie_reanim_track_visible(
+            "Zombie_outerarm_screendoor",
+            ZombieType::Normal,
+            true,
+            true,
+            true
+        ));
+        assert!(board_zombie_reanim_track_visible(
+            "Zombie_flaghand",
+            ZombieType::Flag,
+            true,
+            true,
+            true
+        ));
+        assert!(!board_zombie_reanim_track_visible(
+            "anim_head1",
+            ZombieType::Normal,
+            true,
+            false,
+            true
+        ));
+    }
+
+    #[test]
+    fn specialized_zombie_layers_follow_source_equipment_visibility() {
+        assert!(board_specialized_zombie_reanim_track_visible(
+            "zombie_football_helmet",
+            ZombieType::Football,
+            true,
+            true,
+            true
+        ));
+        assert!(!board_specialized_zombie_reanim_track_visible(
+            "zombie_football_helmet",
+            ZombieType::Football,
+            false,
+            true,
+            true
+        ));
+        assert!(!board_specialized_zombie_reanim_track_visible(
+            "anim_hair",
+            ZombieType::Football,
+            true,
+            true,
+            true
+        ));
+        assert!(board_specialized_zombie_reanim_track_visible(
+            "anim_hair",
+            ZombieType::Football,
+            false,
+            true,
+            true
+        ));
+        assert!(board_specialized_zombie_reanim_track_visible(
+            "Zombie_paper_paper",
+            ZombieType::Newspaper,
+            true,
+            true,
+            true
+        ));
+        assert!(!board_specialized_zombie_reanim_track_visible(
+            "Zombie_paper_paper",
+            ZombieType::Newspaper,
+            false,
+            true,
+            true
+        ));
+        assert!(!board_specialized_zombie_reanim_track_visible(
+            "zombie_football_leftarm_lower",
+            ZombieType::Football,
+            true,
+            true,
+            false
+        ));
+        assert!(board_specialized_zombie_reanim_track_visible(
+            "zombie_football_leftarm_upper",
+            ZombieType::Football,
+            true,
+            true,
+            false
+        ));
+        assert!(!board_specialized_zombie_reanim_track_visible(
+            "Zombie_paper_hands",
+            ZombieType::Newspaper,
+            true,
+            true,
+            false
+        ));
+        assert!(board_specialized_zombie_reanim_track_visible(
+            "anim_hairpiece",
+            ZombieType::Newspaper,
+            true,
+            true,
+            true
+        ));
+    }
+
+    #[test]
+    fn specialized_reanim_files_match_the_target_archive() {
+        assert_eq!(SPECIALIZED_REANIM_FILES.len(), 16);
+        assert!(
+            SPECIALIZED_REANIM_FILES
+                .contains(&(ZombieType::Dancer, "Zombie_dancer.reanim.compiled"))
+        );
+        assert!(
+            SPECIALIZED_REANIM_FILES
+                .contains(&(ZombieType::Snorkel, "Zombie_snorkle.reanim.compiled"))
+        );
+        assert!(
+            !SPECIALIZED_REANIM_FILES
+                .iter()
+                .any(|(zombie_type, _)| *zombie_type == ZombieType::BackupDancer)
+        );
+    }
+
+    #[test]
+    fn plant_reanim_files_match_loaded_board_assets() {
+        assert_eq!(PLANT_REANIM_FILES.len(), 49);
+        assert!(
+            PLANT_REANIM_FILES
+                .contains(&(PlantType::Peashooter, "PeaShooterSingle.reanim.compiled"))
+        );
+        assert!(PLANT_REANIM_FILES.contains(&(PlantType::Other(21), "Caltrop.reanim.compiled")));
+        assert!(PLANT_REANIM_FILES.contains(&(PlantType::Other(34), "Cornpult.reanim.compiled")));
+        assert!(PLANT_REANIM_FILES.contains(&(PlantType::Other(48), "Imitater.reanim.compiled")));
+        for slot in 2..=48 {
+            assert!(
+                PLANT_REANIM_FILES
+                    .iter()
+                    .any(|(plant_type, _)| *plant_type == PlantType::Other(slot))
+            );
+        }
+    }
+
+    #[test]
+    fn plant_reanim_actions_follow_source_state_tracks() {
+        assert_eq!(
+            board_plant_reanim_actions(PlantType::Other(8), true, 0, false, 0, 0),
+            &["anim_sleep", "anim_idle"]
+        );
+        assert_eq!(
+            board_plant_reanim_actions(PlantType::Other(4), false, 0, true, 0, 0),
+            &["anim_armed", "anim_idle"]
+        );
+        assert_eq!(
+            board_plant_reanim_actions(PlantType::Other(20), false, 1, false, 0, 0),
+            &["anim_explode", "anim_idle"]
+        );
+        assert_eq!(
+            board_plant_reanim_actions(PlantType::Other(7), false, 0, false, 1, 0),
+            &["anim_shooting", "anim_shoot", "anim_idle"]
+        );
+        assert_eq!(
+            board_plant_reanim_actions(PlantType::Other(9), false, 0, false, 0, 1),
+            &["anim_bigidle", "anim_idle"]
+        );
+    }
+
+    #[test]
+    fn plant_reanim_track_visibility_follows_source_groups() {
+        assert_eq!(
+            board_plant_reanim_track_style(PlantType::Other(4), false, None, "anim_glow"),
+            None
+        );
+        assert_eq!(
+            board_plant_reanim_track_style(PlantType::Other(4), true, None, "anim_glow"),
+            Some((10, BlendMode::Alpha))
+        );
+        assert_eq!(
+            board_plant_reanim_track_style(PlantType::Other(30), false, None, "Pumpkin_back"),
+            Some((9, BlendMode::Alpha))
+        );
+        assert_eq!(
+            board_plant_reanim_track_style(PlantType::Other(34), false, None, "Cornpult_butter"),
+            None
+        );
+        assert_eq!(
+            board_plant_reanim_track_style(
+                PlantType::Other(34),
+                false,
+                Some(ProjectileType::Butter),
+                "Cornpult_butter"
+            ),
+            Some((10, BlendMode::Alpha))
+        );
+        assert_eq!(
+            board_plant_reanim_track_style(
+                PlantType::Other(34),
+                false,
+                Some(ProjectileType::Butter),
+                "Cornpult_kernal"
+            ),
+            None
+        );
+    }
+
+    #[test]
+    fn plant_reanim_attachments_follow_source_layer_setup() {
+        assert_eq!(
+            board_plant_reanim_attachment_specs(PlantType::Peashooter, "anim_idle", 0),
+            &[("anim_stem", "anim_head_idle")]
+        );
+        assert_eq!(
+            board_plant_reanim_attachment_specs(PlantType::Other(28), "anim_shooting", 1),
+            &[("anim_idle", "anim_shooting")]
+        );
+        assert_eq!(
+            board_plant_reanim_attachment_specs(PlantType::Other(18), "anim_idle", 0),
+            &[
+                ("anim_head1", "anim_head_idle1"),
+                ("anim_head2", "anim_head_idle2"),
+                ("anim_head3", "anim_head_idle3"),
+            ]
+        );
+        assert_eq!(
+            board_plant_reanim_track_style(PlantType::Peashooter, false, None, "anim_head_idle"),
+            None
+        );
+        assert!(board_plant_reanim_attached_track_visible(
+            "anim_head_idle",
+            "anim_head_idle"
+        ));
+
+        let transform = ReanimatorTransform {
+            x: 10.0,
+            y: 20.0,
+            skew_x: 0.0,
+            skew_y: 0.0,
+            scale_x: 1.0,
+            scale_y: 1.0,
+            frame: 0.0,
+            alpha: 1.0,
+            image: None,
+        };
+        let matrix = reanim_matrix_mul(
+            reanim_matrix_translation(100.0, 200.0),
+            reanim_matrix_from_transform(&transform),
+        );
+        assert!((matrix.m02 - 110.0).abs() < 0.001);
+        assert!((matrix.m12 - 220.0).abs() < 0.001);
+        let inverse = reanim_matrix_inverse(reanim_matrix_from_transform(&transform)).unwrap();
+        let identity = reanim_matrix_mul(reanim_matrix_from_transform(&transform), inverse);
+        assert!((identity.m00 - 1.0).abs() < 0.001);
+        assert!((identity.m11 - 1.0).abs() < 0.001);
+        assert!(identity.m02.abs() < 0.001);
+        assert!(identity.m12.abs() < 0.001);
+    }
+
+    #[test]
+    fn boss_reanim_actions_and_layers_follow_source_groups() {
+        assert_eq!(boss_reanim_action(10, false, false), "anim_idle");
+        assert_eq!(boss_reanim_action(10, false, true), "anim_head_attack_1");
+        assert_eq!(boss_reanim_action(10, true, true), "anim_RV_1");
+        assert_eq!(boss_reanim_action(0, false, false), "anim_death");
+        assert_eq!(board_boss_reanim_track_z("Boss_innerleg_upper"), 5);
+        assert_eq!(board_boss_reanim_track_z("Boss_body2"), 6);
+        assert_eq!(board_boss_reanim_track_z("boss_body1"), 7);
+        assert_eq!(board_boss_reanim_track_z("Boss_innerarm_hand"), 8);
+        assert_eq!(board_boss_ball_track_z("Layer 47"), 11);
+        assert_eq!(board_boss_ball_track_z("multiply"), 12);
+        assert_eq!(board_boss_ball_track_z("additive"), 14);
+        assert_eq!(board_boss_ball_blend_mode("additive"), BlendMode::Additive);
+        assert_eq!(board_boss_ball_blend_mode("ice_overlay"), BlendMode::Alpha);
     }
 }

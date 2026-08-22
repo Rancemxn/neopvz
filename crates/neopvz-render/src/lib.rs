@@ -63,6 +63,7 @@ pub const SEED_SUNFLOWER_IMAGE_ID: u32 = 51;
 pub const SEED_CHOOSER_BUTTON_IMAGE_ID: u32 = 52;
 pub const SEED_CHOOSER_TITLE_IMAGE_ID: u32 = 53;
 pub const SEED_PACKET_SILHOUETTE_IMAGE_ID: u32 = 54;
+pub const SEED_PACKET_PLANT_BASE_IMAGE_ID: u32 = 70;
 pub const MODE_SELECT_BACKGROUND_IMAGE_ID: u32 = 55;
 pub const MODE_SELECT_WINDOW_IMAGE_ID: u32 = 56;
 pub const MODE_SELECT_BLANK_IMAGE_ID: u32 = 57;
@@ -86,8 +87,32 @@ pub const FOG_BACKGROUND_IMAGE_ID: u32 = 162;
 pub const ROOF_BACKGROUND_IMAGE_ID: u32 = 163;
 pub const BOSS_BACKGROUND_IMAGE_ID: u32 = 164;
 pub const BOARD_ZOMBIE_BODY_IMAGE_ID: u32 = 165;
+pub const BOARD_ZOMBIE_CONE_IMAGE_ID: u32 = 1040;
+pub const BOARD_ZOMBIE_BUCKET_IMAGE_ID: u32 = 1041;
+pub const BOARD_ZOMBIE_FLAG_POLE_IMAGE_ID: u32 = 1042;
+pub const BOARD_ZOMBIE_FLAG_IMAGE_ID: u32 = 1043;
+pub const BOARD_ZOMBIE_FLAG_HAND_IMAGE_ID: u32 = 1044;
+pub const BOARD_ZOMBIE_SCREEN_DOOR_IMAGE_ID: u32 = 1045;
+pub const BOARD_ZOMBIE_FOOTBALL_HELMET_IMAGE_ID: u32 = 1046;
+pub const BOARD_ZOMBIE_FOOTBALL_UPPERBODY_IMAGE_ID: u32 = 1047;
+pub const BOARD_ZOMBIE_NEWSPAPER_IMAGE_ID: u32 = 1048;
+pub const BOARD_ZOMBIE_FOOTBALL_HEAD_IMAGE_ID: u32 = 1049;
+pub const BOARD_ZOMBIE_NEWSPAPER_HEAD_IMAGE_ID: u32 = 1050;
 pub const BOARD_PROJECTILE_PEA_IMAGE_ID: u32 = 166;
 pub const BOARD_PROJECTILE_SNOW_PEA_IMAGE_ID: u32 = 167;
+pub const BOARD_PROJECTILE_CABBAGE_IMAGE_ID: u32 = 1051;
+pub const BOARD_PROJECTILE_MELON_IMAGE_ID: u32 = 1052;
+pub const BOARD_PROJECTILE_WINTER_MELON_IMAGE_ID: u32 = 1053;
+pub const BOARD_PROJECTILE_KERNEL_IMAGE_ID: u32 = 1054;
+pub const BOARD_PROJECTILE_BUTTER_IMAGE_ID: u32 = 1055;
+pub const BOARD_PROJECTILE_SPIKE_IMAGE_ID: u32 = 1056;
+pub const BOARD_PROJECTILE_STAR_IMAGE_ID: u32 = 1057;
+pub const BOARD_PROJECTILE_FIREBALL_IMAGE_ID: u32 = 1058;
+pub const BOARD_PROJECTILE_COB_IMAGE_ID: u32 = 1059;
+pub const BOARD_PROJECTILE_BASKETBALL_IMAGE_ID: u32 = 1060;
+pub const BOARD_PROJECTILE_PUFF_IMAGE_ID: u32 = 1061;
+pub const BOARD_PROJECTILE_SHADOW_DAY_IMAGE_ID: u32 = 1062;
+pub const BOARD_PROJECTILE_SHADOW_NIGHT_IMAGE_ID: u32 = 1063;
 pub const BOARD_SUN_IMAGE_ID: u32 = 168;
 pub const BOARD_COIN_SILVER_IMAGE_ID: u32 = 169;
 pub const BOARD_COIN_GOLD_IMAGE_ID: u32 = 170;
@@ -104,6 +129,137 @@ pub const BOARD_CRATER_IMAGE_ID: u32 = 177;
 pub const BOARD_BRAIN_IMAGE_ID: u32 = 178;
 pub const BOARD_VASE_TOP_IMAGE_ID: u32 = 179;
 pub const BOARD_VASE_BOTTOM_IMAGE_ID: u32 = 180;
+pub const BOARD_PRESENT_IMAGE_ID: u32 = 1000;
+pub const BOARD_MONEYBAG_IMAGE_ID: u32 = 1001;
+pub const BOARD_CHOCOLATE_IMAGE_ID: u32 = 1002;
+pub const BOARD_VASE_IMAGE_ID: u32 = 1003;
+pub const BOARD_NOTE_IMAGE_ID: u32 = 1004;
+pub const BOARD_SILVER_SUNFLOWER_IMAGE_ID: u32 = 1005;
+pub const BOARD_GOLD_SUNFLOWER_IMAGE_ID: u32 = 1006;
+pub const BOARD_SEED_BANK_IMAGE_ID: u32 = 1007;
+pub const BOARD_CONVEYOR_BELT_BACKDROP_IMAGE_ID: u32 = 1008;
+pub const BOARD_CONVEYOR_BELT_BASE_IMAGE_ID: u32 = 1009;
+pub const BOARD_SHOVEL_BANK_IMAGE_ID: u32 = 1015;
+pub const BOARD_SUN_BANK_IMAGE_ID: u32 = 1016;
+pub const BOARD_SUN_COUNT_IMAGE_ID: u32 = 1017;
+pub const BOARD_SEED_COST_BASE_IMAGE_ID: u32 = 1020;
+pub const BOARD_SEED_BANK_EXTENSION_BASE_IMAGE_ID: u32 = 1030;
+pub const BOARD_PROGRESS_METER_IMAGE_ID: u32 = 1034;
+pub const BOARD_PROGRESS_FILL_IMAGE_ID: u32 = 1035;
+pub const BOARD_PROGRESS_HEAD_IMAGE_ID: u32 = 1036;
+pub const BOARD_PROGRESS_POLE_IMAGE_ID: u32 = 1037;
+pub const BOARD_PROGRESS_FLAG_IMAGE_ID: u32 = 1038;
+pub const BOARD_PROGRESS_LEVEL_IMAGE_ID: u32 = 1039;
+pub const GARDEN_BACKGROUND_IMAGE_ID: u32 = 184;
+pub const GARDEN_MUSHROOM_BACKGROUND_IMAGE_ID: u32 = 185;
+pub const GARDEN_WATERING_CAN_IMAGE_ID: u32 = 186;
+pub const GARDEN_FERTILIZER_IMAGE_ID: u32 = 187;
+pub const GARDEN_BUG_SPRAY_IMAGE_ID: u32 = 188;
+pub const GARDEN_PHONOGRAPH_IMAGE_ID: u32 = 189;
+pub const GARDEN_NEED_BUBBLE_IMAGE_ID: u32 = 190;
+pub const GARDEN_WATERDROP_IMAGE_ID: u32 = 191;
+pub const GARDEN_NEED_FERTILIZER_IMAGE_ID: u32 = 192;
+pub const GARDEN_NEED_BUG_SPRAY_IMAGE_ID: u32 = 193;
+pub const GARDEN_NEED_PHONOGRAPH_IMAGE_ID: u32 = 194;
+pub const STORE_BACKGROUND_IMAGE_ID: u32 = 195;
+pub const STORE_SIGN_IMAGE_ID: u32 = 196;
+pub const STORE_CAR_IMAGE_ID: u32 = 197;
+pub const STORE_PRICE_TAG_IMAGE_ID: u32 = 198;
+pub const STORE_MAIN_MENU_BUTTON_IMAGE_ID: u32 = 199;
+pub const STORE_PACKET_UPGRADE_IMAGE_ID: u32 = 200;
+pub const STORE_STINKY_IMAGE_ID: u32 = 201;
+pub const STORE_ITEM_NAME_BASE_IMAGE_ID: u32 = 210;
+pub const STORE_ITEM_PRICE_BASE_IMAGE_ID: u32 = 220;
+pub const STORE_BACK_TEXT_IMAGE_ID: u32 = 230;
+pub const PAUSE_DIALOG_TOP_LEFT_IMAGE_ID: u32 = 240;
+pub const PAUSE_DIALOG_TOP_MIDDLE_IMAGE_ID: u32 = 241;
+pub const PAUSE_DIALOG_TOP_RIGHT_IMAGE_ID: u32 = 242;
+pub const PAUSE_DIALOG_HEADER_IMAGE_ID: u32 = 243;
+pub const PAUSE_DIALOG_CENTER_LEFT_IMAGE_ID: u32 = 244;
+pub const PAUSE_DIALOG_CENTER_MIDDLE_IMAGE_ID: u32 = 245;
+pub const PAUSE_DIALOG_CENTER_RIGHT_IMAGE_ID: u32 = 246;
+pub const PAUSE_DIALOG_BOTTOM_LEFT_IMAGE_ID: u32 = 247;
+pub const PAUSE_DIALOG_BOTTOM_MIDDLE_IMAGE_ID: u32 = 248;
+pub const PAUSE_DIALOG_BOTTOM_RIGHT_IMAGE_ID: u32 = 249;
+pub const PAUSE_RESUME_BUTTON_IMAGE_ID: u32 = 250;
+pub const PAUSE_HEADER_TEXT_IMAGE_ID: u32 = 260;
+pub const PAUSE_BODY_TEXT_IMAGE_ID: u32 = 261;
+pub const PAUSE_RESUME_TEXT_IMAGE_ID: u32 = 262;
+pub const OPTIONS_BACKGROUND_IMAGE_ID: u32 = 270;
+pub const OPTIONS_CHECKBOX_OFF_IMAGE_ID: u32 = 271;
+pub const OPTIONS_CHECKBOX_ON_IMAGE_ID: u32 = 272;
+pub const OPTIONS_SLIDER_SLOT_IMAGE_ID: u32 = 273;
+pub const OPTIONS_SLIDER_KNOB_IMAGE_ID: u32 = 274;
+pub const OPTIONS_MUSIC_LABEL_IMAGE_ID: u32 = 280;
+pub const OPTIONS_SFX_LABEL_IMAGE_ID: u32 = 281;
+pub const OPTIONS_ACCELERATION_LABEL_IMAGE_ID: u32 = 282;
+pub const OPTIONS_FULLSCREEN_LABEL_IMAGE_ID: u32 = 283;
+pub const OPTIONS_BACK_TEXT_IMAGE_ID: u32 = 284;
+pub const HELP_ZOMBIE_NOTE_IMAGE_ID: u32 = 350;
+pub const HELP_CONTENT_IMAGE_ID: u32 = 351;
+pub const HELP_MENU_BUTTON_IMAGE_ID: u32 = 352;
+pub const HELP_MAIN_MENU_TEXT_IMAGE_ID: u32 = 353;
+pub const ALMANAC_INDEX_BACKGROUND_IMAGE_ID: u32 = 360;
+pub const ALMANAC_PLANT_BACKGROUND_IMAGE_ID: u32 = 361;
+pub const ALMANAC_ZOMBIE_BACKGROUND_IMAGE_ID: u32 = 362;
+pub const ALMANAC_CLOSE_BUTTON_IMAGE_ID: u32 = 363;
+pub const ALMANAC_INDEX_BUTTON_IMAGE_ID: u32 = 364;
+pub const ALMANAC_NAV_BUTTON_IMAGE_ID: u32 = 365;
+pub const ALMANAC_TITLE_TEXT_IMAGE_ID: u32 = 370;
+pub const ALMANAC_PLANTS_TEXT_IMAGE_ID: u32 = 371;
+pub const ALMANAC_ZOMBIES_TEXT_IMAGE_ID: u32 = 372;
+pub const ALMANAC_CLOSE_TEXT_IMAGE_ID: u32 = 373;
+pub const ALMANAC_INDEX_TEXT_IMAGE_ID: u32 = 374;
+pub const ALMANAC_PLANT_CARD_IMAGE_ID: u32 = 415;
+pub const ALMANAC_ZOMBIE_CARD_IMAGE_ID: u32 = 416;
+pub const ALMANAC_ZOMBIE_WINDOW_IMAGE_ID: u32 = 417;
+pub const ALMANAC_ZOMBIE_WINDOW2_IMAGE_ID: u32 = 418;
+pub const ALMANAC_ZOMBIE_BLANK_IMAGE_ID: u32 = 419;
+pub const ALMANAC_IMITATER_IMAGE_ID: u32 = 440;
+pub const ALMANAC_PLANT_NAME_BASE_IMAGE_ID: u32 = 450;
+pub const ALMANAC_PLANT_COST_BASE_IMAGE_ID: u32 = 500;
+pub const ALMANAC_PLANT_RECHARGE_BASE_IMAGE_ID: u32 = 550;
+pub const ALMANAC_ZOMBIE_NAME_BASE_IMAGE_ID: u32 = 600;
+pub const ALMANAC_PLANT_DESCRIPTION_BASE_IMAGE_ID: u32 = 650;
+pub const ALMANAC_ZOMBIE_DESCRIPTION_BASE_IMAGE_ID: u32 = 700;
+pub const ALMANAC_ZOMBIE_SILHOUETTE_NAME_BASE_IMAGE_ID: u32 = 750;
+pub const GAME_OVER_HEADER_TEXT_IMAGE_ID: u32 = 390;
+pub const GAME_OVER_BODY_TEXT_IMAGE_ID: u32 = 391;
+pub const GAME_OVER_TRY_AGAIN_TEXT_IMAGE_ID: u32 = 392;
+pub const GAME_OVER_MAIN_MENU_TEXT_IMAGE_ID: u32 = 393;
+pub const ZOMBIES_WON_IMAGE_ID: u32 = 394;
+pub const AWARD_SCREEN_BACKGROUND_IMAGE_ID: u32 = 400;
+pub const AWARD_TROPHY_IMAGE_ID: u32 = 401;
+pub const AWARD_TITLE_TEXT_IMAGE_ID: u32 = 402;
+pub const AWARD_BODY_TEXT_IMAGE_ID: u32 = 403;
+pub const AWARD_CONTINUE_TEXT_IMAGE_ID: u32 = 404;
+pub const AWARD_MAIN_MENU_TEXT_IMAGE_ID: u32 = 405;
+pub const AWARD_SHOVEL_IMAGE_ID: u32 = 406;
+pub const AWARD_ALMANAC_IMAGE_ID: u32 = 407;
+pub const AWARD_CAR_KEYS_IMAGE_ID: u32 = 408;
+pub const AWARD_TACO_IMAGE_ID: u32 = 409;
+pub const AWARD_WATERING_CAN_IMAGE_ID: u32 = 410;
+pub const AWARD_NOTE1_IMAGE_ID: u32 = 411;
+pub const AWARD_NOTE2_IMAGE_ID: u32 = 412;
+pub const AWARD_NOTE3_IMAGE_ID: u32 = 413;
+pub const AWARD_NOTE4_IMAGE_ID: u32 = 414;
+pub const AWARD_TITLE_TEXT_BASE_IMAGE_ID: u32 = 420;
+pub const AWARD_BODY_TEXT_BASE_IMAGE_ID: u32 = 430;
+pub const CREDITS_BIG_BRAIN_IMAGE_ID: u32 = 800;
+pub const CREDITS_ZOMBIE_NOTE_IMAGE_ID: u32 = 801;
+pub const CREDITS_PLAY_BUTTON_IMAGE_ID: u32 = 802;
+pub const CREDITS_STAGE_IMAGE_ID: u32 = 803;
+pub const CREDITS_WE_ARE_UNDEAD_IMAGE_ID: u32 = 804;
+pub const CREDITS_MTV_IMAGE_ID: u32 = 805;
+pub const CREDITS_TITLE_TEXT_IMAGE_ID: u32 = 810;
+pub const CREDITS_LINE1_TEXT_IMAGE_ID: u32 = 811;
+pub const CREDITS_LINE2_TEXT_IMAGE_ID: u32 = 812;
+pub const CREDITS_LINE3_TEXT_IMAGE_ID: u32 = 813;
+pub const CREDITS_LINE4_TEXT_IMAGE_ID: u32 = 814;
+pub const CREDITS_LINE5_TEXT_IMAGE_ID: u32 = 815;
+pub const CREDITS_LINE6_TEXT_IMAGE_ID: u32 = 816;
+pub const CREDITS_REPLAY_TEXT_IMAGE_ID: u32 = 817;
+pub const CREDITS_MAIN_MENU_TEXT_IMAGE_ID: u32 = 818;
 
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub struct LogicalViewport {
@@ -247,6 +403,12 @@ pub struct SpriteCommand {
     pub alpha: f32,
 }
 
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+pub enum BlendMode {
+    Alpha,
+    Additive,
+}
+
 #[derive(Clone, Copy, Debug, PartialEq)]
 pub struct AffineSpriteCommand {
     pub resource_id: u32,
@@ -258,12 +420,19 @@ pub struct AffineSpriteCommand {
     pub m11: f32,
     pub z: i32,
     pub alpha: f32,
+    pub blend_mode: BlendMode,
 }
 
 #[derive(Clone, Debug, Default)]
 pub struct RenderFrame {
     pub sprites: Vec<SpriteCommand>,
     pub affine_sprites: Vec<AffineSpriteCommand>,
+}
+
+pub struct CapturedFrame {
+    pub width: u32,
+    pub height: u32,
+    pub rgba8: Vec<u8>,
 }
 
 impl RenderFrame {
@@ -300,6 +469,13 @@ impl BatchSprite<'_> {
             Self::Affine(sprite) => sprite.alpha,
         }
     }
+
+    fn blend_mode(self) -> BlendMode {
+        match self {
+            Self::AxisAligned(_) => BlendMode::Alpha,
+            Self::Affine(sprite) => sprite.blend_mode,
+        }
+    }
 }
 
 #[derive(Debug, Error)]
@@ -318,6 +494,8 @@ pub enum RendererError {
     MissingImage(u32),
     #[error("GPU surface validation failed while acquiring a frame")]
     SurfaceValidation,
+    #[error("GPU frame capture failed: {0}")]
+    Capture(String),
 }
 
 #[repr(C)]
@@ -339,6 +517,7 @@ struct DrawCall {
     resource_id: u32,
     start: u32,
     end: u32,
+    blend_mode: BlendMode,
 }
 
 pub struct GpuRenderer {
@@ -351,6 +530,7 @@ pub struct GpuRenderer {
     size: PhysicalSize<u32>,
     logical_viewport: LogicalViewport,
     pipeline: wgpu::RenderPipeline,
+    additive_pipeline: wgpu::RenderPipeline,
     texture_layout: wgpu::BindGroupLayout,
     sampler: wgpu::Sampler,
     images: HashMap<u32, GpuImage>,
@@ -444,34 +624,52 @@ impl GpuRenderer {
             step_mode: wgpu::VertexStepMode::Vertex,
             attributes: &vertex_attributes,
         })];
-        let pipeline = device.create_render_pipeline(&wgpu::RenderPipelineDescriptor {
-            label: Some("sprite pipeline"),
-            layout: Some(&pipeline_layout),
-            vertex: wgpu::VertexState {
-                module: &shader,
-                entry_point: Some("vs_main"),
-                compilation_options: Default::default(),
-                buffers: &vertex_buffers,
+        let make_pipeline = |label, blend| {
+            device.create_render_pipeline(&wgpu::RenderPipelineDescriptor {
+                label: Some(label),
+                layout: Some(&pipeline_layout),
+                vertex: wgpu::VertexState {
+                    module: &shader,
+                    entry_point: Some("vs_main"),
+                    compilation_options: Default::default(),
+                    buffers: &vertex_buffers,
+                },
+                primitive: wgpu::PrimitiveState {
+                    topology: wgpu::PrimitiveTopology::TriangleList,
+                    ..Default::default()
+                },
+                depth_stencil: None,
+                multisample: wgpu::MultisampleState::default(),
+                fragment: Some(wgpu::FragmentState {
+                    module: &shader,
+                    entry_point: Some("fs_main"),
+                    compilation_options: Default::default(),
+                    targets: &[Some(wgpu::ColorTargetState {
+                        format: config.format,
+                        blend: Some(blend),
+                        write_mask: wgpu::ColorWrites::ALL,
+                    })],
+                }),
+                multiview_mask: None,
+                cache: None,
+            })
+        };
+        let pipeline = make_pipeline("sprite pipeline", wgpu::BlendState::ALPHA_BLENDING);
+        let additive_pipeline = make_pipeline(
+            "sprite additive pipeline",
+            wgpu::BlendState {
+                color: wgpu::BlendComponent {
+                    src_factor: wgpu::BlendFactor::SrcAlpha,
+                    dst_factor: wgpu::BlendFactor::One,
+                    operation: wgpu::BlendOperation::Add,
+                },
+                alpha: wgpu::BlendComponent {
+                    src_factor: wgpu::BlendFactor::One,
+                    dst_factor: wgpu::BlendFactor::One,
+                    operation: wgpu::BlendOperation::Add,
+                },
             },
-            primitive: wgpu::PrimitiveState {
-                topology: wgpu::PrimitiveTopology::TriangleList,
-                ..Default::default()
-            },
-            depth_stencil: None,
-            multisample: wgpu::MultisampleState::default(),
-            fragment: Some(wgpu::FragmentState {
-                module: &shader,
-                entry_point: Some("fs_main"),
-                compilation_options: Default::default(),
-                targets: &[Some(wgpu::ColorTargetState {
-                    format: config.format,
-                    blend: Some(wgpu::BlendState::ALPHA_BLENDING),
-                    write_mask: wgpu::ColorWrites::ALL,
-                })],
-            }),
-            multiview_mask: None,
-            cache: None,
-        });
+        );
 
         Ok(Self {
             instance,
@@ -483,6 +681,7 @@ impl GpuRenderer {
             size,
             logical_viewport: LogicalViewport::default(),
             pipeline,
+            additive_pipeline,
             texture_layout,
             sampler,
             images: HashMap::new(),
@@ -573,21 +772,6 @@ impl GpuRenderer {
             return Ok(());
         }
 
-        let (vertices, draw_calls) = self.build_batch(frame)?;
-        let viewport = letterbox_rect(self.size.width, self.size.height, self.logical_viewport);
-        if viewport.width == 0 || viewport.height == 0 {
-            return Ok(());
-        }
-
-        let vertex_buffer = (!vertices.is_empty()).then(|| {
-            self.device
-                .create_buffer_init(&wgpu::util::BufferInitDescriptor {
-                    label: Some("sprite vertex buffer"),
-                    contents: bytemuck::cast_slice(&vertices),
-                    usage: wgpu::BufferUsages::VERTEX,
-                })
-        });
-
         let surface_texture = match self.surface.get_current_texture() {
             wgpu::CurrentSurfaceTexture::Success(texture) => texture,
             wgpu::CurrentSurfaceTexture::Suboptimal(texture) => {
@@ -622,48 +806,168 @@ impl GpuRenderer {
             .create_command_encoder(&wgpu::CommandEncoderDescriptor {
                 label: Some("sprite command encoder"),
             });
-        {
-            let mut render_pass = encoder.begin_render_pass(&wgpu::RenderPassDescriptor {
-                label: Some("sprite render pass"),
-                color_attachments: &[Some(wgpu::RenderPassColorAttachment {
-                    view: &texture_view,
-                    depth_slice: None,
-                    resolve_target: None,
-                    ops: wgpu::Operations {
-                        load: wgpu::LoadOp::Clear(wgpu::Color::BLACK),
-                        store: wgpu::StoreOp::Store,
-                    },
-                })],
-                depth_stencil_attachment: None,
-                timestamp_writes: None,
-                occlusion_query_set: None,
-                multiview_mask: None,
-            });
-            render_pass.set_pipeline(&self.pipeline);
-            render_pass.set_scissor_rect(viewport.x, viewport.y, viewport.width, viewport.height);
-            if let Some(vertex_buffer) = &vertex_buffer {
-                render_pass.set_vertex_buffer(0, vertex_buffer.slice(..));
-                for draw_call in draw_calls {
-                    let image = self
-                        .images
-                        .get(&draw_call.resource_id)
-                        .expect("batch image was checked before encoding");
-                    render_pass.set_bind_group(0, &image.bind_group, &[]);
-                    render_pass.draw(draw_call.start..draw_call.end, 0..1);
-                }
-            }
-        }
+        self.encode_frame(frame, self.size, &texture_view, &mut encoder)?;
         self.queue.submit([encoder.finish()]);
         self.window.pre_present_notify();
         self.queue.present(surface_texture);
         Ok(())
     }
 
+    pub fn capture_frame(&mut self, frame: &RenderFrame) -> Result<CapturedFrame, RendererError> {
+        let size = PhysicalSize::new(LOGICAL_WIDTH, LOGICAL_HEIGHT);
+        let (bytes_per_row, padded_bytes_per_row) = capture_row_layout(size.width)?;
+        let swizzle_bgra = match self.config.format {
+            wgpu::TextureFormat::Rgba8Unorm | wgpu::TextureFormat::Rgba8UnormSrgb => false,
+            wgpu::TextureFormat::Bgra8Unorm | wgpu::TextureFormat::Bgra8UnormSrgb => true,
+            format => {
+                return Err(RendererError::Capture(format!(
+                    "unsupported surface format for readback: {format:?}"
+                )));
+            }
+        };
+        let texture = self.device.create_texture(&wgpu::TextureDescriptor {
+            label: Some("frame capture texture"),
+            size: wgpu::Extent3d {
+                width: size.width,
+                height: size.height,
+                depth_or_array_layers: 1,
+            },
+            mip_level_count: 1,
+            sample_count: 1,
+            dimension: wgpu::TextureDimension::D2,
+            format: self.config.format,
+            usage: wgpu::TextureUsages::RENDER_ATTACHMENT | wgpu::TextureUsages::COPY_SRC,
+            view_formats: &[],
+        });
+        let texture_view = texture.create_view(&wgpu::TextureViewDescriptor::default());
+        let output_buffer = self.device.create_buffer(&wgpu::BufferDescriptor {
+            label: Some("frame capture readback"),
+            size: u64::from(padded_bytes_per_row) * u64::from(size.height),
+            usage: wgpu::BufferUsages::COPY_DST | wgpu::BufferUsages::MAP_READ,
+            mapped_at_creation: false,
+        });
+        let mut encoder = self
+            .device
+            .create_command_encoder(&wgpu::CommandEncoderDescriptor {
+                label: Some("frame capture encoder"),
+            });
+        self.encode_frame(frame, size, &texture_view, &mut encoder)?;
+        encoder.copy_texture_to_buffer(
+            wgpu::TexelCopyTextureInfo {
+                texture: &texture,
+                mip_level: 0,
+                origin: wgpu::Origin3d::ZERO,
+                aspect: wgpu::TextureAspect::All,
+            },
+            wgpu::TexelCopyBufferInfo {
+                buffer: &output_buffer,
+                layout: wgpu::TexelCopyBufferLayout {
+                    offset: 0,
+                    bytes_per_row: Some(padded_bytes_per_row),
+                    rows_per_image: Some(size.height),
+                },
+            },
+            wgpu::Extent3d {
+                width: size.width,
+                height: size.height,
+                depth_or_array_layers: 1,
+            },
+        );
+        self.queue.submit([encoder.finish()]);
+
+        let slice = output_buffer.slice(..);
+        let (sender, receiver) = std::sync::mpsc::channel();
+        slice.map_async(wgpu::MapMode::Read, move |result| {
+            let _ = sender.send(result);
+        });
+        self.device
+            .poll(wgpu::PollType::wait_indefinitely())
+            .map_err(|error| RendererError::Capture(error.to_string()))?;
+        receiver
+            .recv()
+            .map_err(|error| RendererError::Capture(error.to_string()))?
+            .map_err(|error| RendererError::Capture(error.to_string()))?;
+        let mapped = slice
+            .get_mapped_range()
+            .map_err(|error| RendererError::Capture(error.to_string()))?;
+        let rgba8 = copy_capture_rows(
+            &mapped,
+            size.width,
+            size.height,
+            bytes_per_row,
+            padded_bytes_per_row,
+            swizzle_bgra,
+        );
+        drop(mapped);
+        output_buffer.unmap();
+        Ok(CapturedFrame {
+            width: size.width,
+            height: size.height,
+            rgba8,
+        })
+    }
+
+    fn encode_frame(
+        &self,
+        frame: &RenderFrame,
+        size: PhysicalSize<u32>,
+        texture_view: &wgpu::TextureView,
+        encoder: &mut wgpu::CommandEncoder,
+    ) -> Result<(), RendererError> {
+        let (vertices, draw_calls) = self.build_batch(frame, size)?;
+        let viewport = letterbox_rect(size.width, size.height, self.logical_viewport);
+        if viewport.width == 0 || viewport.height == 0 {
+            return Ok(());
+        }
+        let vertex_buffer = (!vertices.is_empty()).then(|| {
+            self.device
+                .create_buffer_init(&wgpu::util::BufferInitDescriptor {
+                    label: Some("sprite vertex buffer"),
+                    contents: bytemuck::cast_slice(&vertices),
+                    usage: wgpu::BufferUsages::VERTEX,
+                })
+        });
+        let mut render_pass = encoder.begin_render_pass(&wgpu::RenderPassDescriptor {
+            label: Some("sprite render pass"),
+            color_attachments: &[Some(wgpu::RenderPassColorAttachment {
+                view: texture_view,
+                depth_slice: None,
+                resolve_target: None,
+                ops: wgpu::Operations {
+                    load: wgpu::LoadOp::Clear(wgpu::Color::BLACK),
+                    store: wgpu::StoreOp::Store,
+                },
+            })],
+            depth_stencil_attachment: None,
+            timestamp_writes: None,
+            occlusion_query_set: None,
+            multiview_mask: None,
+        });
+        render_pass.set_scissor_rect(viewport.x, viewport.y, viewport.width, viewport.height);
+        if let Some(vertex_buffer) = &vertex_buffer {
+            render_pass.set_vertex_buffer(0, vertex_buffer.slice(..));
+            for draw_call in draw_calls {
+                render_pass.set_pipeline(match draw_call.blend_mode {
+                    BlendMode::Alpha => &self.pipeline,
+                    BlendMode::Additive => &self.additive_pipeline,
+                });
+                let image = self
+                    .images
+                    .get(&draw_call.resource_id)
+                    .expect("batch image was checked before encoding");
+                render_pass.set_bind_group(0, &image.bind_group, &[]);
+                render_pass.draw(draw_call.start..draw_call.end, 0..1);
+            }
+        }
+        Ok(())
+    }
+
     fn build_batch(
         &self,
         frame: &RenderFrame,
+        size: PhysicalSize<u32>,
     ) -> Result<(Vec<SpriteVertex>, Vec<DrawCall>), RendererError> {
-        let viewport = letterbox_rect(self.size.width, self.size.height, self.logical_viewport);
+        let viewport = letterbox_rect(size.width, size.height, self.logical_viewport);
         let logical_scale = viewport.width as f32 / self.logical_viewport.width as f32;
         let mut sprites = Vec::with_capacity(frame.sprites.len() + frame.affine_sprites.len());
         sprites.extend(frame.sprites.iter().map(BatchSprite::AxisAligned));
@@ -702,12 +1006,13 @@ impl GpuRenderer {
             };
             let color = [1.0, 1.0, 1.0, sprite.alpha().clamp(0.0, 1.0)];
             let start = u32::try_from(vertices.len()).unwrap_or(u32::MAX);
-            append_quad(&mut vertices, corners, color, self.size);
+            append_quad(&mut vertices, corners, color, size);
             let end = u32::try_from(vertices.len()).unwrap_or(u32::MAX);
             draw_calls.push(DrawCall {
                 resource_id: sprite.resource_id(),
                 start,
                 end,
+                blend_mode: sprite.blend_mode(),
             });
         }
 
@@ -762,6 +1067,40 @@ fn ndc(x: f32, y: f32, size: PhysicalSize<u32>) -> [f32; 2] {
         x / size.width as f32 * 2.0 - 1.0,
         1.0 - y / size.height as f32 * 2.0,
     ]
+}
+
+fn capture_row_layout(width: u32) -> Result<(u32, u32), RendererError> {
+    let bytes_per_row = width
+        .checked_mul(4)
+        .ok_or_else(|| RendererError::Capture("capture row is too wide".to_owned()))?;
+    let padded_bytes_per_row = bytes_per_row
+        .div_ceil(wgpu::COPY_BYTES_PER_ROW_ALIGNMENT)
+        .checked_mul(wgpu::COPY_BYTES_PER_ROW_ALIGNMENT)
+        .ok_or_else(|| RendererError::Capture("capture row padding overflowed".to_owned()))?;
+    Ok((bytes_per_row, padded_bytes_per_row))
+}
+
+fn copy_capture_rows(
+    mapped: &[u8],
+    width: u32,
+    height: u32,
+    bytes_per_row: u32,
+    padded_bytes_per_row: u32,
+    swizzle_bgra: bool,
+) -> Vec<u8> {
+    let row_bytes = bytes_per_row as usize;
+    let padded_row_bytes = padded_bytes_per_row as usize;
+    let mut rgba8 = Vec::with_capacity(row_bytes * height as usize);
+    for row in mapped.chunks_exact(padded_row_bytes).take(height as usize) {
+        rgba8.extend_from_slice(&row[..row_bytes]);
+    }
+    if swizzle_bgra {
+        for pixel in rgba8.chunks_exact_mut(4) {
+            pixel.swap(0, 2);
+        }
+    }
+    debug_assert_eq!(rgba8.len(), width as usize * height as usize * 4);
+    rgba8
 }
 
 impl SpriteVertex {
@@ -878,6 +1217,7 @@ mod tests {
             m11: 1.0,
             z: 0,
             alpha: 1.0,
+            blend_mode: BlendMode::Alpha,
         };
 
         assert_eq!(
@@ -897,5 +1237,17 @@ mod tests {
                 actual: 3,
             })
         ));
+    }
+
+    #[test]
+    fn capture_rows_drop_padding_and_convert_bgra() {
+        let mapped = [
+            1, 2, 3, 4, 5, 6, 7, 8, 9, 9, 9, 9, 9, 9, 9, 9, 11, 12, 13, 14, 15, 16, 17, 18, 19, 19,
+            19, 19, 19, 19, 19, 19,
+        ];
+        assert_eq!(
+            copy_capture_rows(&mapped, 2, 2, 8, 16, true),
+            vec![3, 2, 1, 4, 7, 6, 5, 8, 13, 12, 11, 14, 17, 16, 15, 18]
+        );
     }
 }
