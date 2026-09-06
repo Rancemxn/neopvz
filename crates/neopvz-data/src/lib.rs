@@ -11,8 +11,9 @@ mod formats;
 mod pak;
 
 pub use formats::{
-    CompiledDefinition, CompiledError, Mo3Resource, MusicError, ReanimError, ReanimatorDefinition,
-    ReanimatorTrack, ReanimatorTransform,
+    CompiledDefinition, CompiledError, EmitterDefinition, Mo3Resource, MusicError, ParameterTrack,
+    ParticleDefinition, ParticleField, ReanimError, ReanimatorDefinition, ReanimatorTrack,
+    ReanimatorTransform, TrackNode, TrailDefinition,
 };
 pub use pak::{PakArchive, PakEntry, PakError};
 
@@ -136,9 +137,14 @@ impl ResourceProvider {
         Ok(Mo3Resource::parse(self.read(path)?)?)
     }
 
+    pub fn manifest(&self) -> Result<ResourceManifest, ResourceError> {
+        Ok(ResourceManifest::parse(
+            &self.read(RESOURCE_MANIFEST_PATH)?[..],
+        )?)
+    }
+
     pub fn inventory(&self) -> Result<ResourceInventory, ResourceError> {
-        let manifest_data = self.read(RESOURCE_MANIFEST_PATH)?;
-        let manifest = ResourceManifest::parse(&manifest_data[..])?;
+        let manifest = self.manifest()?;
         let paths = self.paths()?;
         let compiled: Vec<_> = paths
             .iter()
@@ -246,6 +252,8 @@ pub struct ResourceEntry {
     pub kind: ResourceKind,
     pub id: String,
     pub path: String,
+    pub cols: u32,
+    pub rows: u32,
 }
 
 #[derive(Clone, Debug, Eq, PartialEq, Serialize, Deserialize)]
@@ -337,6 +345,14 @@ struct RawEntry {
     id: String,
     #[serde(rename = "@path")]
     path: String,
+    #[serde(rename = "@cols", default = "one")]
+    cols: u32,
+    #[serde(rename = "@rows", default = "one")]
+    rows: u32,
+}
+
+const fn one() -> u32 {
+    1
 }
 
 impl From<RawGroup> for ResourceGroup {
@@ -390,6 +406,8 @@ fn resource_entry(
         kind,
         id: format!("{id_prefix}{}", raw.id),
         path: join_resource_path(base_path, &raw.path),
+        cols: raw.cols.max(1),
+        rows: raw.rows.max(1),
     }
 }
 
@@ -542,7 +560,7 @@ mod tests {
             <ResourceManifest>
               <Resources id="Init">
                 <SetDefaults path="images" idprefix="IMAGE_" />
-                <Image id="LOGO" path="logo" />
+                <Image id="LOGO" path="logo" cols="4" rows="2" />
                 <SetDefaults path="sounds" idprefix="SOUND_" />
                 <Sound id="CLICK" path="click" />
               </Resources>
@@ -557,8 +575,12 @@ mod tests {
         assert_eq!(manifest.count(ResourceKind::Sound), 1);
         assert_eq!(manifest.groups[0].entries[0].id, "IMAGE_LOGO");
         assert_eq!(manifest.groups[0].entries[0].path, "images/logo");
+        assert_eq!(manifest.groups[0].entries[0].cols, 4);
+        assert_eq!(manifest.groups[0].entries[0].rows, 2);
         assert_eq!(manifest.groups[0].entries[1].id, "SOUND_CLICK");
         assert_eq!(manifest.groups[0].entries[1].path, "sounds/click");
+        assert_eq!(manifest.groups[0].entries[1].cols, 1);
+        assert_eq!(manifest.groups[0].entries[1].rows, 1);
     }
 
     #[test]

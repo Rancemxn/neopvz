@@ -9,6 +9,12 @@ use winit::{
     window::Window,
 };
 
+pub mod particles;
+
+pub use particles::{
+    ParticleCatalog, ParticleHolder, ParticleRenderParams, ParticleSystem, RenderedParticle,
+};
+
 pub const TITLE_IMAGE_ID: u32 = 1;
 pub const SEED_CHOOSER_IMAGE_ID: u32 = 2;
 pub const DAY_BACKGROUND_IMAGE_ID: u32 = 3;
@@ -79,6 +85,7 @@ pub const TITLE_LOAD_BAR_SPROUT_PETAL_IMAGE_ID: u32 = 66;
 pub const TITLE_LOAD_BAR_ZOMBIE_HEAD_IMAGE_ID: u32 = 67;
 pub const TITLE_LOAD_BAR_ZOMBIE_HAIR_IMAGE_ID: u32 = 68;
 pub const TITLE_LOAD_BAR_ZOMBIE_JAW_IMAGE_ID: u32 = 69;
+pub const SELECTOR_LEVEL_NUMBER_BASE_IMAGE_ID: u32 = 88;
 pub const CHALLENGE_THUMBNAIL_BASE_IMAGE_ID: u32 = 100;
 pub const SURVIVAL_THUMBNAIL_BASE_IMAGE_ID: u32 = 130;
 pub const NIGHT_BACKGROUND_IMAGE_ID: u32 = 160;
@@ -410,6 +417,14 @@ pub enum BlendMode {
 }
 
 #[derive(Clone, Copy, Debug, PartialEq)]
+pub struct AffineSpriteSource {
+    pub uv_min: [f32; 2],
+    pub uv_max: [f32; 2],
+    /// Texture-space pivot retained when the source rectangle is clipped.
+    pub pivot_uv: [f32; 2],
+}
+
+#[derive(Clone, Copy, Debug, PartialEq)]
 pub struct AffineSpriteCommand {
     pub resource_id: u32,
     pub x: f32,
@@ -420,7 +435,10 @@ pub struct AffineSpriteCommand {
     pub m11: f32,
     pub z: i32,
     pub alpha: f32,
+    /// Linear RGB multiplier; `[1.0, 1.0, 1.0]` draws the texture untinted.
+    pub tint: [f32; 3],
     pub blend_mode: BlendMode,
+    pub source: Option<AffineSpriteSource>,
 }
 
 #[derive(Clone, Debug, Default)]
@@ -474,6 +492,20 @@ impl BatchSprite<'_> {
         match self {
             Self::AxisAligned(_) => BlendMode::Alpha,
             Self::Affine(sprite) => sprite.blend_mode,
+        }
+    }
+
+    fn tint(self) -> [f32; 3] {
+        match self {
+            Self::AxisAligned(_) => [1.0; 3],
+            Self::Affine(sprite) => sprite.tint,
+        }
+    }
+
+    fn source(self) -> Option<AffineSpriteSource> {
+        match self {
+            Self::AxisAligned(_) => None,
+            Self::Affine(sprite) => sprite.source,
         }
     }
 }
@@ -982,6 +1014,7 @@ impl GpuRenderer {
                 .images
                 .get(&sprite.resource_id())
                 .ok_or(RendererError::MissingImage(sprite.resource_id()))?;
+            let source = sprite.source();
             let corners = match sprite {
                 BatchSprite::AxisAligned(sprite) => {
                     let x = viewport.x as f32 + sprite.x * logical_scale;
@@ -996,17 +1029,25 @@ impl GpuRenderer {
                     ]
                 }
                 BatchSprite::Affine(sprite) => {
-                    affine_corners(sprite, image_width(image), image_height(image)).map(|[x, y]| {
-                        [
-                            viewport.x as f32 + x * logical_scale,
-                            viewport.y as f32 + y * logical_scale,
-                        ]
-                    })
+                    affine_corners(sprite, image_width(image), image_height(image), source).map(
+                        |[x, y]| {
+                            [
+                                viewport.x as f32 + x * logical_scale,
+                                viewport.y as f32 + y * logical_scale,
+                            ]
+                        },
+                    )
                 }
             };
-            let color = [1.0, 1.0, 1.0, sprite.alpha().clamp(0.0, 1.0)];
+            let tint = sprite.tint();
+            let color = [
+                tint[0].clamp(0.0, 1.0),
+                tint[1].clamp(0.0, 1.0),
+                tint[2].clamp(0.0, 1.0),
+                sprite.alpha().clamp(0.0, 1.0),
+            ];
             let start = u32::try_from(vertices.len()).unwrap_or(u32::MAX);
-            append_quad(&mut vertices, corners, color, size);
+            append_quad(&mut vertices, corners, color, source, size);
             let end = u32::try_from(vertices.len()).unwrap_or(u32::MAX);
             draw_calls.push(DrawCall {
                 resource_id: sprite.resource_id(),
@@ -1028,14 +1069,28 @@ fn image_height(image: &GpuImage) -> f32 {
     image._texture.height() as f32
 }
 
-fn affine_corners(sprite: &AffineSpriteCommand, width: f32, height: f32) -> [[f32; 2]; 4] {
-    let half_width = width * 0.5;
-    let half_height = height * 0.5;
+fn affine_corners(
+    sprite: &AffineSpriteCommand,
+    width: f32,
+    height: f32,
+    source: Option<AffineSpriteSource>,
+) -> [[f32; 2]; 4] {
+    let (left, top, right, bottom) = source.map_or(
+        (-width * 0.5, -height * 0.5, width * 0.5, height * 0.5),
+        |source| {
+            (
+                (source.uv_min[0] - source.pivot_uv[0]) * width,
+                (source.uv_min[1] - source.pivot_uv[1]) * height,
+                (source.uv_max[0] - source.pivot_uv[0]) * width,
+                (source.uv_max[1] - source.pivot_uv[1]) * height,
+            )
+        },
+    );
     [
-        affine_point(sprite, -half_width, -half_height),
-        affine_point(sprite, half_width, -half_height),
-        affine_point(sprite, half_width, half_height),
-        affine_point(sprite, -half_width, half_height),
+        affine_point(sprite, left, top),
+        affine_point(sprite, right, top),
+        affine_point(sprite, right, bottom),
+        affine_point(sprite, left, bottom),
     ]
 }
 
@@ -1050,15 +1105,27 @@ fn append_quad(
     vertices: &mut Vec<SpriteVertex>,
     corners: [[f32; 2]; 4],
     color: [f32; 4],
+    source: Option<AffineSpriteSource>,
     size: PhysicalSize<u32>,
 ) {
+    let (uv_min, uv_max) = source.map_or(([0.0, 0.0], [1.0, 1.0]), |source| {
+        (source.uv_min, source.uv_max)
+    });
     vertices.extend([
-        SpriteVertex::new(ndc(corners[0][0], corners[0][1], size), [0.0, 0.0], color),
-        SpriteVertex::new(ndc(corners[1][0], corners[1][1], size), [1.0, 0.0], color),
-        SpriteVertex::new(ndc(corners[2][0], corners[2][1], size), [1.0, 1.0], color),
-        SpriteVertex::new(ndc(corners[0][0], corners[0][1], size), [0.0, 0.0], color),
-        SpriteVertex::new(ndc(corners[2][0], corners[2][1], size), [1.0, 1.0], color),
-        SpriteVertex::new(ndc(corners[3][0], corners[3][1], size), [0.0, 1.0], color),
+        SpriteVertex::new(ndc(corners[0][0], corners[0][1], size), uv_min, color),
+        SpriteVertex::new(
+            ndc(corners[1][0], corners[1][1], size),
+            [uv_max[0], uv_min[1]],
+            color,
+        ),
+        SpriteVertex::new(ndc(corners[2][0], corners[2][1], size), uv_max, color),
+        SpriteVertex::new(ndc(corners[0][0], corners[0][1], size), uv_min, color),
+        SpriteVertex::new(ndc(corners[2][0], corners[2][1], size), uv_max, color),
+        SpriteVertex::new(
+            ndc(corners[3][0], corners[3][1], size),
+            [uv_min[0], uv_max[1]],
+            color,
+        ),
     ]);
 }
 
@@ -1217,12 +1284,23 @@ mod tests {
             m11: 1.0,
             z: 0,
             alpha: 1.0,
+            tint: [1.0; 3],
             blend_mode: BlendMode::Alpha,
+            source: None,
         };
 
         assert_eq!(
-            affine_corners(&sprite, 4.0, 6.0),
+            affine_corners(&sprite, 4.0, 6.0, None),
             [[8.0, 17.0], [12.0, 17.0], [12.0, 23.0], [8.0, 23.0]]
+        );
+        let source = AffineSpriteSource {
+            uv_min: [0.25, 0.25],
+            uv_max: [0.5, 0.75],
+            pivot_uv: [0.375, 0.5],
+        };
+        assert_eq!(
+            affine_corners(&sprite, 400.0, 200.0, Some(source)),
+            [[-40.0, -30.0], [60.0, -30.0], [60.0, 70.0], [-40.0, 70.0]]
         );
     }
 

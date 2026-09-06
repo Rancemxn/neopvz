@@ -138,6 +138,8 @@ pub struct SaveProfile {
     pub unlocked_modes: u8,
     pub inventory: SaveInventory,
     pub garden: GardenState,
+    #[serde(default = "default_tree_height")]
+    pub tree_height: u16,
     pub mode_completion: Vec<ModeCompletion>,
     #[serde(default = "default_adventure_level")]
     pub adventure_level: u8,
@@ -156,6 +158,10 @@ fn default_adventure_level() -> u8 {
     1
 }
 
+fn default_tree_height() -> u16 {
+    1
+}
+
 impl Default for SaveProfile {
     fn default() -> Self {
         Self {
@@ -167,6 +173,7 @@ impl Default for SaveProfile {
             unlocked_modes: 0,
             inventory: SaveInventory::default(),
             garden: GardenState::default(),
+            tree_height: 1,
             mode_completion: Vec::new(),
             adventure_level: 1,
             adventure_rounds: 0,
@@ -333,6 +340,7 @@ mod tests {
         };
         profile.unlocked_plants = vec![PlantType::Peashooter, PlantType::Sunflower];
         profile.awards = vec!["FirstSun".to_owned()];
+        profile.tree_height = 1_000;
         profile.inventory = SaveInventory {
             coins: 125,
             seed_packets: vec![PlantType::Peashooter],
@@ -395,6 +403,7 @@ mod tests {
         let profile = fixture();
         let mut legacy = serde_json::to_value(&profile).unwrap();
         legacy.as_object_mut().unwrap().remove("unlocked_modes");
+        legacy.as_object_mut().unwrap().remove("tree_height");
         legacy
             .get_mut("inventory")
             .and_then(serde_json::Value::as_object_mut)
@@ -417,6 +426,7 @@ mod tests {
             .remove("phonograph_purchased");
         let restored = SaveProfile::from_json(&serde_json::to_vec(&legacy).unwrap()).unwrap();
         assert_eq!(restored.unlocked_modes, 0);
+        assert_eq!(restored.tree_height, 1);
         assert_eq!(restored.inventory.chocolates, 0);
         assert_eq!(restored.inventory.fertilizer_charges, 0);
         assert_eq!(restored.inventory.bug_spray_charges, 0);

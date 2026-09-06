@@ -11,16 +11,17 @@ use clap::{Parser, ValueEnum};
 use neopvz_audio::{AudioBackend, AudioKind, KiraAudioBackend};
 use neopvz_core::{
     AwardCollectionSound, ChallengeKind, CoinType, EntityId, Game, GameEvent, GardenNeed,
-    GardenServiceKind, GardenTool, InputAction, InputFrame, LootDropSound, ModeKind, PlantType,
-    ProjectileImpactSound, ProjectileType, SEEING_STARS_STARFRUIT_CELLS, SaveError, SaveProfile,
-    SceneKind, StoreItem, SunSource, WeatherSound, WhackHitSound, ZombieState, ZombieType,
-    adventure_award_seed, adventure_completion_award, adventure_flag_wave_count,
-    adventure_level_is_conveyor, adventure_seed_choices, adventure_seed_slots, adventure_unlocks,
-    fixed_point_to_logical, last_stand_seed_choices, last_stand_seed_slots, mode_level_name,
-    mode_level_names, store_item_cost, zombie_wave_stats,
+    GardenServiceKind, GardenTool, HiddenCode, InputAction, InputFrame, LootDropSound, ModeKind,
+    PlantType, ProjectileImpactSound, ProjectileType, SEEING_STARS_STARFRUIT_CELLS, SaveError,
+    SaveProfile, SceneKind, StoreItem, SunSource, VaseContents, WeatherSound, WhackHitSound,
+    ZombieGroanFamily, ZombieState, ZombieType, adventure_award_seed, adventure_completion_award,
+    adventure_flag_wave_count, adventure_level_is_conveyor, adventure_seed_choices,
+    adventure_seed_slots, adventure_unlocks, fixed_point_to_logical, last_stand_seed_choices,
+    last_stand_seed_slots, mode_level_name, mode_level_names, store_item_cost, zombie_wave_stats,
 };
 use neopvz_data::{
-    AssetLayout, ReanimatorDefinition, ReanimatorTrack, ReanimatorTransform, ResourceProvider,
+    AssetLayout, ReanimatorDefinition, ReanimatorTrack, ReanimatorTransform, ResourceKind,
+    ResourceProvider,
 };
 use neopvz_render::{
     ALMANAC_CLOSE_BUTTON_IMAGE_ID, ALMANAC_CLOSE_TEXT_IMAGE_ID, ALMANAC_IMITATER_IMAGE_ID,
@@ -95,28 +96,29 @@ use neopvz_render::{
     PAUSE_DIALOG_CENTER_MIDDLE_IMAGE_ID, PAUSE_DIALOG_CENTER_RIGHT_IMAGE_ID,
     PAUSE_DIALOG_HEADER_IMAGE_ID, PAUSE_DIALOG_TOP_LEFT_IMAGE_ID, PAUSE_DIALOG_TOP_MIDDLE_IMAGE_ID,
     PAUSE_DIALOG_TOP_RIGHT_IMAGE_ID, PAUSE_HEADER_TEXT_IMAGE_ID, PAUSE_RESUME_BUTTON_IMAGE_ID,
-    PAUSE_RESUME_TEXT_IMAGE_ID, POOL_BACKGROUND_IMAGE_ID, ROOF_BACKGROUND_IMAGE_ID, RenderFrame,
-    SCREEN_PIXEL_IMAGE_ID, SEED_CHOOSER_BUTTON_IMAGE_ID, SEED_CHOOSER_IMAGE_ID,
-    SEED_CHOOSER_TITLE_IMAGE_ID, SEED_PACKET_NORMAL_IMAGE_ID, SEED_PACKET_PLANT_BASE_IMAGE_ID,
-    SEED_PACKET_SILHOUETTE_IMAGE_ID, SEED_PEASHOOTER_IMAGE_ID, SEED_SUNFLOWER_IMAGE_ID,
-    SELECTOR_ADVENTURE_IMAGE_ID, SELECTOR_ALMANAC_IMAGE_ID, SELECTOR_BASE_IMAGE_ID,
-    SELECTOR_CENTER_IMAGE_ID, SELECTOR_CHALLENGES_IMAGE_ID, SELECTOR_HELP_IMAGE_ID,
-    SELECTOR_LEAVES_IMAGE_ID, SELECTOR_LEFT_IMAGE_ID, SELECTOR_OPTIONS_IMAGE_ID,
-    SELECTOR_QUIT_IMAGE_ID, SELECTOR_RIGHT_IMAGE_ID, SELECTOR_STORE_IMAGE_ID,
-    SELECTOR_SURVIVAL_IMAGE_ID, SELECTOR_TROPHY_IMAGE_ID, SELECTOR_VASEBREAKER_IMAGE_ID,
-    SELECTOR_WOODSIGN1_IMAGE_ID, SELECTOR_WOODSIGN2_IMAGE_ID, SELECTOR_WOODSIGN3_IMAGE_ID,
-    SELECTOR_ZEN_GARDEN_IMAGE_ID, STORE_BACK_TEXT_IMAGE_ID, STORE_BACKGROUND_IMAGE_ID,
-    STORE_CAR_IMAGE_ID, STORE_ITEM_NAME_BASE_IMAGE_ID, STORE_ITEM_PRICE_BASE_IMAGE_ID,
-    STORE_MAIN_MENU_BUTTON_IMAGE_ID, STORE_PACKET_UPGRADE_IMAGE_ID, STORE_PRICE_TAG_IMAGE_ID,
-    STORE_SIGN_IMAGE_ID, STORE_STINKY_IMAGE_ID, SURVIVAL_THUMBNAIL_BASE_IMAGE_ID, SpriteCommand,
-    TITLE_IMAGE_ID, TITLE_LOAD_BAR_DIRT_IMAGE_ID, TITLE_LOAD_BAR_GRASS_IMAGE_ID,
-    TITLE_LOAD_BAR_ROCK1_IMAGE_ID, TITLE_LOAD_BAR_ROCK3_IMAGE_ID,
-    TITLE_LOAD_BAR_SPROUT_BODY_IMAGE_ID, TITLE_LOAD_BAR_SPROUT_PETAL_IMAGE_ID,
-    TITLE_LOAD_BAR_ZOMBIE_HAIR_IMAGE_ID, TITLE_LOAD_BAR_ZOMBIE_HEAD_IMAGE_ID,
-    TITLE_LOAD_BAR_ZOMBIE_JAW_IMAGE_ID, TITLE_LOGO_IMAGE_ID, TITLE_START_PROMPT_HOVER_IMAGE_ID,
-    TITLE_START_PROMPT_IMAGE_ID, TITLE_START_PROMPT_SHADOW_IMAGE_ID, TUTORIAL_BUBBLE_IMAGE_ID,
-    TUTORIAL_CONTINUE_IMAGE_ID, TUTORIAL_TEXT1_IMAGE_ID, TUTORIAL_TEXT2_IMAGE_ID,
-    UI_PIXEL_IMAGE_ID, ZOMBIES_WON_IMAGE_ID, logical_position,
+    PAUSE_RESUME_TEXT_IMAGE_ID, POOL_BACKGROUND_IMAGE_ID, ParticleCatalog, ParticleHolder,
+    ROOF_BACKGROUND_IMAGE_ID, RenderFrame, SCREEN_PIXEL_IMAGE_ID, SEED_CHOOSER_BUTTON_IMAGE_ID,
+    SEED_CHOOSER_IMAGE_ID, SEED_CHOOSER_TITLE_IMAGE_ID, SEED_PACKET_NORMAL_IMAGE_ID,
+    SEED_PACKET_PLANT_BASE_IMAGE_ID, SEED_PACKET_SILHOUETTE_IMAGE_ID, SEED_PEASHOOTER_IMAGE_ID,
+    SEED_SUNFLOWER_IMAGE_ID, SELECTOR_ADVENTURE_IMAGE_ID, SELECTOR_ALMANAC_IMAGE_ID,
+    SELECTOR_BASE_IMAGE_ID, SELECTOR_CENTER_IMAGE_ID, SELECTOR_CHALLENGES_IMAGE_ID,
+    SELECTOR_HELP_IMAGE_ID, SELECTOR_LEAVES_IMAGE_ID, SELECTOR_LEFT_IMAGE_ID,
+    SELECTOR_LEVEL_NUMBER_BASE_IMAGE_ID, SELECTOR_OPTIONS_IMAGE_ID, SELECTOR_QUIT_IMAGE_ID,
+    SELECTOR_RIGHT_IMAGE_ID, SELECTOR_STORE_IMAGE_ID, SELECTOR_SURVIVAL_IMAGE_ID,
+    SELECTOR_TROPHY_IMAGE_ID, SELECTOR_VASEBREAKER_IMAGE_ID, SELECTOR_WOODSIGN1_IMAGE_ID,
+    SELECTOR_WOODSIGN2_IMAGE_ID, SELECTOR_WOODSIGN3_IMAGE_ID, SELECTOR_ZEN_GARDEN_IMAGE_ID,
+    STORE_BACK_TEXT_IMAGE_ID, STORE_BACKGROUND_IMAGE_ID, STORE_CAR_IMAGE_ID,
+    STORE_ITEM_NAME_BASE_IMAGE_ID, STORE_ITEM_PRICE_BASE_IMAGE_ID, STORE_MAIN_MENU_BUTTON_IMAGE_ID,
+    STORE_PACKET_UPGRADE_IMAGE_ID, STORE_PRICE_TAG_IMAGE_ID, STORE_SIGN_IMAGE_ID,
+    STORE_STINKY_IMAGE_ID, SURVIVAL_THUMBNAIL_BASE_IMAGE_ID, SpriteCommand, TITLE_IMAGE_ID,
+    TITLE_LOAD_BAR_DIRT_IMAGE_ID, TITLE_LOAD_BAR_GRASS_IMAGE_ID, TITLE_LOAD_BAR_ROCK1_IMAGE_ID,
+    TITLE_LOAD_BAR_ROCK3_IMAGE_ID, TITLE_LOAD_BAR_SPROUT_BODY_IMAGE_ID,
+    TITLE_LOAD_BAR_SPROUT_PETAL_IMAGE_ID, TITLE_LOAD_BAR_ZOMBIE_HAIR_IMAGE_ID,
+    TITLE_LOAD_BAR_ZOMBIE_HEAD_IMAGE_ID, TITLE_LOAD_BAR_ZOMBIE_JAW_IMAGE_ID, TITLE_LOGO_IMAGE_ID,
+    TITLE_START_PROMPT_HOVER_IMAGE_ID, TITLE_START_PROMPT_IMAGE_ID,
+    TITLE_START_PROMPT_SHADOW_IMAGE_ID, TUTORIAL_BUBBLE_IMAGE_ID, TUTORIAL_CONTINUE_IMAGE_ID,
+    TUTORIAL_TEXT1_IMAGE_ID, TUTORIAL_TEXT2_IMAGE_ID, UI_PIXEL_IMAGE_ID, ZOMBIES_WON_IMAGE_ID,
+    logical_position,
 };
 use winit::{
     application::ApplicationHandler,
@@ -156,6 +158,7 @@ enum Checkpoint {
     Complete,
     CompletePaper,
     Credits,
+    CreditsParticles,
     AdventureTutorial,
     SeedChooser,
     ReadySetPlantAudio,
@@ -175,6 +178,7 @@ enum Checkpoint {
     WeatherAudio,
     SunPickupCollection,
     GoldCoinLanding,
+    PickupArrowParticles,
     DiamondCollection,
     UsableSeedCollection,
     SunProduction,
@@ -198,11 +202,14 @@ enum Checkpoint {
     ZombiquariumBrain,
     ZombiquariumDeath,
     WhackAudio,
+    WhackRiseParticle,
     BodyPartAudio,
+    HiddenCodeEffects,
     BungeeAudio,
     BungeeLiftAudio,
     BungeeGrassstepAudio,
     VehicleExplosion,
+    MowerVehicleExplosion,
     ZombieFallingAudio,
     DancerRumble,
     GarlicYuckAudio,
@@ -215,8 +222,13 @@ enum Checkpoint {
     BossStompAudio,
     BossDamageAudio,
     IceShroom,
+    IceShroomParticle,
     PotatoMine,
+    PotatoMineRiseParticle,
+    PotatoMineParticle,
+    ScreenFlashParticle,
     ExplosionPlants,
+    PlantExplosionParticles,
     ExplodeONut,
     Squash,
     SquashHum,
@@ -227,6 +239,8 @@ enum Checkpoint {
     NewspaperRarrghAudio,
     Butter,
     ProjectileImpacts,
+    ProjectileParticleTail,
+    ProjectileParticleFade,
     VaseBreak,
     Rake,
     BloverChomper,
@@ -240,6 +254,7 @@ enum Checkpoint {
     TangleKelp,
     DolphinJump,
     PoolEntry,
+    PoolRiseParticle,
     PoolMower,
     GraveRumbleAudio,
     LadderAudio,
@@ -268,7 +283,7 @@ impl From<Checkpoint> for SceneKind {
             Checkpoint::Help => Self::AdventureSelect,
             Checkpoint::Almanac => Self::AdventureSelect,
             Checkpoint::Complete | Checkpoint::CompletePaper => Self::Complete,
-            Checkpoint::Credits => Self::Complete,
+            Checkpoint::Credits | Checkpoint::CreditsParticles => Self::Complete,
             Checkpoint::AdventureTutorial => Self::AdventureTutorial,
             Checkpoint::SeedChooser => Self::SeedChooser,
             Checkpoint::ReadySetPlantAudio => Self::Day,
@@ -287,6 +302,7 @@ impl From<Checkpoint> for SceneKind {
             Checkpoint::WeatherAudio => Self::Night,
             Checkpoint::SunPickupCollection => Self::Day,
             Checkpoint::GoldCoinLanding => Self::Day,
+            Checkpoint::PickupArrowParticles => Self::Day,
             Checkpoint::DiamondCollection => Self::Day,
             Checkpoint::UsableSeedCollection => Self::Day,
             Checkpoint::SunProduction => Self::Day,
@@ -309,12 +325,15 @@ impl From<Checkpoint> for SceneKind {
             | Checkpoint::ZombiquariumBrain
             | Checkpoint::ZombiquariumDeath => Self::Pool,
             Checkpoint::WhackAudio
+            | Checkpoint::WhackRiseParticle
             | Checkpoint::BodyPartAudio
             | Checkpoint::BungeeAudio
             | Checkpoint::BungeeLiftAudio
             | Checkpoint::BungeeGrassstepAudio
             | Checkpoint::VehicleExplosion
-            | Checkpoint::ZombieFallingAudio => Self::Day,
+            | Checkpoint::MowerVehicleExplosion
+            | Checkpoint::ZombieFallingAudio
+            | Checkpoint::HiddenCodeEffects => Self::Day,
             Checkpoint::DancerRumble => Self::Day,
             Checkpoint::GarlicYuckAudio => Self::Day,
             Checkpoint::MowerHitAudio => Self::Day,
@@ -325,9 +344,12 @@ impl From<Checkpoint> for SceneKind {
             Checkpoint::BossRVAudio => Self::Boss,
             Checkpoint::BossStompAudio => Self::Boss,
             Checkpoint::BossDamageAudio => Self::Boss,
-            Checkpoint::IceShroom => Self::Night,
-            Checkpoint::PotatoMine => Self::Day,
-            Checkpoint::ExplosionPlants => Self::Night,
+            Checkpoint::IceShroom | Checkpoint::IceShroomParticle => Self::Night,
+            Checkpoint::PotatoMine
+            | Checkpoint::PotatoMineRiseParticle
+            | Checkpoint::PotatoMineParticle
+            | Checkpoint::ScreenFlashParticle => Self::Day,
+            Checkpoint::ExplosionPlants | Checkpoint::PlantExplosionParticles => Self::Night,
             Checkpoint::ExplodeONut => Self::Day,
             Checkpoint::Squash => Self::Day,
             Checkpoint::SquashHum => Self::Day,
@@ -336,7 +358,9 @@ impl From<Checkpoint> for SceneKind {
             Checkpoint::ImpThrow => Self::Day,
             Checkpoint::NewspaperRip | Checkpoint::NewspaperRarrghAudio => Self::Day,
             Checkpoint::Butter => Self::Day,
-            Checkpoint::ProjectileImpacts => Self::Day,
+            Checkpoint::ProjectileImpacts
+            | Checkpoint::ProjectileParticleTail
+            | Checkpoint::ProjectileParticleFade => Self::Day,
             Checkpoint::VaseBreak => Self::Day,
             Checkpoint::Rake => Self::Day,
             Checkpoint::BloverChomper => Self::Day,
@@ -348,7 +372,7 @@ impl From<Checkpoint> for SceneKind {
             Checkpoint::Coffee => Self::Day,
             Checkpoint::TangleKelp => Self::Pool,
             Checkpoint::DolphinJump => Self::Pool,
-            Checkpoint::PoolEntry => Self::Pool,
+            Checkpoint::PoolEntry | Checkpoint::PoolRiseParticle => Self::Pool,
             Checkpoint::PoolMower => Self::Pool,
             Checkpoint::GraveRumbleAudio => Self::Night,
             Checkpoint::LadderAudio => Self::Day,
@@ -373,6 +397,7 @@ const TITLE_LOAD_BAR_Y: f32 = 530.0;
 const TITLE_START_BUTTON_Y: f32 = 529.0;
 const TITLE_START_BUTTON_WIDTH: f32 = 314.0;
 const TITLE_START_BUTTON_HEIGHT: f32 = 50.0;
+const TITLE_START_SOUND_PATH: &str = "sounds/buttonclick.ogg";
 const GAME_LOST_GRAPHIC_START: u32 = 6_000;
 const GAME_LOST_DIALOG_TIME: u32 = 11_000;
 const CREDITS_ANIM_RATE: f32 = 0.3;
@@ -380,8 +405,25 @@ const CREDITS_MAIN1_END_FRAME: f32 = 400.0;
 const CREDITS_MAIN2_END_FRAME: f32 = 785.0;
 const CREDITS_MAIN3_END_FRAME: f32 = 1033.0;
 const CREDITS_END_BUTTON_DELAY_UPDATES: u32 = 50;
+const CREDITS_MAIN1_STROBE_FRAMES: &[f32] =
+    &[128.0, 130.0, 132.0, 134.0, 136.0, 138.0, 140.0, 142.0];
+const CREDITS_MAIN2_STROBE_FRAMES: &[f32] = &[
+    111.5, 115.5, 119.5, 121.5, 123.5, 125.5, 127.5, 131.5, 135.5, 139.5, 143.5, 147.5, 151.5,
+    155.5, 159.5, 163.5, 167.5, 171.5, 175.5, 179.5, 183.5, 187.5, 191.5, 195.5, 199.5, 203.5,
+    207.5, 211.5, 215.5, 219.5, 223.5, 227.5, 231.5, 235.5, 239.5, 243.5, 342.0,
+];
+const CREDITS_MAIN3_STROBE_FRAMES: &[f32] = &[
+    111.0, 115.0, 119.0, 121.0, 123.0, 219.0, 223.0, 227.0, 231.0, 235.0, 239.0, 243.0, 247.0,
+];
 const JALAPENO_FIRE_DURATION: u64 = 100;
 const PROJECTILE_FIRE_DURATION: u64 = 24;
+
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+enum CreditsParticleCue {
+    Spawn(&'static str),
+    StartFog(&'static str),
+    StopFog,
+}
 
 fn credits_end_update_count() -> u32 {
     (CREDITS_MAIN3_END_FRAME / CREDITS_ANIM_RATE).ceil() as u32
@@ -398,6 +440,67 @@ fn credits_phase_at(update_count: u32) -> (u8, f32) {
     } else {
         (3, frame - CREDITS_MAIN3_END_FRAME)
     }
+}
+
+fn credits_particle_cues(previous_update: u32, current_update: u32) -> Vec<CreditsParticleCue> {
+    let (previous_phase, previous_frame) = credits_phase_at(previous_update);
+    let (current_phase, current_frame) = credits_phase_at(current_update);
+    if previous_phase != current_phase {
+        return Vec::new();
+    }
+    let crossed = |target| previous_frame < target && current_frame >= target;
+    let mut cues = Vec::new();
+    match current_phase {
+        0 => {
+            cues.extend(
+                CREDITS_MAIN1_STROBE_FRAMES
+                    .iter()
+                    .filter(|target| crossed(**target))
+                    .map(|_| CreditsParticleCue::Spawn("Credits_Strobe")),
+            );
+            if crossed(136.5) {
+                cues.push(CreditsParticleCue::Spawn("Credits_RaysWipe"));
+            }
+        }
+        1 => {
+            if crossed(120.0) {
+                cues.push(CreditsParticleCue::Spawn("Credits_ZombieHeadWipe"));
+            }
+            cues.extend(
+                CREDITS_MAIN2_STROBE_FRAMES
+                    .iter()
+                    .filter(|target| crossed(**target))
+                    .map(|_| CreditsParticleCue::Spawn("Credits_Strobe")),
+            );
+            if crossed(188.0) {
+                cues.push(CreditsParticleCue::StartFog("Credits_fog"));
+            }
+            if crossed(248.0) {
+                cues.push(CreditsParticleCue::StopFog);
+            }
+        }
+        2 => {
+            if crossed(120.0) {
+                cues.push(CreditsParticleCue::Spawn("Credits_ZombieHeadWipe"));
+            }
+            cues.extend(
+                CREDITS_MAIN3_STROBE_FRAMES
+                    .iter()
+                    .filter(|target| crossed(**target))
+                    .map(|_| CreditsParticleCue::Spawn("Credits_Strobe")),
+            );
+        }
+        _ => {}
+    }
+    cues
+}
+
+fn credits_fog_x(definition: Option<&ReanimatorDefinition>, phase_frame: f32) -> Option<f32> {
+    let track = definition?
+        .tracks
+        .iter()
+        .find(|track| track.name.eq_ignore_ascii_case("Background2"))?;
+    Some(reanim_transform_at_any(track, phase_frame)?.x + 856.0)
 }
 
 fn credits_scroll_offset(update_count: u32) -> f32 {
@@ -511,7 +614,9 @@ fn push_title_reanimation(
             m11: overlay_scale_y * skew_y.cos() * part.scale_y,
             z: 4,
             alpha: 1.0,
+            tint: [1.0; 3],
             blend_mode: BlendMode::Alpha,
+            source: None,
         });
     }
 }
@@ -696,7 +801,7 @@ fn apply_profile_to_game(game: &mut Game, profile: Option<&SaveProfile>) {
 }
 
 fn carry_profile(current: &Game, next: &mut Game, profile: Option<&mut SaveProfile>) {
-    next.carry_almanac_defeats_from(current);
+    next.carry_session_state_from(current);
     if let Some(profile) = profile {
         current.update_profile(profile);
         next.apply_profile(profile);
@@ -704,6 +809,14 @@ fn carry_profile(current: &Game, next: &mut Game, profile: Option<&mut SaveProfi
 }
 
 const REANIM_IMAGE_ID_BASE: u32 = 10_000;
+const PARTICLE_IMAGE_ID_BASE: u32 = 20_000;
+
+#[derive(Clone, Copy, Debug)]
+struct ParticleImage {
+    resource_id: u32,
+    columns: u32,
+    rows: u32,
+}
 
 const SPECIALIZED_REANIM_FILES: &[(ZombieType, &str)] = &[
     (ZombieType::Zamboni, "Zombie_zamboni.reanim.compiled"),
@@ -797,12 +910,20 @@ struct ReanimCatalog {
     coin_silver: Option<ReanimatorDefinition>,
     coin_gold: Option<ReanimatorDefinition>,
     diamond: Option<ReanimatorDefinition>,
+    credits_main2: Option<ReanimatorDefinition>,
     specialized: Vec<(ZombieType, ReanimatorDefinition)>,
     plants: Vec<(PlantType, ReanimatorDefinition)>,
     image_ids: HashMap<String, u32>,
 }
 
-fn load_assets(resources: &ResourceProvider) -> Result<(Vec<ImageAsset>, ReanimCatalog), String> {
+type LoadedAssets = (
+    Vec<ImageAsset>,
+    ReanimCatalog,
+    ParticleCatalog,
+    HashMap<String, ParticleImage>,
+);
+
+fn load_assets(resources: &ResourceProvider) -> Result<LoadedAssets, String> {
     let mut assets = vec![
         load_image(resources, TITLE_IMAGE_ID, "images/titlescreen.jpg")?,
         load_title_logo(resources)?,
@@ -2095,6 +2216,17 @@ fn load_assets(resources: &ResourceProvider) -> Result<(Vec<ImageAsset>, ReanimC
             70,
         )?);
     }
+    for index in 0..10 {
+        assets.push(load_cropped_image(
+            resources,
+            SELECTOR_LEVEL_NUMBER_BASE_IMAGE_ID + index,
+            "images/SelectorScreen_LevelNumbers.png",
+            index * 12,
+            0,
+            12,
+            17,
+        )?);
+    }
     for (frame, y) in (0..6).zip((0..6).map(|frame| frame * 16)) {
         assets.push(load_cropped_image(
             resources,
@@ -2263,7 +2395,113 @@ fn load_assets(resources: &ResourceProvider) -> Result<(Vec<ImageAsset>, ReanimC
             .map_err(|error| error.to_string())?,
     );
     let reanim_catalog = load_reanim_catalog(resources, &mut assets)?;
-    Ok((assets, reanim_catalog))
+    let (particle_catalog, particle_images) = load_particle_catalog(resources, &mut assets)?;
+    Ok((assets, reanim_catalog, particle_catalog, particle_images))
+}
+
+fn load_particle_catalog(
+    resources: &ResourceProvider,
+    assets: &mut Vec<ImageAsset>,
+) -> Result<(ParticleCatalog, HashMap<String, ParticleImage>), String> {
+    let definition_paths = resources
+        .compiled_animation_paths()
+        .map_err(|error| format!("compiled particle inventory: {error}"))?;
+    let mut catalog = ParticleCatalog::default();
+    let mut symbols = HashMap::<String, (u32, u32)>::new();
+    for path in definition_paths {
+        let normalized = path.replace('\\', "/");
+        if !normalized
+            .to_ascii_uppercase()
+            .starts_with("COMPILED/PARTICLES/")
+        {
+            continue;
+        }
+        let file = normalized.rsplit('/').next().unwrap_or(&normalized);
+        let suffix = ".xml.compiled";
+        let Some(name) = file.get(..file.len().saturating_sub(suffix.len())) else {
+            continue;
+        };
+        if !file[name.len()..].eq_ignore_ascii_case(suffix) {
+            continue;
+        }
+        let definition = resources
+            .read_compiled(&path)
+            .map_err(|error| format!("{path}: {error}"))?
+            .particles()
+            .map_err(|error| format!("{path}: {error}"))?;
+        for emitter in &definition.emitters {
+            if let Some(image) = &emitter.image {
+                let columns = u32::try_from(emitter.image_col.max(0) + emitter.image_frames.max(1))
+                    .unwrap_or(1);
+                let rows = u32::try_from(emitter.image_row.max(0) + 1).unwrap_or(1);
+                symbols
+                    .entry(image.to_ascii_uppercase())
+                    .and_modify(|grid| {
+                        grid.0 = grid.0.max(columns);
+                        grid.1 = grid.1.max(rows);
+                    })
+                    .or_insert((columns, rows));
+            }
+        }
+        catalog.insert(name, definition);
+    }
+    for symbol in [
+        "IMAGE_REANIM_ZOMBIE_MUSTACHE1",
+        "IMAGE_REANIM_ZOMBIE_MUSTACHE2",
+        "IMAGE_REANIM_ZOMBIE_MUSTACHE3",
+    ] {
+        symbols.entry(symbol.to_owned()).or_insert((1, 1));
+    }
+
+    let manifest = resources
+        .manifest()
+        .map_err(|error| format!("particle image manifest: {error}"))?;
+    let paths = resources
+        .paths()
+        .map_err(|error| format!("particle image inventory: {error}"))?;
+    let mut symbols: Vec<_> = symbols.into_iter().collect();
+    symbols.sort_unstable_by(|left, right| left.0.cmp(&right.0));
+    let mut images = HashMap::new();
+    for (symbol, inferred_grid) in symbols {
+        let entry = manifest
+            .groups
+            .iter()
+            .flat_map(|group| &group.entries)
+            .find(|entry| {
+                entry.kind == ResourceKind::Image && entry.id.eq_ignore_ascii_case(&symbol)
+            });
+        let path = entry
+            .and_then(|entry| {
+                let wanted = resource_stem_key(&entry.path);
+                paths
+                    .iter()
+                    .find(|path| resource_stem_key(path) == wanted)
+                    .cloned()
+            })
+            .or_else(|| particle_image_path(&symbol, &paths));
+        let Some(path) = path else {
+            tracing::warn!(symbol, "particle image resource is unavailable");
+            continue;
+        };
+        let resource_id = PARTICLE_IMAGE_ID_BASE
+            .checked_add(u32::try_from(images.len()).map_err(|_| "too many particle images")?)
+            .ok_or("particle image ID overflow")?;
+        assets.push(load_image(resources, resource_id, &path)?);
+        images.insert(
+            symbol,
+            ParticleImage {
+                resource_id,
+                columns: entry.map_or(inferred_grid.0, |entry| entry.cols),
+                rows: entry.map_or(inferred_grid.1, |entry| entry.rows),
+            },
+        );
+    }
+    tracing::info!(
+        definitions = catalog.len(),
+        images = images.len(),
+        "particle definitions loaded"
+    );
+    Ok((catalog, images))
 }
 
 fn load_reanim_catalog(
@@ -2304,6 +2542,11 @@ fn load_reanim_catalog(
     let coin_gold =
         load_reanim_definition(resources, &definition_paths, "Coin_gold.reanim.compiled")?;
     let diamond = load_reanim_definition(resources, &definition_paths, "Diamond.reanim.compiled")?;
+    let credits_main2 = load_reanim_definition(
+        resources,
+        &definition_paths,
+        "Credits_Main2.reanim.compiled",
+    )?;
     let mut specialized = Vec::new();
     for &(zombie_type, file_name) in SPECIALIZED_REANIM_FILES {
         if let Some(definition) = load_reanim_definition(resources, &definition_paths, file_name)? {
@@ -2381,6 +2624,19 @@ fn load_reanim_catalog(
             }
         }
     }
+    symbols.extend(
+        [
+            "IMAGE_REANIM_ZOMBIE_MUSTACHE1",
+            "IMAGE_REANIM_ZOMBIE_MUSTACHE2",
+            "IMAGE_REANIM_ZOMBIE_MUSTACHE3",
+            "IMAGE_REANIM_ZOMBIE_HEAD_SUNGLASSES1",
+            "IMAGE_REANIM_ZOMBIE_HEAD_SUNGLASSES2",
+            "IMAGE_REANIM_ZOMBIE_HEAD_SUNGLASSES3",
+            "IMAGE_REANIM_ZOMBIE_HEAD_SUNGLASSES4",
+        ]
+        .into_iter()
+        .map(str::to_owned),
+    );
     let mut symbols: Vec<_> = symbols.into_iter().collect();
     symbols.sort_unstable();
 
@@ -2456,6 +2712,7 @@ fn load_reanim_catalog(
         coin_silver,
         coin_gold,
         diamond,
+        credits_main2,
         specialized,
         plants,
         image_ids,
@@ -2484,6 +2741,23 @@ fn load_reanim_definition(
 fn reanim_image_path(symbol: &str, paths: &[String]) -> Option<String> {
     let suffix = symbol.strip_prefix("IMAGE_REANIM_")?;
     for directory in ["REANIM", "IMAGES"] {
+        let wanted = format!("{directory}/{suffix}");
+        if let Some(path) = paths
+            .iter()
+            .find(|path| resource_stem_key(path).is_some_and(|key| key == wanted))
+        {
+            return Some(path.clone());
+        }
+    }
+    None
+}
+
+fn particle_image_path(symbol: &str, paths: &[String]) -> Option<String> {
+    if let Some(path) = reanim_image_path(symbol, paths) {
+        return Some(path);
+    }
+    let suffix = symbol.strip_prefix("IMAGE_")?;
+    for directory in ["PARTICLES", "IMAGES", "REANIM"] {
         let wanted = format!("{directory}/{suffix}");
         if let Some(path) = paths
             .iter()
@@ -2981,13 +3255,21 @@ mod windows_text {
 struct BoardVisualAnchor {
     x: f32,
     y: f32,
+    previous_x: f32,
+    previous_y: f32,
     row: u8,
+    zombie_type: Option<ZombieType>,
 }
 
 #[derive(Clone, Debug, Default)]
 struct BoardVisualAnchors {
     plants: HashMap<EntityId, BoardVisualAnchor>,
+    plant_types: HashMap<EntityId, PlantType>,
+    plant_health: HashMap<EntityId, (i32, i32)>,
     projectiles: HashMap<EntityId, BoardVisualAnchor>,
+    zombies: HashMap<EntityId, BoardVisualAnchor>,
+    zombie_in_pool: HashMap<EntityId, bool>,
+    coins: HashMap<EntityId, (f32, f32)>,
 }
 
 impl BoardVisualAnchors {
@@ -3003,32 +3285,884 @@ impl BoardVisualAnchors {
                         BoardVisualAnchor {
                             x: 80.0 + f32::from(plant.column) * 80.0,
                             y: board_row_y(plant.row),
+                            previous_x: 80.0 + f32::from(plant.column) * 80.0,
+                            previous_y: board_row_y(plant.row),
                             row: plant.row,
+                            zombie_type: None,
                         },
                     )
                 })
+                .collect(),
+            plant_types: state
+                .board
+                .plants
+                .iter()
+                .map(|plant| (plant.id, plant.plant_type))
+                .collect(),
+            plant_health: state
+                .board
+                .plants
+                .iter()
+                .map(|plant| (plant.id, (plant.health, plant.max_health)))
                 .collect(),
             projectiles: state
                 .board
                 .projectiles
                 .iter()
                 .map(|projectile| {
+                    let x = fixed_point_to_logical(projectile.position_x);
+                    let y = board_projectile_y(
+                        projectile.position_y,
+                        projectile.row,
+                        projectile.lob_height,
+                    );
                     (
                         projectile.id,
                         BoardVisualAnchor {
-                            x: fixed_point_to_logical(projectile.position_x),
-                            y: board_projectile_y(
-                                projectile.position_y,
-                                projectile.row,
-                                projectile.lob_height,
-                            ),
+                            x,
+                            y,
+                            previous_x: x - fixed_point_to_logical(projectile.velocity_x),
+                            previous_y: y
+                                - fixed_point_to_logical(projectile.velocity_y)
+                                - projectile.lob_velocity as f32 / 1_000.0,
                             row: projectile.row,
+                            zombie_type: None,
                         },
+                    )
+                })
+                .collect(),
+            zombies: state
+                .board
+                .zombies
+                .iter()
+                .map(|zombie| {
+                    (
+                        zombie.id,
+                        BoardVisualAnchor {
+                            x: fixed_point_to_logical(zombie.position_x),
+                            y: board_row_y(zombie.row) + 18.0,
+                            previous_x: fixed_point_to_logical(zombie.position_x),
+                            previous_y: board_row_y(zombie.row) + 18.0,
+                            row: zombie.row,
+                            zombie_type: Some(zombie.zombie_type),
+                        },
+                    )
+                })
+                .collect(),
+            zombie_in_pool: state
+                .board
+                .zombies
+                .iter()
+                .map(|zombie| (zombie.id, zombie.in_pool))
+                .collect(),
+            coins: state
+                .board
+                .coins
+                .iter()
+                .map(|coin| {
+                    (
+                        coin.id,
+                        (
+                            fixed_point_to_logical(coin.position_x),
+                            fixed_point_to_logical(coin.position_y),
+                        ),
                     )
                 })
                 .collect(),
         }
     }
+}
+
+fn particle_effects_for_event(
+    event: &GameEvent,
+    scene: SceneKind,
+    anchors: &BoardVisualAnchors,
+    current_anchors: &BoardVisualAnchors,
+) -> Vec<(&'static str, f32, f32, i32)> {
+    if matches!(
+        event,
+        GameEvent::PuzzleStageStarted { .. } | GameEvent::BeghouledShuffled
+    ) {
+        return vec![("ScreenFlash", 400.0, 300.0, 30)];
+    }
+    if let GameEvent::PortalOpened {
+        row,
+        column,
+        square,
+    } = event
+    {
+        let (name, x_offset, y_offset) = if *square {
+            ("PortalSquare", 5.0, -24.0)
+        } else {
+            ("PortalCircle", 13.0, -39.0)
+        };
+        return vec![(
+            name,
+            80.0 + f32::from(*column) * 80.0 + x_offset,
+            board_row_y(*row) + y_offset,
+            11,
+        )];
+    }
+    if let GameEvent::ImitaterMorphed { entity, .. } = event {
+        let Some(anchor) = anchors
+            .plants
+            .get(entity)
+            .or_else(|| current_anchors.plants.get(entity))
+        else {
+            return Vec::new();
+        };
+        return vec![("ImitaterMorph", anchor.x + 40.0, anchor.y + 40.0, 13)];
+    }
+    if let GameEvent::PlantPlaced {
+        plant_type,
+        row,
+        column,
+        ..
+    } = event
+    {
+        if scene == SceneKind::Garden || *plant_type == PlantType::Other(35) {
+            return Vec::new();
+        }
+        let name = if matches!(scene, SceneKind::Pool | SceneKind::Fog) && matches!(row, 2 | 3) {
+            "PlantingPool"
+        } else {
+            "Planting"
+        };
+        let y_offset = match plant_type {
+            PlantType::Other(16) => 89.0,
+            PlantType::Other(33) => 104.0,
+            _ => 74.0,
+        };
+        let mut effects = vec![(
+            name,
+            121.0 + f32::from(*column) * 80.0,
+            board_row_y(*row) + y_offset,
+            13,
+        )];
+        if *plant_type == PlantType::Other(25) {
+            effects.push((
+                "LanternShine",
+                120.0 + f32::from(*column) * 80.0,
+                board_row_y(*row) + 40.0,
+                10,
+            ));
+        }
+        return effects;
+    }
+    if let GameEvent::PotatoMineArmed { entity } = event {
+        let Some(anchor) = anchors
+            .plants
+            .get(entity)
+            .or_else(|| current_anchors.plants.get(entity))
+        else {
+            return Vec::new();
+        };
+        return vec![("PotatoMineRise", anchor.x + 40.0, anchor.y + 40.0, 10)];
+    }
+    if let GameEvent::PlantSpecialTriggered { entity, plant_type } = event {
+        let (name, z) = match plant_type {
+            PlantType::Other(2) => ("Powie", 13),
+            PlantType::Other(4) => ("PotatoMine", 11),
+            PlantType::Other(11) => ("GraveBuster", 13),
+            PlantType::Other(14) => ("IceTrap", 13),
+            PlantType::Other(15) => ("Doom", 13),
+            PlantType::Other(17) => ("Dust_Squash", 13),
+            PlantType::Other(49) => ("Powie", 13),
+            _ => return Vec::new(),
+        };
+        let Some(anchor) = anchors
+            .plants
+            .get(entity)
+            .or_else(|| current_anchors.plants.get(entity))
+        else {
+            return Vec::new();
+        };
+        let y = if *plant_type == PlantType::Other(17) {
+            anchor.y + if scene == SceneKind::Roof { 69.0 } else { 80.0 }
+        } else {
+            anchor.y + 40.0
+        };
+        return vec![(name, anchor.x + 40.0, y, z)];
+    }
+    if let GameEvent::GraveCleared { entity, .. } = event {
+        let Some(anchor) = anchors
+            .plants
+            .get(entity)
+            .or_else(|| current_anchors.plants.get(entity))
+        else {
+            return Vec::new();
+        };
+        return vec![("GraveBusterDie", anchor.x + 40.0, anchor.y + 40.0, 13)];
+    }
+    if let GameEvent::PlantFired {
+        entity, plant_type, ..
+    } = event
+    {
+        let (name, offset_x) = match plant_type {
+            PlantType::Other(5) => ("SnowPeaPuff", 18.0),
+            PlantType::Other(8) => ("PuffShroomMuzzle", 28.0),
+            PlantType::Other(13) => ("PuffShroomMuzzle", 37.0),
+            _ => return Vec::new(),
+        };
+        let Some(anchor) = anchors
+            .plants
+            .get(entity)
+            .or_else(|| current_anchors.plants.get(entity))
+        else {
+            return Vec::new();
+        };
+        return vec![(name, anchor.x + offset_x, anchor.y + 18.0, 11)];
+    }
+    if let GameEvent::PlantParticleTriggered {
+        entity, plant_type, ..
+    } = event
+    {
+        let (name, x_offset, y_offset) = match plant_type {
+            PlantType::Other(10) => ("FumeCloud", 85.0, 31.0),
+            PlantType::Other(42) => ("GloomCloud", 40.0, 40.0),
+            _ => return Vec::new(),
+        };
+        let Some(anchor) = anchors
+            .plants
+            .get(entity)
+            .or_else(|| current_anchors.plants.get(entity))
+        else {
+            return Vec::new();
+        };
+        return vec![(name, anchor.x + x_offset, anchor.y + y_offset, 11)];
+    }
+    if let GameEvent::ZombieChew {
+        entity,
+        target: Some(plant),
+        ..
+    } = event
+    {
+        let Some(plant_type) = anchors
+            .plant_types
+            .get(plant)
+            .copied()
+            .or_else(|| current_anchors.plant_types.get(plant).copied())
+        else {
+            return Vec::new();
+        };
+        if !matches!(plant_type, PlantType::Other(3 | 23)) {
+            return Vec::new();
+        }
+        let Some(anchor) = anchors
+            .zombies
+            .get(entity)
+            .or_else(|| current_anchors.zombies.get(entity))
+        else {
+            return Vec::new();
+        };
+        let (x_offset, y_offset) = match anchor.zombie_type {
+            Some(ZombieType::Snorkel | ZombieType::DolphinRider) => (-7.0, 92.0),
+            Some(ZombieType::Balloon) => (37.0, 69.0),
+            Some(ZombieType::Imp) => (61.0, 62.0),
+            _ => (37.0, 22.0),
+        };
+        return vec![(
+            "WallnutEatSmall",
+            anchor.x + x_offset,
+            anchor.y + y_offset,
+            11,
+        )];
+    }
+    if let GameEvent::PlantDamaged {
+        entity,
+        damage,
+        health_remaining,
+    } = event
+    {
+        let Some(plant_type) = anchors
+            .plant_types
+            .get(entity)
+            .copied()
+            .or_else(|| current_anchors.plant_types.get(entity).copied())
+        else {
+            return Vec::new();
+        };
+        if !matches!(plant_type, PlantType::Other(3 | 23)) {
+            return Vec::new();
+        }
+        let Some((_, max_health)) = anchors
+            .plant_health
+            .get(entity)
+            .copied()
+            .or_else(|| current_anchors.plant_health.get(entity).copied())
+        else {
+            return Vec::new();
+        };
+        let previous_health = anchors
+            .plant_health
+            .get(entity)
+            .map_or(health_remaining.saturating_add(*damage), |(health, _)| {
+                *health
+            });
+        let large_threshold = max_health * 2 / 3;
+        let small_threshold = max_health / 3;
+        if !((previous_health >= large_threshold && *health_remaining < large_threshold)
+            || (previous_health >= small_threshold && *health_remaining < small_threshold))
+        {
+            return Vec::new();
+        }
+        let Some(anchor) = anchors
+            .plants
+            .get(entity)
+            .or_else(|| current_anchors.plants.get(entity))
+        else {
+            return Vec::new();
+        };
+        let y_offset = if plant_type == PlantType::Other(23) {
+            -22.0
+        } else {
+            10.0
+        };
+        return vec![("WallnutEatLarge", anchor.x + 40.0, anchor.y + y_offset, 13)];
+    }
+    if let GameEvent::VaseRevealed {
+        row,
+        column,
+        contents,
+        leaf,
+        ..
+    } = event
+    {
+        let name = if *leaf {
+            "VaseShatterLeaf"
+        } else if matches!(contents, VaseContents::Zombie(_)) {
+            "VaseShatterZombie"
+        } else {
+            "VaseShatter"
+        };
+        return vec![(
+            name,
+            80.0 + f32::from(*column) * 80.0 + 20.0,
+            board_row_y(*row),
+            13,
+        )];
+    }
+    if let GameEvent::ZombieGraveRumble { entity } = event {
+        if scene != SceneKind::Night {
+            return Vec::new();
+        }
+        let Some(anchor) = anchors
+            .zombies
+            .get(entity)
+            .or_else(|| current_anchors.zombies.get(entity))
+        else {
+            return Vec::new();
+        };
+        return vec![("ZombieRise", anchor.x + 60.0, anchor.y + 92.0, 11)];
+    }
+    if let GameEvent::ZombieWhackRise { entity } = event {
+        let Some(anchor) = anchors
+            .zombies
+            .get(entity)
+            .or_else(|| current_anchors.zombies.get(entity))
+        else {
+            return Vec::new();
+        };
+        return vec![("WhackAZombieRise", anchor.x + 60.0, anchor.y + 92.0, 11)];
+    }
+    if let GameEvent::WhackHit {
+        x,
+        y,
+        sound: WhackHitSound::Bonk,
+        ..
+    } = event
+    {
+        return vec![("Pow", f32::from(*x) - 3.0, f32::from(*y) + 9.0, 30)];
+    }
+    if let GameEvent::ZombieSpawned {
+        entity,
+        zombie_type: ZombieType::Digger,
+        ..
+    } = event
+    {
+        let Some(anchor) = anchors
+            .zombies
+            .get(entity)
+            .or_else(|| current_anchors.zombies.get(entity))
+        else {
+            return Vec::new();
+        };
+        return vec![("DiggerTunnel", anchor.x + 60.0, anchor.y + 82.0, 11)];
+    }
+    if let GameEvent::ZombieSpawned {
+        entity,
+        zombie_type: ZombieType::BackupDancer,
+        ..
+    } = event
+    {
+        let Some(anchor) = anchors
+            .zombies
+            .get(entity)
+            .or_else(|| current_anchors.zombies.get(entity))
+        else {
+            return Vec::new();
+        };
+        return vec![("DancerRise", anchor.x + 60.0, anchor.y + 92.0, 11)];
+    }
+    if let GameEvent::MowerZombieHit { entity, pool, .. } = event {
+        let Some(anchor) = anchors
+            .zombies
+            .get(entity)
+            .or_else(|| current_anchors.zombies.get(entity))
+        else {
+            return Vec::new();
+        };
+        if !*pool
+            && !matches!(
+                anchor.zombie_type,
+                Some(
+                    ZombieType::Balloon
+                        | ZombieType::Bobsled
+                        | ZombieType::Bungee
+                        | ZombieType::Digger
+                        | ZombieType::DolphinRider
+                        | ZombieType::Gargantuar
+                        | ZombieType::Imp
+                        | ZombieType::Pogo
+                        | ZombieType::Yeti
+                )
+            )
+        {
+            return Vec::new();
+        }
+        return vec![("MowerCloud", anchor.x + 110.0, anchor.y - 18.0, 11)];
+    }
+    if let GameEvent::ZombieDied { entity } = event {
+        let Some(anchor) = anchors
+            .zombies
+            .get(entity)
+            .or_else(|| current_anchors.zombies.get(entity))
+        else {
+            return Vec::new();
+        };
+        if anchor.zombie_type != Some(ZombieType::Boss) {
+            return Vec::new();
+        }
+        return vec![("BossExplosion", 700.0, 150.0, 11)];
+    }
+    if let GameEvent::DiggerSurfaced { entity } = event {
+        let Some(anchor) = anchors
+            .zombies
+            .get(entity)
+            .or_else(|| current_anchors.zombies.get(entity))
+        else {
+            return Vec::new();
+        };
+        return vec![("DiggerRise", anchor.x + 60.0, anchor.y + 100.0, 11)];
+    }
+    if let GameEvent::ZombieThawed { entity } = event {
+        let Some(anchor) = anchors
+            .zombies
+            .get(entity)
+            .or_else(|| current_anchors.zombies.get(entity))
+        else {
+            return Vec::new();
+        };
+        return vec![("IceTrapRelease", anchor.x + 75.0, anchor.y + 106.0, 11)];
+    }
+    if let GameEvent::JumpBlocked { plant, .. } = event {
+        let Some(anchor) = anchors
+            .plants
+            .get(plant)
+            .or_else(|| current_anchors.plants.get(plant))
+        else {
+            return Vec::new();
+        };
+        return vec![("TallNutBlock", anchor.x + 60.0, anchor.y - 20.0, 11)];
+    }
+    if let GameEvent::ZombieHypnotized { entity } = event {
+        let Some(anchor) = anchors
+            .zombies
+            .get(entity)
+            .or_else(|| current_anchors.zombies.get(entity))
+        else {
+            return Vec::new();
+        };
+        return vec![("MindControl", anchor.x + 60.0, anchor.y + 40.0, 11)];
+    }
+    if let GameEvent::JackboxExploded { entity, .. } = event {
+        let Some(anchor) = anchors
+            .zombies
+            .get(entity)
+            .or_else(|| current_anchors.zombies.get(entity))
+        else {
+            return Vec::new();
+        };
+        return vec![("JackExplode", anchor.x + 40.0, anchor.y + 22.0, 13)];
+    }
+    if let GameEvent::ZombieEnteredPool { entity, .. } = event {
+        let Some(anchor) = anchors
+            .zombies
+            .get(entity)
+            .or_else(|| current_anchors.zombies.get(entity))
+        else {
+            return Vec::new();
+        };
+        return vec![("PlantingPool", anchor.x + 60.0, anchor.y + 102.0, 11)];
+    }
+    if let GameEvent::TangleKelpWaterEntry { entity } = event {
+        let Some(anchor) = anchors
+            .plants
+            .get(entity)
+            .or_else(|| current_anchors.plants.get(entity))
+        else {
+            return Vec::new();
+        };
+        return vec![("PlantingPool", anchor.x + 31.0, anchor.y + 64.0, 11)];
+    }
+    if let GameEvent::ZombieNewspaperRipped { entity } = event {
+        let Some(anchor) = anchors
+            .zombies
+            .get(entity)
+            .or_else(|| current_anchors.zombies.get(entity))
+        else {
+            return Vec::new();
+        };
+        return vec![("ZombieNewspaper", anchor.x + 60.0, anchor.y + 42.0, 11)];
+    }
+    if let GameEvent::ZombieDamageTierChanged { entity, tier } = event {
+        if *tier != 2 {
+            return Vec::new();
+        }
+        let Some(anchor) = anchors
+            .zombies
+            .get(entity)
+            .or_else(|| current_anchors.zombies.get(entity))
+        else {
+            return Vec::new();
+        };
+        let (x, y) = match anchor.zombie_type {
+            Some(ZombieType::Zamboni) => (anchor.x + 27.0, anchor.y + 54.0),
+            Some(ZombieType::Catapult) => (anchor.x + 47.0, anchor.y + 59.0),
+            _ => return Vec::new(),
+        };
+        return vec![("ZamboniSmoke", x, y, 11)];
+    }
+    if let GameEvent::VehicleDisabled { entity } = event {
+        let Some(anchor) = anchors
+            .zombies
+            .get(entity)
+            .or_else(|| current_anchors.zombies.get(entity))
+        else {
+            return Vec::new();
+        };
+        if !matches!(
+            anchor.zombie_type,
+            Some(ZombieType::Zamboni | ZombieType::Catapult)
+        ) {
+            return Vec::new();
+        }
+        return vec![("ZamboniTire", anchor.x + 29.0, anchor.y + 96.0, 11)];
+    }
+    if let GameEvent::PogoStickLost { entity } = event {
+        let Some(anchor) = anchors
+            .zombies
+            .get(entity)
+            .or_else(|| current_anchors.zombies.get(entity))
+        else {
+            return Vec::new();
+        };
+        return vec![("ZombiePogo", anchor.x + 60.0, anchor.y + 80.0, 11)];
+    }
+    if let GameEvent::VehicleExploded { entity } = event {
+        return vehicle_explosion_particle(*entity, false, anchors, current_anchors);
+    }
+    if let GameEvent::ZombieMustacheDropped { entity, .. }
+    | GameEvent::ZombieFutureGlassesDropped { entity, .. }
+    | GameEvent::ZombiePinataDropped { entity } = event
+    {
+        let Some(anchor) = anchors
+            .zombies
+            .get(entity)
+            .or_else(|| current_anchors.zombies.get(entity))
+        else {
+            return Vec::new();
+        };
+        let name = match event {
+            GameEvent::ZombieMustacheDropped { .. } => "ZombieMustache",
+            GameEvent::ZombieFutureGlassesDropped { .. } => "ZombieFutureGlasses",
+            _ => "Pinata",
+        };
+        return vec![(name, anchor.x + 60.0, anchor.y + 40.0, 11)];
+    }
+    if let GameEvent::ZombieDaisiesDropped { entity } = event {
+        let Some(anchor) = anchors
+            .zombies
+            .get(entity)
+            .or_else(|| current_anchors.zombies.get(entity))
+        else {
+            return Vec::new();
+        };
+        let (x, mut y) = match anchor.zombie_type {
+            Some(ZombieType::Football | ZombieType::Dancer | ZombieType::BackupDancer) => {
+                (anchor.x + 180.0, anchor.y + 100.0)
+            }
+            Some(ZombieType::Pogo) => (anchor.x + 20.0, anchor.y + 120.0),
+            Some(ZombieType::Balloon) => (anchor.x + 130.0, anchor.y + 130.0),
+            _ => (anchor.x + 20.0, anchor.y + 100.0),
+        };
+        if scene == SceneKind::Night {
+            y += 15.0;
+        }
+        return vec![("Daisy", x, y, 11)];
+    }
+    if let GameEvent::ZombieBodyPartLost { entity, head } = event {
+        let Some(anchor) = anchors
+            .zombies
+            .get(entity)
+            .or_else(|| current_anchors.zombies.get(entity))
+        else {
+            return Vec::new();
+        };
+        let name = if *head {
+            match anchor.zombie_type {
+                Some(ZombieType::Newspaper) => "ZombieNewspaperHead",
+                Some(ZombieType::Pogo) => "ZombiePogoHead",
+                Some(ZombieType::Balloon) => "ZombieBalloonHead",
+                _ if anchors
+                    .zombie_in_pool
+                    .get(entity)
+                    .copied()
+                    .or_else(|| current_anchors.zombie_in_pool.get(entity).copied())
+                    .unwrap_or(false) =>
+                {
+                    "ZombieHeadPool"
+                }
+                _ => "ZombieHead",
+            }
+        } else {
+            "ZombieArm"
+        };
+        return vec![(
+            name,
+            anchor.x + 60.0,
+            anchor.y + if *head { 40.0 } else { 50.0 },
+            11,
+        )];
+    }
+    if let GameEvent::ZombieArmorLost { entity } = event {
+        let Some(anchor) = anchors
+            .zombies
+            .get(entity)
+            .or_else(|| current_anchors.zombies.get(entity))
+        else {
+            return Vec::new();
+        };
+        let name = match anchor.zombie_type {
+            Some(ZombieType::Conehead) => "ZombieTrafficCone",
+            Some(ZombieType::Buckethead) => "ZombiePail",
+            Some(ZombieType::Football) => "ZombieHelmet",
+            Some(ZombieType::Digger) => "ZombieHeadLight",
+            _ => return Vec::new(),
+        };
+        return vec![(name, anchor.x + 60.0, anchor.y + 40.0, 11)];
+    }
+    if let GameEvent::ZombieShieldLost { entity } = event {
+        let Some(anchor) = anchors
+            .zombies
+            .get(entity)
+            .or_else(|| current_anchors.zombies.get(entity))
+        else {
+            return Vec::new();
+        };
+        let (name, x, y) = match anchor.zombie_type {
+            Some(ZombieType::ScreenDoor) => ("ZombieDoor", anchor.x + 60.0, anchor.y + 50.0),
+            Some(ZombieType::Ladder) => ("ZombieLadder", anchor.x + 31.0, anchor.y + 62.0),
+            _ => return Vec::new(),
+        };
+        return vec![(name, x, y, 11)];
+    }
+    if let GameEvent::PickupCollected {
+        entity, coin_type, ..
+    } = event
+    {
+        let Some(&(x, y)) = anchors
+            .coins
+            .get(entity)
+            .or_else(|| current_anchors.coins.get(entity))
+        else {
+            return Vec::new();
+        };
+        let mut effects = Vec::with_capacity(2);
+        if is_completion_award_coin(*coin_type) {
+            effects.push(("Starburst", x + 30.0, y + 30.0, 13));
+        }
+        if matches!(
+            coin_type,
+            CoinType::PresentPlant
+                | CoinType::Chocolate
+                | CoinType::AwardChocolate
+                | CoinType::PresentMinigames
+                | CoinType::PresentPuzzleMode
+                | CoinType::PresentSurvivalMode
+                | CoinType::Note
+        ) {
+            effects.push(("PresentPickup", x + 30.0, y + 30.0, 13));
+        }
+        return effects;
+    }
+    let GameEvent::ProjectileImpact {
+        projectile,
+        projectile_type,
+        zombie,
+        kind,
+        variant,
+        ..
+    } = event
+    else {
+        return Vec::new();
+    };
+    let Some(anchor) = anchors
+        .projectiles
+        .get(projectile)
+        .or_else(|| current_anchors.projectiles.get(projectile))
+        .or_else(|| {
+            zombie
+                .as_ref()
+                .and_then(|zombie| anchors.zombies.get(zombie))
+        })
+        .or_else(|| {
+            zombie
+                .as_ref()
+                .and_then(|zombie| current_anchors.zombies.get(zombie))
+        })
+    else {
+        return Vec::new();
+    };
+    if zombie.is_none() && *kind == ProjectileImpactSound::Splat && *variant == 3 {
+        return vec![("UmbrellaReflect", anchor.x + 20.0, anchor.y + 20.0, 13)];
+    }
+    if *projectile_type == ProjectileType::Cob && *kind == ProjectileImpactSound::Splat {
+        return vec![
+            ("BlastMark", anchor.x + 80.0, anchor.y + 40.0, 2),
+            ("PopcornSplash", anchor.x + 80.0, anchor.y + 40.0, 13),
+        ];
+    }
+    let (name, x, y) = match (*projectile_type, *kind) {
+        (ProjectileType::Pea, ProjectileImpactSound::Splat | ProjectileImpactSound::Shield) => {
+            ("PeaSplat", anchor.x - 3.0, anchor.y + 12.0)
+        }
+        (ProjectileType::SnowPea, ProjectileImpactSound::Splat | ProjectileImpactSound::Shield) => {
+            ("SnowPeaSplat", anchor.x - 3.0, anchor.y + 12.0)
+        }
+        (ProjectileType::Puff, ProjectileImpactSound::Splat | ProjectileImpactSound::Shield) => {
+            ("PuffSplat", anchor.x - 8.0, anchor.y + 12.0)
+        }
+        (ProjectileType::Star, ProjectileImpactSound::Splat | ProjectileImpactSound::Shield) => {
+            ("StarSplat", anchor.x + 12.0, anchor.y + 12.0)
+        }
+        (ProjectileType::Cabbage, ProjectileImpactSound::Splat | ProjectileImpactSound::Shield) => {
+            (
+                "CabbageSplat",
+                anchor.previous_x - 38.0,
+                anchor.previous_y + 23.0,
+            )
+        }
+        (ProjectileType::Butter, ProjectileImpactSound::Butter) => (
+            "ButterSplat",
+            anchor.previous_x - 20.0,
+            anchor.previous_y + 63.0,
+        ),
+        (ProjectileType::Melon, ProjectileImpactSound::Melon) => (
+            "MelonImpact",
+            anchor.previous_x + 30.0,
+            anchor.previous_y + 30.0,
+        ),
+        (ProjectileType::WinterMelon, ProjectileImpactSound::Melon) => (
+            "WinterMelonImpact",
+            anchor.previous_x + 30.0,
+            anchor.previous_y + 30.0,
+        ),
+        (ProjectileType::ZombiePea, ProjectileImpactSound::Splat) => {
+            ("PeaSplat", anchor.x - 3.0, anchor.y + 17.0)
+        }
+        _ => return Vec::new(),
+    };
+    // ponytail: systems stay in world space; add zombie attachments when moving-impact fidelity needs them.
+    vec![(name, x, y, 13)]
+}
+
+fn vehicle_explosion_particle(
+    entity: EntityId,
+    mowed: bool,
+    anchors: &BoardVisualAnchors,
+    current_anchors: &BoardVisualAnchors,
+) -> Vec<(&'static str, f32, f32, i32)> {
+    let Some(anchor) = anchors
+        .zombies
+        .get(&entity)
+        .or_else(|| current_anchors.zombies.get(&entity))
+    else {
+        return Vec::new();
+    };
+    let name = match (anchor.zombie_type, mowed) {
+        (Some(ZombieType::Zamboni), true) => "ZamboniExplosion2",
+        (Some(ZombieType::Zamboni), false) => "ZamboniExplosion",
+        (Some(ZombieType::Catapult), _) => "CatapultExplosion",
+        _ => return Vec::new(),
+    };
+    vec![(name, anchor.x + 80.0, anchor.y + 42.0, 11)]
+}
+
+fn particle_effects_for_event_batch(
+    event: &GameEvent,
+    events: &[GameEvent],
+    scene: SceneKind,
+    anchors: &BoardVisualAnchors,
+    current_anchors: &BoardVisualAnchors,
+) -> Vec<(&'static str, f32, f32, i32)> {
+    if let GameEvent::VehicleExploded { entity } = event
+        && events.iter().any(
+            |candidate| matches!(candidate, GameEvent::MowerZombieHit { entity: hit, .. } if hit == entity),
+        )
+    {
+        return vehicle_explosion_particle(*entity, true, anchors, current_anchors);
+    }
+    particle_effects_for_event(event, scene, anchors, current_anchors)
+}
+
+fn projectile_particle_trail(projectile_type: ProjectileType) -> Option<(&'static str, f32, f32)> {
+    match projectile_type {
+        ProjectileType::SnowPea => Some(("SnowPeaTrail", 8.0, 13.0)),
+        ProjectileType::Puff => Some(("PuffShroomTrail", 13.0, 13.0)),
+        _ => None,
+    }
+}
+
+fn coin_arrow_particle(
+    coin_type: CoinType,
+    needs_bouncy_arrow: bool,
+) -> Option<(&'static str, f32, f32)> {
+    if !needs_bouncy_arrow {
+        return None;
+    }
+    Some(match coin_type {
+        CoinType::FinalSeedPacket => ("SeedPacket", 25.0, -25.0),
+        CoinType::Silver | CoinType::Gold => ("CoinPickupArrow", 32.0, -17.0),
+        CoinType::Trophy => ("AwardPickupArrow", 43.0, -29.0),
+        CoinType::AwardMoneyBag | CoinType::AwardBagDiamond => ("AwardPickupArrow", 47.0, -23.0),
+        CoinType::AwardPresent
+        | CoinType::PresentMinigames
+        | CoinType::PresentPuzzleMode
+        | CoinType::PresentSurvivalMode => ("AwardPickupArrow", 40.0, -40.0),
+        CoinType::AwardSilverSunflower | CoinType::AwardGoldSunflower => {
+            ("AwardPickupArrow", 72.0, 34.0)
+        }
+        CoinType::Shovel
+        | CoinType::Almanac
+        | CoinType::CarKeys
+        | CoinType::WateringCan
+        | CoinType::Taco => ("AwardPickupArrow", 40.0, -20.0),
+        CoinType::Vase => ("AwardPickupArrow", 40.0, -10.0),
+        CoinType::Note => ("AwardPickupArrow", 39.0, -34.0),
+        CoinType::AwardChocolate => ("AwardPickupArrow", 28.0, -27.0),
+        _ => return None,
+    })
 }
 
 #[derive(Clone, Copy, Debug)]
@@ -3045,6 +4179,15 @@ struct App {
     assets: Vec<ImageAsset>,
     resources: ResourceProvider,
     reanim_catalog: ReanimCatalog,
+    particle_catalog: ParticleCatalog,
+    particle_images: HashMap<String, ParticleImage>,
+    particle_holder: ParticleHolder,
+    projectile_particle_systems: HashMap<EntityId, (usize, ProjectileType)>,
+    zombie_seaweed_particle_systems: HashMap<EntityId, Vec<(usize, usize)>>,
+    coin_arrow_particle_systems: HashMap<EntityId, usize>,
+    pool_sparkly_particle_system: Option<usize>,
+    ice_sparkle_particle_systems: HashMap<u8, usize>,
+    credits_fog_particle_system: Option<usize>,
     audio: Option<KiraAudioBackend>,
     game: Game,
     pending_input: Vec<InputAction>,
@@ -3079,13 +4222,16 @@ struct App {
     fullscreen: bool,
     capture_path: Option<PathBuf>,
     startup_events: Vec<GameEvent>,
+    startup_anchors: Option<BoardVisualAnchors>,
+    startup_coin_collection: Option<EntityId>,
+    startup_particle_warmup: usize,
     visual_effects: Vec<BoardFireEffect>,
     profile: Option<SaveProfile>,
 }
 
 impl App {
     fn new(
-        loaded_assets: (Vec<ImageAsset>, ReanimCatalog),
+        loaded_assets: LoadedAssets,
         resources: ResourceProvider,
         audio: Option<KiraAudioBackend>,
         initial_scene: SceneKind,
@@ -3093,7 +4239,7 @@ impl App {
         checkpoint: Option<Checkpoint>,
         profile: Option<SaveProfile>,
     ) -> Self {
-        let (assets, reanim_catalog) = loaded_assets;
+        let (assets, reanim_catalog, particle_catalog, particle_images) = loaded_assets;
         let debug_mode_select = matches!(checkpoint, Some(Checkpoint::ModeSelect));
         let mut game = match checkpoint {
             Some(
@@ -3115,12 +4261,17 @@ impl App {
                 | Checkpoint::ZombiquariumBrain
                 | Checkpoint::ZombiquariumDeath,
             ) => Game::new_mode(7, ModeKind::MiniGame, 7),
-            Some(Checkpoint::WhackAudio) => Game::new_mode(7, ModeKind::MiniGame, 14),
+            Some(Checkpoint::WhackAudio | Checkpoint::WhackRiseParticle) => {
+                Game::new_mode(7, ModeKind::MiniGame, 14)
+            }
             Some(Checkpoint::BodyPartAudio) => Game::new(7, SceneKind::Day),
+            Some(Checkpoint::HiddenCodeEffects) => Game::new(7, SceneKind::Day),
             Some(Checkpoint::BungeeAudio) => Game::new(7, SceneKind::Day),
             Some(Checkpoint::BungeeLiftAudio) => Game::new(7, SceneKind::Day),
             Some(Checkpoint::BungeeGrassstepAudio) => Game::new(7, SceneKind::Day),
-            Some(Checkpoint::VehicleExplosion) => Game::new(7, SceneKind::Day),
+            Some(Checkpoint::VehicleExplosion | Checkpoint::MowerVehicleExplosion) => {
+                Game::new(7, SceneKind::Day)
+            }
             Some(Checkpoint::ZombieFallingAudio) => Game::new(7, SceneKind::Day),
             Some(Checkpoint::DancerRumble) => Game::new(0, SceneKind::Day),
             Some(Checkpoint::GarlicYuckAudio) => Game::new(0, SceneKind::Day),
@@ -3133,7 +4284,11 @@ impl App {
             Some(Checkpoint::BossStompAudio) => Game::new_mode(3, ModeKind::MiniGame, 19),
             Some(Checkpoint::BossDamageAudio) => Game::new_mode(3, ModeKind::MiniGame, 19),
             Some(Checkpoint::Butter) => Game::new(0, SceneKind::Day),
-            Some(Checkpoint::ProjectileImpacts) => Game::new(0, SceneKind::Day),
+            Some(
+                Checkpoint::ProjectileImpacts
+                | Checkpoint::ProjectileParticleTail
+                | Checkpoint::ProjectileParticleFade,
+            ) => Game::new(0, SceneKind::Day),
             Some(Checkpoint::PrizeChime) => Game::new(0, SceneKind::Day),
             Some(Checkpoint::PrizeCollection) => Game::new(0, SceneKind::Day),
             Some(Checkpoint::AwardCollectionAudio) => Game::new_adventure(7, 4, true, 0, false),
@@ -3142,6 +4297,7 @@ impl App {
             Some(Checkpoint::WeatherAudio) => Game::new_adventure(7, 40, false, 0, false),
             Some(Checkpoint::SunPickupCollection) => Game::new(0, SceneKind::Day),
             Some(Checkpoint::GoldCoinLanding) => Game::new(0, SceneKind::Day),
+            Some(Checkpoint::PickupArrowParticles) => Game::new_adventure(7, 11, true, 0, false),
             Some(Checkpoint::DiamondCollection) => Game::new(0, SceneKind::Day),
             Some(Checkpoint::UsableSeedCollection) => Game::new(0, SceneKind::Day),
             Some(Checkpoint::SunProduction) => Game::new(0, SceneKind::Day),
@@ -3154,7 +4310,9 @@ impl App {
             Some(Checkpoint::Torchwood) => Game::new(0, SceneKind::Day),
             Some(Checkpoint::VaseBreak) => Game::new_mode(0, ModeKind::Vasebreaker, 0),
             Some(Checkpoint::Rake) => Game::new(0, SceneKind::Day),
-            Some(Checkpoint::ExplosionPlants) => Game::new(0, SceneKind::Night),
+            Some(Checkpoint::ExplosionPlants | Checkpoint::PlantExplosionParticles) => {
+                Game::new(0, SceneKind::Night)
+            }
             Some(Checkpoint::ExplodeONut) => Game::new_mode(0, ModeKind::MiniGame, 1),
             Some(Checkpoint::Squash) => Game::new(0, SceneKind::Day),
             Some(Checkpoint::SquashHum) => Game::new(0, SceneKind::Day),
@@ -3175,7 +4333,9 @@ impl App {
             Some(Checkpoint::Coffee) => Game::new(0, SceneKind::Day),
             Some(Checkpoint::TangleKelp) => Game::new(0, SceneKind::Pool),
             Some(Checkpoint::DolphinJump) => Game::new(0, SceneKind::Pool),
-            Some(Checkpoint::PoolEntry) => Game::new(0, SceneKind::Pool),
+            Some(Checkpoint::PoolEntry | Checkpoint::PoolRiseParticle) => {
+                Game::new(0, SceneKind::Pool)
+            }
             Some(Checkpoint::PoolMower) => Game::new(0, SceneKind::Pool),
             Some(Checkpoint::GraveRumbleAudio) => Game::new(0, SceneKind::Night),
             Some(Checkpoint::LadderAudio) => Game::new(0, SceneKind::Day),
@@ -3202,7 +4362,7 @@ impl App {
                 game.debug_prepare_game_won();
                 game
             }
-            Some(Checkpoint::Credits) => {
+            Some(Checkpoint::Credits | Checkpoint::CreditsParticles) => {
                 let mut game = Game::new_adventure(7, 50, true, 0, false);
                 game.debug_prepare_game_won();
                 game.advance(InputFrame::default());
@@ -3213,6 +4373,8 @@ impl App {
         apply_profile_to_game(&mut game, profile.as_ref());
         let mut pending_input = Vec::new();
         let mut startup_events = Vec::new();
+        let mut startup_anchors = None;
+        let mut startup_coin_collection = None;
         match checkpoint {
             Some(Checkpoint::GameOver) => game.debug_force_game_over(),
             Some(Checkpoint::GameLost) => game.debug_prepare_game_lost(),
@@ -3248,10 +4410,30 @@ impl App {
             Some(Checkpoint::Torchwood) => startup_events = game.debug_prepare_torchwood(),
             Some(Checkpoint::PrizeChime) => startup_events = game.debug_prepare_prize_chime(),
             Some(Checkpoint::PrizeCollection) => {
-                startup_events = game.debug_prepare_prize_collection()
+                startup_events = game.debug_prepare_prize_collection();
+                let entity = startup_events.iter().find_map(|event| match event {
+                    GameEvent::PickupCollected { entity, .. } => Some(*entity),
+                    _ => None,
+                });
+                if let Some(entity) = entity {
+                    startup_anchors = Some(BoardVisualAnchors {
+                        coins: HashMap::from([(entity, (300.0, 200.0))]),
+                        ..BoardVisualAnchors::default()
+                    });
+                }
             }
             Some(Checkpoint::AwardCollectionAudio) => {
-                startup_events = game.debug_prepare_award_collection_audio()
+                startup_events = game.debug_prepare_award_collection_audio();
+                let entity = startup_events.iter().find_map(|event| match event {
+                    GameEvent::PickupCollected { entity, .. } => Some(*entity),
+                    _ => None,
+                });
+                if let Some(entity) = entity {
+                    startup_anchors = Some(BoardVisualAnchors {
+                        coins: HashMap::from([(entity, (300.0, 200.0))]),
+                        ..BoardVisualAnchors::default()
+                    });
+                }
             }
             Some(Checkpoint::LootDropAudio) => {
                 startup_events = game.debug_prepare_loot_drop_audio()
@@ -3265,6 +4447,11 @@ impl App {
             }
             Some(Checkpoint::GoldCoinLanding) => {
                 startup_events = game.debug_prepare_gold_coin_landing()
+            }
+            Some(Checkpoint::PickupArrowParticles) => {
+                let (events, entity) = game.debug_prepare_pickup_arrow_particles();
+                startup_events = events;
+                startup_coin_collection = Some(entity);
             }
             Some(Checkpoint::DiamondCollection) => {
                 startup_events = game.debug_prepare_diamond_collection()
@@ -3308,8 +4495,14 @@ impl App {
                 startup_events = game.debug_prepare_zombiquarium_death()
             }
             Some(Checkpoint::WhackAudio) => startup_events = game.debug_prepare_whack_audio(),
+            Some(Checkpoint::WhackRiseParticle) => {
+                startup_events = game.debug_prepare_whack_zombie_rise()
+            }
             Some(Checkpoint::BodyPartAudio) => {
                 startup_events = game.debug_prepare_body_part_audio()
+            }
+            Some(Checkpoint::HiddenCodeEffects) => {
+                startup_events = game.debug_prepare_hidden_code_effects()
             }
             Some(Checkpoint::BungeeAudio) => startup_events = game.debug_prepare_bungee_audio(),
             Some(Checkpoint::BungeeLiftAudio) => {
@@ -3320,6 +4513,11 @@ impl App {
             }
             Some(Checkpoint::VehicleExplosion) => {
                 startup_events = game.debug_prepare_vehicle_explosion()
+            }
+            Some(Checkpoint::MowerVehicleExplosion) => {
+                game.debug_prepare_mower_vehicle_explosion();
+                startup_anchors = Some(BoardVisualAnchors::from_state(game.state()));
+                startup_events = game.advance(InputFrame::default());
             }
             Some(Checkpoint::ZombieFallingAudio) => {
                 startup_events = game.debug_prepare_zombie_falling_audio()
@@ -3345,9 +4543,30 @@ impl App {
                 startup_events = game.debug_prepare_boss_damage_audio()
             }
             Some(Checkpoint::IceShroom) => game.debug_prepare_ice_shroom(),
+            Some(Checkpoint::IceShroomParticle) => {
+                game.debug_prepare_ice_shroom();
+                startup_anchors = Some(BoardVisualAnchors::from_state(game.state()));
+                startup_events = game.advance(InputFrame::default());
+            }
             Some(Checkpoint::PotatoMine) => game.debug_prepare_potato_mine(),
+            Some(Checkpoint::PotatoMineRiseParticle) => {
+                game.debug_prepare_potato_mine();
+                startup_anchors = Some(BoardVisualAnchors::from_state(game.state()));
+                startup_events = game.advance(InputFrame::default());
+            }
+            Some(Checkpoint::PotatoMineParticle) => {
+                game.debug_prepare_potato_mine();
+                let _ = game.advance(InputFrame::default());
+                startup_anchors = Some(BoardVisualAnchors::from_state(game.state()));
+                startup_events = game.advance(InputFrame::default());
+            }
             Some(Checkpoint::ExplosionPlants) => {
                 startup_events = game.debug_prepare_explosion_plants()
+            }
+            Some(Checkpoint::PlantExplosionParticles) => {
+                let _ = game.debug_prepare_explosion_plants();
+                startup_anchors = Some(BoardVisualAnchors::from_state(game.state()));
+                startup_events = game.advance(InputFrame::default());
             }
             Some(Checkpoint::ExplodeONut) => game.debug_prepare_explode_o_nut(),
             Some(Checkpoint::Squash) => startup_events = game.debug_prepare_squash(),
@@ -3369,6 +4588,11 @@ impl App {
             Some(Checkpoint::ProjectileImpacts) => {
                 startup_events = game.debug_prepare_projectile_impacts()
             }
+            Some(Checkpoint::ProjectileParticleTail | Checkpoint::ProjectileParticleFade) => {
+                game.debug_prepare_projectile_particle_tail();
+                startup_anchors = Some(BoardVisualAnchors::from_state(game.state()));
+                startup_events = game.advance(InputFrame::default());
+            }
             Some(Checkpoint::VaseBreak) => startup_events = game.debug_prepare_vase_break(),
             Some(Checkpoint::Rake) => startup_events = game.debug_prepare_rake(),
             Some(Checkpoint::BloverChomper) => game.debug_prepare_blover_chomper(),
@@ -3384,6 +4608,9 @@ impl App {
             Some(Checkpoint::TangleKelp) => game.debug_prepare_tangle_kelp(),
             Some(Checkpoint::DolphinJump) => startup_events = game.debug_prepare_dolphin_jump(),
             Some(Checkpoint::PoolEntry) => startup_events = game.debug_prepare_pool_entry(),
+            Some(Checkpoint::PoolRiseParticle) => {
+                startup_events = game.debug_prepare_pool_zombie_rise()
+            }
             Some(Checkpoint::PoolMower) => startup_events = game.debug_prepare_pool_mower(),
             Some(Checkpoint::GraveRumbleAudio) => {
                 startup_events = game.debug_prepare_gravestone_rumble()
@@ -3393,7 +4620,12 @@ impl App {
             Some(Checkpoint::Digger) => game.debug_prepare_digger(),
             Some(Checkpoint::Magnet) => game.debug_prepare_magnet(),
             Some(Checkpoint::ShieldHit) => game.debug_prepare_shield_hit(),
-            Some(Checkpoint::Zamboni) => startup_events = game.debug_prepare_zamboni(),
+            Some(Checkpoint::Zamboni) => {
+                let mut setup_events = game.debug_prepare_zamboni();
+                startup_anchors = Some(BoardVisualAnchors::from_state(game.state()));
+                setup_events.extend(game.advance(InputFrame::default()));
+                startup_events = setup_events;
+            }
             Some(Checkpoint::Catapult) => startup_events = game.debug_prepare_catapult(),
             Some(Checkpoint::BalloonAppearance) => {
                 startup_events = game.debug_prepare_balloon_appearance()
@@ -3415,6 +4647,16 @@ impl App {
             assets,
             resources,
             reanim_catalog,
+            particle_catalog,
+            particle_images,
+            // ponytail: independent RNG; share core RNG when cross-system draw order is modelled.
+            particle_holder: ParticleHolder::new(0),
+            projectile_particle_systems: HashMap::new(),
+            zombie_seaweed_particle_systems: HashMap::new(),
+            coin_arrow_particle_systems: HashMap::new(),
+            pool_sparkly_particle_system: None,
+            ice_sparkle_particle_systems: HashMap::new(),
+            credits_fog_particle_system: None,
             audio,
             game,
             pending_input,
@@ -3430,8 +4672,15 @@ impl App {
             options_open: matches!(checkpoint, Some(Checkpoint::Options)),
             help_open: matches!(checkpoint, Some(Checkpoint::Help)),
             almanac_open: matches!(checkpoint, Some(Checkpoint::Almanac)),
-            credits_open: matches!(checkpoint, Some(Checkpoint::Credits)),
-            credits_frame: 0,
+            credits_open: matches!(
+                checkpoint,
+                Some(Checkpoint::Credits | Checkpoint::CreditsParticles)
+            ),
+            credits_frame: if matches!(checkpoint, Some(Checkpoint::CreditsParticles)) {
+                1_959
+            } else {
+                0
+            },
             credits_paused: false,
             almanac_page: 0,
             almanac_selected_plant: 0,
@@ -3453,9 +4702,42 @@ impl App {
             fullscreen,
             capture_path: None,
             startup_events,
+            startup_anchors,
+            startup_coin_collection,
+            startup_particle_warmup: match checkpoint {
+                Some(Checkpoint::PlantExplosionParticles) => 30,
+                Some(Checkpoint::PickupArrowParticles) => 20,
+                Some(Checkpoint::PoolRiseParticle) => 10,
+                Some(Checkpoint::HiddenCodeEffects) => 12,
+                Some(Checkpoint::Zamboni | Checkpoint::MowerVehicleExplosion) => 3,
+                _ => 0,
+            },
             visual_effects: Vec::new(),
             profile,
         };
+        let particle_warmup = match checkpoint {
+            Some(Checkpoint::ProjectileParticleTail) => 10,
+            Some(Checkpoint::ProjectileParticleFade) => 80,
+            _ => 0,
+        };
+        if particle_warmup > 0 {
+            app.update_projectile_particle_trails();
+            for _ in 0..particle_warmup {
+                let _ = app.game.advance(InputFrame::default());
+                app.update_projectile_particle_trails();
+                app.particle_holder.update(&app.particle_catalog);
+            }
+        }
+        if matches!(checkpoint, Some(Checkpoint::ScreenFlashParticle)) {
+            let _ =
+                app.particle_holder
+                    .spawn(&app.particle_catalog, "ScreenFlash", 400.0, 300.0, 30);
+        }
+        if matches!(checkpoint, Some(Checkpoint::CreditsParticles)) {
+            for _ in 0..106 {
+                app.advance_credits();
+            }
+        }
         app.apply_audio_settings();
         app.reset_seed_chooser_selection();
         app
@@ -3505,14 +4787,32 @@ impl App {
         }
         renderer.window().request_redraw();
         self.renderer = Some(renderer);
-        self.last_update = Some(Instant::now());
+        self.update_projectile_particle_trails();
+        self.update_zombie_seaweed_particles();
+        self.update_pool_sparkly_particle();
+        self.update_ice_sparkle_particles();
         let startup_events = std::mem::take(&mut self.startup_events);
         let startup_tick = self.game.state().tick;
-        let startup_anchors = BoardVisualAnchors::from_state(self.game.state());
+        let startup_anchors = self
+            .startup_anchors
+            .take()
+            .unwrap_or_else(|| BoardVisualAnchors::from_state(self.game.state()));
         self.record_visual_events(startup_tick, &startup_events, &startup_anchors);
+        if let Some(entity) = self.startup_coin_collection.take() {
+            let tick = self.game.state().tick;
+            let anchors = BoardVisualAnchors::from_state(self.game.state());
+            let events = self.game.advance(InputFrame {
+                actions: vec![InputAction::CollectCoin { entity }],
+            });
+            self.record_visual_events(tick, &events, &anchors);
+            self.play_audio(tick, &events);
+        }
+        for _ in 0..self.startup_particle_warmup {
+            self.particle_holder.update(&self.particle_catalog);
+        }
         self.play_audio(0, &startup_events);
         if self.credits_open {
-            self.play_music_resource("sounds/ZombiesOnYourLawn.ogg");
+            self.play_audio_resource(AudioKind::Music, "sounds/ZombiesOnYourLawn.ogg");
         }
     }
 
@@ -3689,6 +4989,12 @@ impl App {
             return;
         }
 
+        if is_board_scene(self.game.state().scene) || self.game.state().scene == SceneKind::Garden {
+            self.pending_input.push(InputAction::TypeCode {
+                character: typing_code_character(key),
+            });
+        }
+
         match key {
             KeyCode::Escape if self.game.state().scene == SceneKind::ModeSelect => {
                 self.start_scene(SceneKind::AdventureSelect)
@@ -3699,7 +5005,7 @@ impl App {
             KeyCode::Escape => event_loop.exit(),
             KeyCode::F11 => self.toggle_fullscreen(),
             KeyCode::Enter => match self.game.state().scene {
-                SceneKind::Title => self.start_scene(SceneKind::AdventureSelect),
+                SceneKind::Title => self.start_from_title(),
                 SceneKind::AdventureSelect => self.start_scene(SceneKind::AdventureTutorial),
                 SceneKind::AdventureTutorial => self.advance_tutorial(),
                 SceneKind::ModeSelect => self.start_selected_mode(),
@@ -3893,8 +5199,12 @@ impl App {
                 if self.game.state().challenge.kind == neopvz_core::ChallengeKind::WhackAZombie
                     && is_board_scene(self.game.state().scene) =>
             {
-                self.pending_input
-                    .push(InputAction::ChallengeWhack { row: 2, column: 2 });
+                self.pending_input.push(InputAction::ChallengeWhack {
+                    row: 2,
+                    column: 2,
+                    x: 200,
+                    y: 300,
+                });
             }
             _ => {}
         }
@@ -3919,6 +5229,11 @@ impl App {
         }
     }
 
+    fn start_from_title(&mut self) {
+        self.play_audio_resource(AudioKind::Effect, TITLE_START_SOUND_PATH);
+        self.start_scene(SceneKind::AdventureSelect);
+    }
+
     fn start_scene(&mut self, scene: SceneKind) {
         let mut game = if self.game.state().mode == ModeKind::Adventure
             && matches!(scene, SceneKind::Day | SceneKind::SeedChooser)
@@ -3929,6 +5244,7 @@ impl App {
         };
         carry_profile(&self.game, &mut game, self.profile.as_mut());
         self.game = game;
+        self.clear_transient_effects();
         self.reset_board_hud_assets();
         self.store_open = false;
         self.options_open = false;
@@ -3954,13 +5270,14 @@ impl App {
             && self.game.state().level == 50
             && self.game.state().adventure_first_time
         {
+            self.clear_transient_effects();
             self.credits_open = true;
             self.credits_frame = 0;
             self.credits_paused = false;
             self.pending_input.clear();
             self.simulation_accumulator = Duration::ZERO;
             self.last_update = Some(Instant::now());
-            self.play_music_resource("sounds/ZombiesOnYourLawn.ogg");
+            self.play_audio_resource(AudioKind::Music, "sounds/ZombiesOnYourLawn.ogg");
             return;
         }
         if self.game.state().mode != ModeKind::Adventure || self.game.state().level >= 50 {
@@ -3982,11 +5299,12 @@ impl App {
             };
         let mut game =
             Game::new_adventure(0, next_level, first_time, packet_upgrades, stinky_purchased);
-        game.carry_almanac_defeats_from(&self.game);
+        game.carry_session_state_from(&self.game);
         if let Some(profile) = self.profile.as_ref() {
             game.apply_profile(profile);
         }
         self.game = game;
+        self.clear_transient_effects();
         self.reset_board_hud_assets();
         self.tutorial_page = 0;
         self.pending_input.clear();
@@ -3998,13 +5316,14 @@ impl App {
     }
 
     fn restart_credits(&mut self) {
+        self.clear_transient_effects();
         self.credits_open = true;
         self.credits_frame = 0;
         self.credits_paused = false;
         self.pending_input.clear();
         self.simulation_accumulator = Duration::ZERO;
         self.last_update = Some(Instant::now());
-        self.play_music_resource("sounds/ZombiesOnYourLawn.ogg");
+        self.play_audio_resource(AudioKind::Music, "sounds/ZombiesOnYourLawn.ogg");
     }
 
     fn start_mode_select(&mut self, mode: ModeKind) {
@@ -4014,6 +5333,7 @@ impl App {
         let mut game = Game::new(0, SceneKind::ModeSelect);
         carry_profile(&self.game, &mut game, self.profile.as_mut());
         self.game = game;
+        self.clear_transient_effects();
         self.pending_input.clear();
         self.simulation_accumulator = Duration::ZERO;
         self.last_update = Some(Instant::now());
@@ -4030,6 +5350,7 @@ impl App {
         let mut game = Game::new_mode(0, self.selected_mode, self.selected_level);
         carry_profile(&self.game, &mut game, self.profile.as_mut());
         self.game = game;
+        self.clear_transient_effects();
         self.reset_board_hud_assets();
         self.pending_input.clear();
         self.simulation_accumulator = Duration::ZERO;
@@ -4081,6 +5402,17 @@ impl App {
         };
         self.seed_chooser_selection = vec![false; count];
         self.seed_chooser_scroll = 0;
+    }
+
+    fn clear_transient_effects(&mut self) {
+        self.visual_effects.clear();
+        self.particle_holder.clear();
+        self.projectile_particle_systems.clear();
+        self.zombie_seaweed_particle_systems.clear();
+        self.coin_arrow_particle_systems.clear();
+        self.pool_sparkly_particle_system = None;
+        self.ice_sparkle_particle_systems.clear();
+        self.credits_fog_particle_system = None;
     }
 
     fn confirm_adventure_selection(&mut self) {
@@ -4211,7 +5543,7 @@ impl App {
         };
         if scene == SceneKind::Title {
             if title_mouse_starts(button, x, y) {
-                self.start_scene(SceneKind::AdventureSelect);
+                self.start_from_title();
             }
             return;
         }
@@ -4576,8 +5908,12 @@ impl App {
         }
         match self.game.state().challenge.kind {
             neopvz_core::ChallengeKind::WhackAZombie if button == MouseButton::Left => {
-                self.pending_input
-                    .push(InputAction::ChallengeWhack { row, column });
+                self.pending_input.push(InputAction::ChallengeWhack {
+                    row,
+                    column,
+                    x: x as u16,
+                    y: y as u16,
+                });
                 return;
             }
             _ => {}
@@ -4604,7 +5940,7 @@ impl App {
         while self.simulation_accumulator >= SIMULATION_STEP {
             if self.credits_open {
                 if !self.credits_paused {
-                    self.credits_frame = self.credits_frame.saturating_add(1);
+                    self.advance_credits();
                 }
                 self.pending_input.clear();
                 self.simulation_accumulator -= SIMULATION_STEP;
@@ -4618,9 +5954,207 @@ impl App {
             let events = self.game.advance(input);
             self.ensure_board_hud_assets();
             self.ensure_board_progress_asset();
+            if self.game.state().tick != tick {
+                self.update_projectile_particle_trails();
+                self.update_zombie_seaweed_particles();
+                self.update_pool_sparkly_particle();
+                self.update_ice_sparkle_particles();
+                self.particle_holder.update(&self.particle_catalog);
+            }
             self.record_visual_events(tick, &events, &visual_anchors);
             self.play_audio(tick, &events);
             self.simulation_accumulator -= SIMULATION_STEP;
+        }
+    }
+
+    fn advance_credits(&mut self) {
+        let previous_frame = self.credits_frame;
+        self.credits_frame = self.credits_frame.saturating_add(1);
+        let (_, phase_frame) = credits_phase_at(self.credits_frame);
+        for cue in credits_particle_cues(previous_frame, self.credits_frame) {
+            match cue {
+                CreditsParticleCue::Spawn(name) => {
+                    if self
+                        .particle_holder
+                        .spawn(&self.particle_catalog, name, 400.0, 300.0, 30)
+                        .is_some()
+                    {
+                        tracing::info!(name, "credits particle system queued");
+                    }
+                }
+                CreditsParticleCue::StartFog(name) => {
+                    let Some(x) =
+                        credits_fog_x(self.reanim_catalog.credits_main2.as_ref(), phase_frame)
+                    else {
+                        continue;
+                    };
+                    self.credits_fog_particle_system =
+                        self.particle_holder
+                            .spawn(&self.particle_catalog, name, x, 230.0, 30);
+                    if self.credits_fog_particle_system.is_some() {
+                        tracing::info!(x, "credits fog particle system queued");
+                    }
+                }
+                CreditsParticleCue::StopFog => {
+                    if let Some(system) = self.credits_fog_particle_system.take() {
+                        self.particle_holder.die_system(system);
+                    }
+                }
+            }
+        }
+        if let Some(system) = self.credits_fog_particle_system
+            && let Some(x) = credits_fog_x(self.reanim_catalog.credits_main2.as_ref(), phase_frame)
+        {
+            self.particle_holder
+                .move_system(&self.particle_catalog, system, x, 230.0);
+        }
+        self.particle_holder.update(&self.particle_catalog);
+    }
+
+    fn update_projectile_particle_trails(&mut self) {
+        let trails = self
+            .game
+            .state()
+            .board
+            .projectiles
+            .iter()
+            .filter_map(|projectile| {
+                let (name, offset_x, offset_y) =
+                    projectile_particle_trail(projectile.projectile_type)?;
+                Some((
+                    projectile.id,
+                    projectile.projectile_type,
+                    name,
+                    fixed_point_to_logical(projectile.position_x) + offset_x,
+                    board_projectile_y(
+                        projectile.position_y,
+                        projectile.row,
+                        projectile.lob_height,
+                    ) + offset_y,
+                ))
+            })
+            .collect::<Vec<_>>();
+        let live_types = trails
+            .iter()
+            .map(|(entity, projectile_type, ..)| (*entity, *projectile_type))
+            .collect::<HashMap<_, _>>();
+        let particle_holder = &mut self.particle_holder;
+        let particle_catalog = &self.particle_catalog;
+        self.projectile_particle_systems
+            .retain(|entity, (system, projectile_type)| {
+                let keep = live_types
+                    .get(entity)
+                    .is_some_and(|live_type| *live_type == *projectile_type);
+                if !keep {
+                    particle_holder.cross_fade_system(particle_catalog, *system, "FadeOut");
+                }
+                keep
+            });
+
+        for (entity, projectile_type, name, x, y) in trails {
+            if let Some((system, _)) = self.projectile_particle_systems.get(&entity) {
+                self.particle_holder
+                    .move_system(&self.particle_catalog, *system, x, y);
+            } else if let Some(system) =
+                self.particle_holder
+                    .spawn(&self.particle_catalog, name, x, y, 11)
+            {
+                self.projectile_particle_systems
+                    .insert(entity, (system, projectile_type));
+            }
+        }
+    }
+
+    fn update_zombie_seaweed_particles(&mut self) {
+        let tick = self.game.state().tick;
+        let positions = self
+            .game
+            .state()
+            .board
+            .zombies
+            .iter()
+            .filter_map(|zombie| {
+                zombie_seaweed_attachment_positions(&self.reanim_catalog, zombie, tick)
+                    .map(|positions| (zombie.id, positions))
+            })
+            .collect::<HashMap<_, _>>();
+        let particle_holder = &mut self.particle_holder;
+        let particle_catalog = &self.particle_catalog;
+        self.zombie_seaweed_particle_systems
+            .retain(|entity, systems| {
+                let Some(positions) = positions.get(entity) else {
+                    for (_, system) in systems.iter() {
+                        particle_holder.die_system(*system);
+                    }
+                    return false;
+                };
+                for (index, system) in systems.iter() {
+                    let (x, y) = positions[*index];
+                    particle_holder.move_system(particle_catalog, *system, x, y);
+                }
+                true
+            });
+    }
+
+    fn update_pool_sparkly_particle(&mut self) {
+        if self.game.state().scene == SceneKind::Pool {
+            if self.pool_sparkly_particle_system.is_none() {
+                let system = self.particle_holder.spawn(
+                    &self.particle_catalog,
+                    "PoolSparkly",
+                    450.0,
+                    295.0,
+                    2,
+                );
+                if system.is_some() {
+                    tracing::info!(x = 450.0, y = 295.0, "pool sparkly particle queued");
+                }
+                self.pool_sparkly_particle_system = system;
+            }
+        } else if let Some(system) = self.pool_sparkly_particle_system.take() {
+            self.particle_holder
+                .cross_fade_system(&self.particle_catalog, system, "FadeOut");
+        }
+    }
+
+    fn update_ice_sparkle_particles(&mut self) {
+        let board = &self.game.state().board;
+        let rows = board
+            .ice_timer
+            .iter()
+            .enumerate()
+            .filter(|(_, timer)| **timer > 0)
+            .map(|(index, _)| {
+                let row = u8::try_from(index).expect("ice row fits in u8");
+                let x = board
+                    .ice_min_x
+                    .get(index)
+                    .copied()
+                    .map(fixed_point_to_logical)
+                    .unwrap_or(800.0);
+                (row, x, board_row_y(row))
+            })
+            .collect::<Vec<_>>();
+        let live_rows = rows.iter().map(|(row, ..)| *row).collect::<HashSet<_>>();
+        let particle_holder = &mut self.particle_holder;
+        self.ice_sparkle_particle_systems.retain(|row, system| {
+            let keep = live_rows.contains(row);
+            if !keep {
+                particle_holder.die_system(*system);
+            }
+            keep
+        });
+        for (row, x, y) in rows {
+            if let Some(system) = self.ice_sparkle_particle_systems.get(&row) {
+                self.particle_holder
+                    .move_system(&self.particle_catalog, *system, x, y);
+            } else if let Some(system) =
+                self.particle_holder
+                    .spawn(&self.particle_catalog, "IceSparkle", x, y, 3)
+            {
+                self.ice_sparkle_particle_systems.insert(row, system);
+                tracing::info!(row, x, y, "ice sparkle particle queued");
+            }
         }
     }
 
@@ -4633,7 +6167,94 @@ impl App {
         let current_anchors = BoardVisualAnchors::from_state(self.game.state());
         let scene = self.game.state().scene;
         for event in events {
+            for (name, x, y, z) in
+                particle_effects_for_event_batch(event, events, scene, anchors, &current_anchors)
+            {
+                if let Some(system) =
+                    self.particle_holder
+                        .spawn(&self.particle_catalog, name, x, y, z)
+                {
+                    match event {
+                        GameEvent::ZombieMustacheDropped { variant, .. } => self
+                            .particle_holder
+                            .override_system_image(system, mustache_image_symbol(*variant)),
+                        GameEvent::ZombieFutureGlassesDropped { frame, .. } => self
+                            .particle_holder
+                            .override_system_frame(system, i32::from(*frame)),
+                        _ => {}
+                    }
+                    tracing::info!(tick, name, x, y, "particle system queued");
+                }
+            }
             match event {
+                GameEvent::ZombiePoolRise { entity } => {
+                    let Some(zombie) = self
+                        .game
+                        .state()
+                        .board
+                        .zombies
+                        .iter()
+                        .find(|zombie| zombie.id == *entity)
+                    else {
+                        continue;
+                    };
+                    let Some(positions) = zombie_seaweed_attachment_positions(
+                        &self.reanim_catalog,
+                        zombie,
+                        self.game.state().tick,
+                    ) else {
+                        continue;
+                    };
+                    let systems = positions
+                        .into_iter()
+                        .enumerate()
+                        .filter_map(|(index, (x, y))| {
+                            self.particle_holder
+                                .spawn(&self.particle_catalog, "Zombie_seaweed", x, y, 7)
+                                .map(|system| (index, system))
+                        })
+                        .collect::<Vec<_>>();
+                    tracing::info!(
+                        tick,
+                        entity,
+                        systems = systems.len(),
+                        "pool-rise seaweed particle attachments queued"
+                    );
+                    self.zombie_seaweed_particle_systems
+                        .insert(*entity, systems);
+                }
+                GameEvent::CoinLanded { entity, .. } => {
+                    let Some(coin) = self
+                        .game
+                        .state()
+                        .board
+                        .coins
+                        .iter()
+                        .find(|coin| coin.id == *entity)
+                    else {
+                        continue;
+                    };
+                    let Some((name, offset_x, offset_y)) =
+                        coin_arrow_particle(coin.coin_type, coin.needs_bouncy_arrow)
+                    else {
+                        continue;
+                    };
+                    let x = fixed_point_to_logical(coin.position_x) + offset_x;
+                    let y = fixed_point_to_logical(coin.position_y) + offset_y;
+                    if let Some(system) =
+                        self.particle_holder
+                            .spawn(&self.particle_catalog, name, x, y, 13)
+                    {
+                        self.coin_arrow_particle_systems.insert(*entity, system);
+                        tracing::info!(tick, name, x, y, "pickup arrow particle queued");
+                    }
+                }
+                GameEvent::PickupCollected { entity, .. } => {
+                    if let Some(system) = self.coin_arrow_particle_systems.remove(entity) {
+                        self.particle_holder.die_system(system);
+                        tracing::info!(tick, entity, "pickup arrow particle removed");
+                    }
+                }
                 GameEvent::PlantSpecialTriggered {
                     entity,
                     plant_type: PlantType::Other(20),
@@ -4709,15 +6330,15 @@ impl App {
         }
     }
 
-    fn play_music_resource(&mut self, path: &str) {
+    fn play_audio_resource(&mut self, kind: AudioKind, path: &str) {
         let Some(bytes) = self.resources.read(path).ok() else {
-            tracing::debug!(path, "music resource is unavailable");
+            tracing::debug!(?kind, path, "audio resource is unavailable");
             return;
         };
         if let Some(audio) = &mut self.audio {
-            match audio.play_bytes(AudioKind::Music, path, bytes) {
-                Ok(()) => tracing::info!(path, "music playback started"),
-                Err(error) => tracing::warn!(%error, path, "music playback failed"),
+            match audio.play_bytes(kind, path, bytes) {
+                Ok(()) => tracing::info!(?kind, path, "audio playback started"),
+                Err(error) => tracing::warn!(%error, ?kind, path, "audio playback failed"),
             }
         }
     }
@@ -5197,6 +6818,21 @@ impl App {
                 scale: 1.0,
                 alpha: 1.0,
             });
+        }
+        self.render_particles(frame);
+    }
+
+    fn render_particles(&self, frame: &mut RenderFrame) {
+        for particle in self.particle_holder.render(&self.particle_catalog) {
+            let Some(image) = self.particle_images.get(particle.image) else {
+                continue;
+            };
+            frame.affine_sprites.push(particle.params.sprite(
+                image.resource_id,
+                particle.z,
+                image.columns,
+                image.rows,
+            ));
         }
     }
 
@@ -6314,28 +7950,9 @@ impl App {
         if zombie.zombie_type == ZombieType::Boss {
             return self.render_board_boss_reanim(frame, zombie, x, y);
         }
-        let (definition, specialized) = match zombie.zombie_type {
-            ZombieType::Football => (self.reanim_catalog.football.as_ref(), true),
-            ZombieType::Newspaper => (self.reanim_catalog.newspaper.as_ref(), true),
-            ZombieType::Normal
-            | ZombieType::Flag
-            | ZombieType::Conehead
-            | ZombieType::Buckethead
-            | ZombieType::ScreenDoor => (self.reanim_catalog.zombie.as_ref(), false),
-            zombie_type => (
-                self.reanim_catalog
-                    .specialized
-                    .iter()
-                    .find(|(known_type, _)| {
-                        *known_type == zombie_type
-                            || (zombie_type == ZombieType::Gigagargantuar
-                                && *known_type == ZombieType::Gargantuar)
-                    })
-                    .map(|(_, definition)| definition),
-                true,
-            ),
-        };
-        let Some(definition) = definition else {
+        let Some((definition, specialized)) =
+            board_zombie_reanim_definition(&self.reanim_catalog, zombie.zombie_type)
+        else {
             return false;
         };
         let action = board_zombie_reanim_action(zombie);
@@ -6346,7 +7963,7 @@ impl App {
         else {
             return false;
         };
-        let drawn = push_reanim_tracks(
+        let drawn = push_reanim_tracks_with_image_override(
             frame,
             definition,
             &self.reanim_catalog.image_ids,
@@ -6369,8 +7986,18 @@ impl App {
                         zombie.armor_intact,
                         zombie.has_head,
                         zombie.has_arm,
+                        self.game.state().mustache_mode,
                     )
                     .then_some((7, BlendMode::Alpha))
+                }
+            },
+            |name| {
+                if self.game.state().future_mode && name.eq_ignore_ascii_case("anim_head1") {
+                    Some(future_head_image_symbol(zombie.id))
+                } else if self.game.state().mustache_mode && name.starts_with("Zombie_mustache") {
+                    Some(mustache_image_symbol(zombie.mustache_variant))
+                } else {
+                    None
                 }
             },
         );
@@ -6604,6 +8231,22 @@ impl App {
                         // ponytail: alpha-only lock tint; the original greys the button art.
                         alpha: if self.can_open_mode(mode) { 1.0 } else { 0.5 },
                     });
+                }
+                if self.profile.is_some() {
+                    for (digit, x, y) in selector_level_digits(
+                        self.profile
+                            .as_ref()
+                            .map_or(1, |profile| profile.adventure_level),
+                    ) {
+                        frame.sprites.push(SpriteCommand {
+                            resource_id: SELECTOR_LEVEL_NUMBER_BASE_IMAGE_ID + u32::from(digit),
+                            x: 70.0 + x,
+                            y: 40.0 + y,
+                            z: 6,
+                            scale: 1.0,
+                            alpha: 1.0,
+                        });
+                    }
                 }
             }
             SceneKind::AdventureTutorial => self.render_tutorial(&mut frame),
@@ -7063,7 +8706,9 @@ impl App {
                             m11: angle.cos(),
                             z: 11,
                             alpha: 0.5,
+                            tint: [1.0; 3],
                             blend_mode: BlendMode::Alpha,
+                            source: None,
                         });
                     }
                 }
@@ -7126,7 +8771,9 @@ impl App {
                             m11: scale_y,
                             z: 11,
                             alpha: 1.0,
+                            tint: [1.0; 3],
                             blend_mode: BlendMode::Alpha,
+                            source: None,
                         });
                     }
                     if let Some((resource_id, scale)) =
@@ -7153,11 +8800,14 @@ impl App {
                             m11: cos * scale,
                             z: 12,
                             alpha: 1.0,
+                            tint: [1.0; 3],
                             blend_mode: BlendMode::Alpha,
+                            source: None,
                         });
                     }
                 }
                 self.render_board_effects(&mut frame);
+                self.render_particles(&mut frame);
                 if self.game.state().challenge.kind == ChallengeKind::LastStand
                     && !self.game.state().challenge.last_stand_onslaught
                 {
@@ -7215,6 +8865,38 @@ fn is_board_scene(scene: SceneKind) -> bool {
             | SceneKind::Roof
             | SceneKind::Boss
     )
+}
+
+fn typing_code_character(key: KeyCode) -> char {
+    match key {
+        KeyCode::KeyA => 'a',
+        KeyCode::KeyB => 'b',
+        KeyCode::KeyC => 'c',
+        KeyCode::KeyD => 'd',
+        KeyCode::KeyE => 'e',
+        KeyCode::KeyF => 'f',
+        KeyCode::KeyG => 'g',
+        KeyCode::KeyH => 'h',
+        KeyCode::KeyI => 'i',
+        KeyCode::KeyJ => 'j',
+        KeyCode::KeyK => 'k',
+        KeyCode::KeyL => 'l',
+        KeyCode::KeyM => 'm',
+        KeyCode::KeyN => 'n',
+        KeyCode::KeyO => 'o',
+        KeyCode::KeyP => 'p',
+        KeyCode::KeyQ => 'q',
+        KeyCode::KeyR => 'r',
+        KeyCode::KeyS => 's',
+        KeyCode::KeyT => 't',
+        KeyCode::KeyU => 'u',
+        KeyCode::KeyV => 'v',
+        KeyCode::KeyW => 'w',
+        KeyCode::KeyX => 'x',
+        KeyCode::KeyY => 'y',
+        KeyCode::KeyZ => 'z',
+        _ => '\0',
+    }
 }
 
 fn board_background_id(scene: SceneKind) -> u32 {
@@ -7985,6 +9667,7 @@ fn is_completion_award_coin(coin: CoinType) -> bool {
             | CoinType::Shovel
             | CoinType::Almanac
             | CoinType::CarKeys
+            | CoinType::Vase
             | CoinType::WateringCan
             | CoinType::Taco
             | CoinType::Note
@@ -8104,6 +9787,40 @@ fn board_zombie_image(zombie_type: ZombieType) -> Option<u32> {
     (!matches!(zombie_type, ZombieType::Boss)).then_some(BOARD_ZOMBIE_BODY_IMAGE_ID)
 }
 
+fn board_zombie_reanim_definition(
+    catalog: &ReanimCatalog,
+    zombie_type: ZombieType,
+) -> Option<(&ReanimatorDefinition, bool)> {
+    match zombie_type {
+        ZombieType::Football => catalog
+            .football
+            .as_ref()
+            .map(|definition| (definition, true)),
+        ZombieType::Newspaper => catalog
+            .newspaper
+            .as_ref()
+            .map(|definition| (definition, true)),
+        ZombieType::Normal
+        | ZombieType::Flag
+        | ZombieType::Conehead
+        | ZombieType::Buckethead
+        | ZombieType::ScreenDoor
+        | ZombieType::DuckyTube => catalog
+            .zombie
+            .as_ref()
+            .map(|definition| (definition, false)),
+        _ => catalog
+            .specialized
+            .iter()
+            .find(|(known_type, _)| {
+                *known_type == zombie_type
+                    || (zombie_type == ZombieType::Gigagargantuar
+                        && *known_type == ZombieType::Gargantuar)
+            })
+            .map(|(_, definition)| (definition, true)),
+    }
+}
+
 fn board_zombie_reanim_action(zombie: &ZombieState) -> &'static str {
     match zombie.zombie_type {
         ZombieType::Newspaper if zombie.newspaper_mad_pending => "anim_gasp",
@@ -8132,6 +9849,67 @@ fn board_zombie_reanim_action(zombie: &ZombieState) -> &'static str {
         _ if zombie.eating => "anim_eat",
         _ => "anim_walk",
     }
+}
+
+fn zombie_seaweed_attachment_specs(zombie_type: ZombieType) -> [(&'static str, f32, f32); 3] {
+    let head = match zombie_type {
+        ZombieType::Conehead => ("anim_cone", 37.0, 20.0),
+        ZombieType::Buckethead => ("anim_bucket", 37.0, 20.0),
+        _ => ("anim_head1", 30.0, 20.0),
+    };
+    [
+        head,
+        ("Zombie_outerarm_upper", 5.0, 5.0),
+        ("Zombie_duckytube", 77.0, 20.0),
+    ]
+}
+
+fn reanim_attachment_position(
+    definition: &ReanimatorDefinition,
+    action: &str,
+    tick: u64,
+    origin: (f32, f32),
+    track_name: &str,
+    offset: (f32, f32),
+) -> Option<(f32, f32)> {
+    let frame_position = reanim_frame_position(definition, action, tick)
+        .or_else(|| reanim_frame_position(definition, "anim_walk", tick))
+        .or_else(|| reanim_frame_position(definition, "anim_idle", tick))?;
+    let transform = definition
+        .tracks
+        .iter()
+        .find(|track| track.name.eq_ignore_ascii_case(track_name))
+        .and_then(|track| reanim_transform_at_any(track, frame_position))?;
+    let matrix = reanim_matrix_mul(
+        reanim_matrix_translation(origin.0, origin.1),
+        reanim_matrix_mul(
+            reanim_matrix_from_transform(&transform),
+            reanim_matrix_translation(offset.0, offset.1),
+        ),
+    );
+    Some((matrix.m02, matrix.m12))
+}
+
+fn zombie_seaweed_attachment_positions(
+    catalog: &ReanimCatalog,
+    zombie: &ZombieState,
+    tick: u64,
+) -> Option<[(f32, f32); 3]> {
+    let (definition, _) = board_zombie_reanim_definition(catalog, zombie.zombie_type)?;
+    let action = board_zombie_reanim_action(zombie);
+    let origin = (
+        fixed_point_to_logical(zombie.position_x),
+        board_row_y(zombie.row),
+    );
+    let mut positions = [(0.0, 0.0); 3];
+    for (index, (track, x, y)) in zombie_seaweed_attachment_specs(zombie.zombie_type)
+        .into_iter()
+        .enumerate()
+    {
+        positions[index] =
+            reanim_attachment_position(definition, action, tick, origin, track, (x, y))?;
+    }
+    Some(positions)
 }
 
 fn board_plant_reanim_actions(
@@ -8397,7 +10175,9 @@ fn push_board_plant_reanim_attachments(
                 m11: matrix.m11,
                 z: 11,
                 alpha: transform.alpha * anchor_current.alpha,
+                tint: [1.0; 3],
                 blend_mode: BlendMode::Alpha,
+                source: None,
             });
             drawn = true;
         }
@@ -8465,6 +10245,26 @@ fn push_reanim_tracks(
     (x, y, scale): (f32, f32, f32),
     track_style: impl Fn(&str) -> Option<(i32, BlendMode)>,
 ) -> bool {
+    push_reanim_tracks_with_image_override(
+        frame,
+        definition,
+        image_ids,
+        frame_position,
+        (x, y, scale),
+        track_style,
+        |_| None,
+    )
+}
+
+fn push_reanim_tracks_with_image_override(
+    frame: &mut RenderFrame,
+    definition: &ReanimatorDefinition,
+    image_ids: &HashMap<String, u32>,
+    frame_position: f32,
+    (x, y, scale): (f32, f32, f32),
+    track_style: impl Fn(&str) -> Option<(i32, BlendMode)>,
+    image_override: impl Fn(&str) -> Option<&'static str>,
+) -> bool {
     let mut drawn = false;
     for track in &definition.tracks {
         let Some((z, blend_mode)) = track_style(&track.name) else {
@@ -8473,7 +10273,7 @@ fn push_reanim_tracks(
         let Some(transform) = reanim_transform_at(track, frame_position) else {
             continue;
         };
-        let Some(image) = transform.image.as_deref() else {
+        let Some(image) = image_override(&track.name).or(transform.image.as_deref()) else {
             continue;
         };
         let Some(&resource_id) = image_ids.get(&image.to_ascii_uppercase()) else {
@@ -8491,7 +10291,9 @@ fn push_reanim_tracks(
             m11: skew_y.cos() * transform.scale_y * scale,
             z,
             alpha: transform.alpha,
+            tint: [1.0; 3],
             blend_mode,
+            source: None,
         });
         drawn = true;
     }
@@ -8562,6 +10364,7 @@ fn board_zombie_reanim_track_visible(
     armor_intact: bool,
     has_head: bool,
     has_arm: bool,
+    mustache_mode: bool,
 ) -> bool {
     if !has_head
         && (name.starts_with("anim_head")
@@ -8589,8 +10392,11 @@ fn board_zombie_reanim_track_visible(
     if name == "Zombie_flaghand" {
         return zombie_type == ZombieType::Flag;
     }
-    if name.starts_with("Zombie_flag") || name.starts_with("Zombie_duckytube") {
+    if name.starts_with("Zombie_flag") {
         return false;
+    }
+    if name.starts_with("Zombie_duckytube") {
+        return zombie_type == ZombieType::DuckyTube;
     }
     if name.starts_with("Zombie_outerarm_screendoor") {
         return zombie_type == ZombieType::ScreenDoor && armor_intact;
@@ -8605,14 +10411,33 @@ fn board_zombie_reanim_track_visible(
     if name.starts_with("Zombie_outerarm") {
         return zombie_type != ZombieType::ScreenDoor;
     }
+    if name.starts_with("Zombie_mustache") {
+        return mustache_mode && has_head;
+    }
     if name.starts_with("anim_tongue")
-        || name.starts_with("Zombie_mustache")
         || name.starts_with("Zombie_paper_paper")
         || name.starts_with("Zombie_paper")
     {
         return false;
     }
     true
+}
+
+fn mustache_image_symbol(variant: u8) -> &'static str {
+    match variant {
+        2 => "IMAGE_REANIM_ZOMBIE_MUSTACHE2",
+        3 => "IMAGE_REANIM_ZOMBIE_MUSTACHE3",
+        _ => "IMAGE_REANIM_ZOMBIE_MUSTACHE1",
+    }
+}
+
+fn future_head_image_symbol(entity: EntityId) -> &'static str {
+    match entity & 3 {
+        0 => "IMAGE_REANIM_ZOMBIE_HEAD_SUNGLASSES1",
+        1 => "IMAGE_REANIM_ZOMBIE_HEAD_SUNGLASSES2",
+        2 => "IMAGE_REANIM_ZOMBIE_HEAD_SUNGLASSES3",
+        _ => "IMAGE_REANIM_ZOMBIE_HEAD_SUNGLASSES4",
+    }
 }
 
 fn board_specialized_zombie_reanim_track_visible(
@@ -8957,6 +10782,22 @@ fn mode_level_at(mode: ModeKind, x: f32, y: f32) -> Option<u8> {
         .flatten()
 }
 
+fn selector_level_digits(level: u8) -> Vec<(u8, f32, f32)> {
+    let level = level.clamp(1, 50);
+    let stage = (level - 1) / 10 + 1;
+    let sub = level - (stage - 1) * 10;
+    let stage_x = if stage == 4 { 485.0 } else { 486.0 };
+    let stage_y = if stage == 1 { 126.0 } else { 125.0 };
+    let sub_x = if sub == 3 { 503.0 } else { 504.0 };
+    let mut digits = vec![(stage, stage_x, stage_y)];
+    if sub == 10 {
+        digits.extend([(1, sub_x, 128.0), (0, sub_x + 9.0, 129.0)]);
+    } else {
+        digits.push((sub, sub_x, 128.0));
+    }
+    digits
+}
+
 fn mode_is_unlocked(
     mode: ModeKind,
     adventure_finished: bool,
@@ -8980,6 +10821,17 @@ fn audio_for_event(event: &GameEvent) -> Option<(AudioKind, &'static str)> {
         GameEvent::ReadySetPlant => Some((AudioKind::Effect, "sounds/readysetplant.ogg")),
         GameEvent::SeedSelected { .. } => Some((AudioKind::Effect, "sounds/tap.ogg")),
         GameEvent::InputRejected { .. } => Some((AudioKind::Effect, "sounds/buzzer.ogg")),
+        GameEvent::HiddenCodeRejected { .. } => Some((AudioKind::Effect, "sounds/buzzer.ogg")),
+        GameEvent::HiddenCodeToggled { code, .. } => Some((
+            AudioKind::Effect,
+            match code {
+                HiddenCode::Mustache => "sounds/polevault.ogg",
+                HiddenCode::Future => "sounds/boing.ogg",
+                HiddenCode::Pinata => "sounds/juicy.ogg",
+                HiddenCode::Daisies => "sounds/loadingbar_flower.ogg",
+                HiddenCode::Sukhbir => "sounds/sukhbir.ogg",
+            },
+        )),
         GameEvent::ChallengeAction {
             kind: ChallengeKind::Beghouled | ChallengeKind::BeghouledTwist,
             value,
@@ -9005,7 +10857,7 @@ fn audio_for_event(event: &GameEvent) -> Option<(AudioKind, &'static str)> {
             Some((AudioKind::Effect, "sounds/zombaquarium_die.ogg"))
         }
         GameEvent::WhackHammerSwung => Some((AudioKind::Effect, "sounds/swing.ogg")),
-        GameEvent::WhackHit { sound, variant } => Some((
+        GameEvent::WhackHit { sound, variant, .. } => Some((
             AudioKind::Effect,
             match sound {
                 WhackHitSound::Bonk => "sounds/bonk.ogg",
@@ -9255,6 +11107,7 @@ fn audio_for_event(event: &GameEvent) -> Option<(AudioKind, &'static str)> {
         GameEvent::ZombieGraveRumble { .. } => {
             Some((AudioKind::Effect, "sounds/gravestone_rumble.ogg"))
         }
+        GameEvent::ZombieWhackRise { .. } => Some((AudioKind::Effect, "sounds/dirt_rise.ogg")),
         GameEvent::LadderPlaced { .. } => Some((AudioKind::Effect, "sounds/ladder_zombie.ogg")),
         GameEvent::BungeeScream { variant, .. } => Some((
             AudioKind::Effect,
@@ -9283,24 +11136,43 @@ fn audio_for_event(event: &GameEvent) -> Option<(AudioKind, &'static str)> {
             ..
         } => Some((AudioKind::Effect, "sounds/digger_zombie.ogg")),
         GameEvent::ZombieGroaned {
-            zombie_type:
-                neopvz_core::ZombieType::Gargantuar | neopvz_core::ZombieType::Gigagargantuar,
-            variant,
-            ..
+            family, variant, ..
         } => Some((
             AudioKind::Effect,
-            if *variant == 0 {
-                "sounds/lowgroan.ogg"
-            } else {
-                "sounds/lowgroan2.ogg"
-            },
-        )),
-        GameEvent::ZombieGroaned { variant, .. } => Some((
-            AudioKind::Effect,
-            if *variant == 0 {
-                "sounds/groan.ogg"
-            } else {
-                "sounds/groan2.ogg"
+            match family {
+                ZombieGroanFamily::Low => {
+                    ["sounds/lowgroan.ogg", "sounds/lowgroan2.ogg"][usize::from(*variant)]
+                }
+                ZombieGroanFamily::Normal => [
+                    "sounds/groan.ogg",
+                    "sounds/groan2.ogg",
+                    "sounds/groan3.ogg",
+                    "sounds/groan4.ogg",
+                    "sounds/groan5.ogg",
+                    "sounds/groan6.ogg",
+                ][usize::from(*variant)],
+                ZombieGroanFamily::Brains => [
+                    "sounds/groan.ogg",
+                    "sounds/groan2.ogg",
+                    "sounds/groan3.ogg",
+                    "sounds/groan4.ogg",
+                    "sounds/groan5.ogg",
+                    "sounds/groan6.ogg",
+                    "sounds/sukhbir4.ogg",
+                    "sounds/sukhbir5.ogg",
+                    "sounds/sukhbir6.ogg",
+                ][usize::from(*variant)],
+                ZombieGroanFamily::Sukhbir => [
+                    "sounds/groan.ogg",
+                    "sounds/groan2.ogg",
+                    "sounds/groan3.ogg",
+                    "sounds/groan4.ogg",
+                    "sounds/groan5.ogg",
+                    "sounds/groan6.ogg",
+                    "sounds/sukhbir.ogg",
+                    "sounds/sukhbir2.ogg",
+                    "sounds/sukhbir3.ogg",
+                ][usize::from(*variant)],
             },
         )),
         GameEvent::ZombieChew { soft: true, .. } => {
@@ -9753,6 +11625,1151 @@ mod tests {
     }
 
     #[test]
+    fn projectile_particle_trails_use_source_definitions_and_offsets() {
+        assert_eq!(
+            projectile_particle_trail(ProjectileType::SnowPea),
+            Some(("SnowPeaTrail", 8.0, 13.0))
+        );
+        assert_eq!(
+            projectile_particle_trail(ProjectileType::Puff),
+            Some(("PuffShroomTrail", 13.0, 13.0))
+        );
+        assert_eq!(projectile_particle_trail(ProjectileType::Pea), None);
+    }
+
+    #[test]
+    fn projectile_impacts_queue_source_particle_offsets() {
+        let event = |projectile_type, kind| GameEvent::ProjectileImpact {
+            projectile: 7,
+            projectile_type,
+            zombie: Some(8),
+            kind,
+            variant: 0,
+        };
+        let mut anchors = BoardVisualAnchors::default();
+        anchors.projectiles.insert(
+            7,
+            BoardVisualAnchor {
+                x: 100.0,
+                y: 200.0,
+                previous_x: 90.0,
+                previous_y: 180.0,
+                row: 2,
+                zombie_type: None,
+            },
+        );
+        for (projectile_type, kind, expected) in [
+            (
+                ProjectileType::Pea,
+                ProjectileImpactSound::Splat,
+                vec![("PeaSplat", 97.0, 212.0, 13)],
+            ),
+            (
+                ProjectileType::Pea,
+                ProjectileImpactSound::Shield,
+                vec![("PeaSplat", 97.0, 212.0, 13)],
+            ),
+            (
+                ProjectileType::SnowPea,
+                ProjectileImpactSound::Splat,
+                vec![("SnowPeaSplat", 97.0, 212.0, 13)],
+            ),
+            (
+                ProjectileType::Puff,
+                ProjectileImpactSound::Splat,
+                vec![("PuffSplat", 92.0, 212.0, 13)],
+            ),
+            (
+                ProjectileType::Star,
+                ProjectileImpactSound::Splat,
+                vec![("StarSplat", 112.0, 212.0, 13)],
+            ),
+            (
+                ProjectileType::Cabbage,
+                ProjectileImpactSound::Splat,
+                vec![("CabbageSplat", 52.0, 203.0, 13)],
+            ),
+            (
+                ProjectileType::Butter,
+                ProjectileImpactSound::Butter,
+                vec![("ButterSplat", 70.0, 243.0, 13)],
+            ),
+            (
+                ProjectileType::Melon,
+                ProjectileImpactSound::Melon,
+                vec![("MelonImpact", 120.0, 210.0, 13)],
+            ),
+            (
+                ProjectileType::WinterMelon,
+                ProjectileImpactSound::Melon,
+                vec![("WinterMelonImpact", 120.0, 210.0, 13)],
+            ),
+            (
+                ProjectileType::ZombiePea,
+                ProjectileImpactSound::Splat,
+                vec![("PeaSplat", 97.0, 217.0, 13)],
+            ),
+            (
+                ProjectileType::Cob,
+                ProjectileImpactSound::Splat,
+                vec![
+                    ("BlastMark", 180.0, 240.0, 2),
+                    ("PopcornSplash", 180.0, 240.0, 13),
+                ],
+            ),
+            (
+                ProjectileType::Pea,
+                ProjectileImpactSound::Plastic,
+                Vec::new(),
+            ),
+        ] {
+            assert_eq!(
+                particle_effects_for_event(
+                    &event(projectile_type, kind),
+                    SceneKind::Day,
+                    &anchors,
+                    &BoardVisualAnchors::default(),
+                ),
+                expected
+            );
+        }
+        assert_eq!(
+            particle_effects_for_event(
+                &GameEvent::ProjectileImpact {
+                    projectile: 7,
+                    projectile_type: ProjectileType::Pea,
+                    zombie: None,
+                    kind: ProjectileImpactSound::Splat,
+                    variant: 3,
+                },
+                SceneKind::Day,
+                &anchors,
+                &BoardVisualAnchors::default(),
+            ),
+            vec![("UmbrellaReflect", 120.0, 220.0, 13)]
+        );
+
+        anchors.projectiles.clear();
+        anchors.zombies.insert(
+            8,
+            BoardVisualAnchor {
+                x: 100.0,
+                y: 200.0,
+                previous_x: 100.0,
+                previous_y: 200.0,
+                row: 2,
+                zombie_type: None,
+            },
+        );
+        assert_eq!(
+            particle_effects_for_event(
+                &event(ProjectileType::SnowPea, ProjectileImpactSound::Splat),
+                SceneKind::Day,
+                &anchors,
+                &BoardVisualAnchors::default(),
+            ),
+            vec![("SnowPeaSplat", 97.0, 212.0, 13)]
+        );
+    }
+
+    #[test]
+    fn planting_events_queue_source_particle_offsets() {
+        let event = |plant_type, row, column| GameEvent::PlantPlaced {
+            entity: 1,
+            plant_type,
+            row,
+            column,
+            sun_remaining: 0,
+            variant: 0,
+        };
+        let empty = BoardVisualAnchors::default();
+
+        assert_eq!(
+            particle_effects_for_event(
+                &event(PlantType::Peashooter, 0, 2),
+                SceneKind::Day,
+                &empty,
+                &empty,
+            ),
+            vec![("Planting", 281.0, 194.0, 13)]
+        );
+        assert_eq!(
+            particle_effects_for_event(
+                &event(PlantType::Other(16), 2, 0),
+                SceneKind::Pool,
+                &empty,
+                &empty,
+            ),
+            vec![("PlantingPool", 121.0, 389.0, 13)]
+        );
+        assert_eq!(
+            particle_effects_for_event(
+                &event(PlantType::Other(33), 1, 1),
+                SceneKind::Roof,
+                &empty,
+                &empty,
+            ),
+            vec![("Planting", 201.0, 314.0, 13)]
+        );
+        assert_eq!(
+            particle_effects_for_event(
+                &event(PlantType::Other(25), 1, 1),
+                SceneKind::Night,
+                &empty,
+                &empty,
+            ),
+            vec![
+                ("Planting", 201.0, 284.0, 13),
+                ("LanternShine", 200.0, 250.0, 10),
+            ]
+        );
+        assert!(
+            particle_effects_for_event(
+                &event(PlantType::Other(35), 0, 0),
+                SceneKind::Day,
+                &empty,
+                &empty,
+            )
+            .is_empty()
+        );
+    }
+
+    #[test]
+    fn plant_special_events_queue_source_particle_centers() {
+        let mut anchors = BoardVisualAnchors::default();
+        anchors.plants.insert(
+            1,
+            BoardVisualAnchor {
+                x: 100.0,
+                y: 200.0,
+                previous_x: 100.0,
+                previous_y: 200.0,
+                row: 2,
+                zombie_type: None,
+            },
+        );
+        let event = |slot| GameEvent::PlantSpecialTriggered {
+            entity: 1,
+            plant_type: PlantType::Other(slot),
+        };
+
+        for (slot, name, z) in [
+            (2, "Powie", 13),
+            (4, "PotatoMine", 11),
+            (14, "IceTrap", 13),
+            (15, "Doom", 13),
+        ] {
+            assert_eq!(
+                particle_effects_for_event(
+                    &event(slot),
+                    SceneKind::Night,
+                    &anchors,
+                    &BoardVisualAnchors::default(),
+                ),
+                vec![(name, 140.0, 240.0, z)]
+            );
+        }
+        assert_eq!(
+            particle_effects_for_event(
+                &GameEvent::PotatoMineArmed { entity: 1 },
+                SceneKind::Day,
+                &anchors,
+                &BoardVisualAnchors::default(),
+            ),
+            vec![("PotatoMineRise", 140.0, 240.0, 10)]
+        );
+        assert_eq!(
+            particle_effects_for_event(
+                &event(17),
+                SceneKind::Day,
+                &anchors,
+                &BoardVisualAnchors::default(),
+            ),
+            vec![("Dust_Squash", 140.0, 280.0, 13)]
+        );
+        assert!(
+            particle_effects_for_event(
+                &event(20),
+                SceneKind::Night,
+                &anchors,
+                &BoardVisualAnchors::default(),
+            )
+            .is_empty()
+        );
+    }
+
+    #[test]
+    fn lifecycle_particle_events_use_source_names_offsets_and_anchor_fallbacks() {
+        let mut anchors = BoardVisualAnchors::default();
+        anchors.plants.insert(
+            1,
+            BoardVisualAnchor {
+                x: 100.0,
+                y: 200.0,
+                previous_x: 100.0,
+                previous_y: 200.0,
+                row: 2,
+                zombie_type: None,
+            },
+        );
+        anchors.zombies.insert(
+            2,
+            BoardVisualAnchor {
+                x: 300.0,
+                y: 400.0,
+                previous_x: 300.0,
+                previous_y: 400.0,
+                row: 2,
+                zombie_type: Some(ZombieType::Zamboni),
+            },
+        );
+        anchors.zombies.insert(
+            3,
+            BoardVisualAnchor {
+                x: 500.0,
+                y: 600.0,
+                previous_x: 500.0,
+                previous_y: 600.0,
+                row: 2,
+                zombie_type: Some(ZombieType::BackupDancer),
+            },
+        );
+
+        let current = BoardVisualAnchors::default();
+        assert_eq!(
+            particle_effects_for_event(
+                &GameEvent::ImitaterMorphed {
+                    entity: 1,
+                    plant_type: PlantType::Peashooter,
+                },
+                SceneKind::Day,
+                &anchors,
+                &current,
+            ),
+            vec![("ImitaterMorph", 140.0, 240.0, 13)]
+        );
+        assert_eq!(
+            particle_effects_for_event(
+                &GameEvent::PlantFired {
+                    entity: 1,
+                    plant_type: PlantType::Other(8),
+                    variant: 0,
+                },
+                SceneKind::Day,
+                &anchors,
+                &current,
+            ),
+            vec![("PuffShroomMuzzle", 128.0, 218.0, 11)]
+        );
+        assert_eq!(
+            particle_effects_for_event(
+                &GameEvent::GraveCleared {
+                    entity: 1,
+                    row: 2,
+                    column: 0,
+                },
+                SceneKind::Night,
+                &BoardVisualAnchors::default(),
+                &anchors,
+            ),
+            vec![("GraveBusterDie", 140.0, 240.0, 13)]
+        );
+        assert_eq!(
+            particle_effects_for_event(
+                &GameEvent::ZombieSpawned {
+                    entity: 3,
+                    zombie_type: ZombieType::BackupDancer,
+                    row: 2,
+                    wave: 1,
+                },
+                SceneKind::Night,
+                &BoardVisualAnchors::default(),
+                &anchors,
+            ),
+            vec![("DancerRise", 560.0, 692.0, 11)]
+        );
+        assert_eq!(
+            particle_effects_for_event(
+                &GameEvent::DiggerSurfaced { entity: 2 },
+                SceneKind::Day,
+                &anchors,
+                &current,
+            ),
+            vec![("DiggerRise", 360.0, 500.0, 11)]
+        );
+        assert_eq!(
+            particle_effects_for_event(
+                &GameEvent::ZombieEnteredPool {
+                    entity: 2,
+                    variant: 0,
+                },
+                SceneKind::Pool,
+                &anchors,
+                &current,
+            ),
+            vec![("PlantingPool", 360.0, 502.0, 11)]
+        );
+        assert_eq!(
+            particle_effects_for_event(
+                &GameEvent::TangleKelpWaterEntry { entity: 1 },
+                SceneKind::Pool,
+                &anchors,
+                &current,
+            ),
+            vec![("PlantingPool", 131.0, 264.0, 11)]
+        );
+        assert_eq!(
+            particle_effects_for_event(
+                &GameEvent::ZombieGraveRumble { entity: 2 },
+                SceneKind::Night,
+                &anchors,
+                &current,
+            ),
+            vec![("ZombieRise", 360.0, 492.0, 11)]
+        );
+        assert!(
+            particle_effects_for_event(
+                &GameEvent::ZombieGraveRumble { entity: 2 },
+                SceneKind::Day,
+                &anchors,
+                &current,
+            )
+            .is_empty()
+        );
+        assert_eq!(
+            particle_effects_for_event(
+                &GameEvent::ZombieWhackRise { entity: 2 },
+                SceneKind::Night,
+                &anchors,
+                &current,
+            ),
+            vec![("WhackAZombieRise", 360.0, 492.0, 11)]
+        );
+    }
+
+    #[test]
+    fn whack_bonk_starts_pow_at_the_source_click_offset() {
+        let anchors = BoardVisualAnchors::default();
+        assert_eq!(
+            particle_effects_for_event(
+                &GameEvent::WhackHit {
+                    x: 200,
+                    y: 300,
+                    sound: WhackHitSound::Bonk,
+                    variant: 0,
+                },
+                SceneKind::Night,
+                &anchors,
+                &anchors,
+            ),
+            vec![("Pow", 197.0, 309.0, 30)]
+        );
+        assert!(
+            particle_effects_for_event(
+                &GameEvent::WhackHit {
+                    x: 200,
+                    y: 300,
+                    sound: WhackHitSound::Shield,
+                    variant: 0,
+                },
+                SceneKind::Night,
+                &anchors,
+                &anchors,
+            )
+            .is_empty()
+        );
+    }
+
+    #[test]
+    fn source_stage_and_shuffle_events_start_the_screen_flash() {
+        let anchors = BoardVisualAnchors::default();
+        for event in [
+            GameEvent::PuzzleStageStarted { stage: 1 },
+            GameEvent::BeghouledShuffled,
+        ] {
+            assert_eq!(
+                particle_effects_for_event(&event, SceneKind::Day, &anchors, &anchors,),
+                vec![("ScreenFlash", 400.0, 300.0, 30)]
+            );
+        }
+    }
+
+    #[test]
+    fn portal_open_events_start_the_matching_source_particle() {
+        let anchors = BoardVisualAnchors::default();
+        assert_eq!(
+            particle_effects_for_event(
+                &GameEvent::PortalOpened {
+                    row: 2,
+                    column: 5,
+                    square: false,
+                },
+                SceneKind::Day,
+                &anchors,
+                &anchors,
+            ),
+            vec![("PortalCircle", 493.0, 261.0, 11)]
+        );
+        assert_eq!(
+            particle_effects_for_event(
+                &GameEvent::PortalOpened {
+                    row: 2,
+                    column: 5,
+                    square: true,
+                },
+                SceneKind::Day,
+                &anchors,
+                &anchors,
+            ),
+            vec![("PortalSquare", 485.0, 276.0, 11)]
+        );
+    }
+
+    #[test]
+    fn digger_spawn_and_mower_hit_start_source_particles() {
+        let mut anchors = BoardVisualAnchors::default();
+        anchors.zombies.insert(
+            1,
+            BoardVisualAnchor {
+                x: 300.0,
+                y: 400.0,
+                previous_x: 300.0,
+                previous_y: 400.0,
+                row: 2,
+                zombie_type: Some(ZombieType::Digger),
+            },
+        );
+        assert_eq!(
+            particle_effects_for_event(
+                &GameEvent::ZombieSpawned {
+                    entity: 1,
+                    zombie_type: ZombieType::Digger,
+                    row: 2,
+                    wave: 1,
+                },
+                SceneKind::Day,
+                &anchors,
+                &BoardVisualAnchors::default(),
+            ),
+            vec![("DiggerTunnel", 360.0, 482.0, 11)]
+        );
+        assert_eq!(
+            particle_effects_for_event(
+                &GameEvent::MowerZombieHit {
+                    entity: 1,
+                    pool: false,
+                    variant: 0,
+                },
+                SceneKind::Day,
+                &anchors,
+                &BoardVisualAnchors::default(),
+            ),
+            vec![("MowerCloud", 410.0, 382.0, 11)]
+        );
+        anchors.zombies.insert(
+            2,
+            BoardVisualAnchor {
+                zombie_type: Some(ZombieType::Normal),
+                ..anchors.zombies[&1]
+            },
+        );
+        assert!(
+            particle_effects_for_event(
+                &GameEvent::MowerZombieHit {
+                    entity: 2,
+                    pool: false,
+                    variant: 0,
+                },
+                SceneKind::Day,
+                &anchors,
+                &BoardVisualAnchors::default(),
+            )
+            .is_empty()
+        );
+        anchors.zombies.insert(
+            3,
+            BoardVisualAnchor {
+                zombie_type: Some(ZombieType::Boss),
+                ..anchors.zombies[&1]
+            },
+        );
+        assert_eq!(
+            particle_effects_for_event(
+                &GameEvent::ZombieDied { entity: 3 },
+                SceneKind::Boss,
+                &anchors,
+                &BoardVisualAnchors::default(),
+            ),
+            vec![("BossExplosion", 700.0, 150.0, 11)]
+        );
+    }
+
+    #[test]
+    fn particle_variants_follow_vase_vehicle_armor_and_special_source_definitions() {
+        let mut anchors = BoardVisualAnchors::default();
+        anchors.plants.insert(
+            1,
+            BoardVisualAnchor {
+                x: 100.0,
+                y: 200.0,
+                previous_x: 100.0,
+                previous_y: 200.0,
+                row: 2,
+                zombie_type: None,
+            },
+        );
+        let mut zombie = |id, zombie_type| {
+            anchors.zombies.insert(
+                id,
+                BoardVisualAnchor {
+                    x: 300.0,
+                    y: 400.0,
+                    previous_x: 300.0,
+                    previous_y: 400.0,
+                    row: 2,
+                    zombie_type: Some(zombie_type),
+                },
+            );
+        };
+        zombie(2, ZombieType::Catapult);
+        zombie(8, ZombieType::Zamboni);
+        zombie(3, ZombieType::Conehead);
+        zombie(4, ZombieType::Buckethead);
+        zombie(5, ZombieType::ScreenDoor);
+        zombie(6, ZombieType::Ladder);
+        zombie(7, ZombieType::Newspaper);
+        zombie(9, ZombieType::Pogo);
+
+        let empty = BoardVisualAnchors::default();
+        for (contents, leaf, expected) in [
+            (
+                VaseContents::Plant(PlantType::Peashooter),
+                false,
+                "VaseShatter",
+            ),
+            (
+                VaseContents::Zombie(ZombieType::Normal),
+                false,
+                "VaseShatterZombie",
+            ),
+            (VaseContents::Sun(25), true, "VaseShatterLeaf"),
+        ] {
+            assert_eq!(
+                particle_effects_for_event(
+                    &GameEvent::VaseRevealed {
+                        entity: 1,
+                        row: 2,
+                        column: 3,
+                        contents,
+                        leaf,
+                    },
+                    SceneKind::Day,
+                    &empty,
+                    &empty,
+                ),
+                vec![(expected, 340.0, 300.0, 13)]
+            );
+        }
+        assert_eq!(
+            particle_effects_for_event(
+                &GameEvent::VehicleExploded { entity: 2 },
+                SceneKind::Day,
+                &anchors,
+                &empty,
+            ),
+            vec![("CatapultExplosion", 380.0, 442.0, 11)]
+        );
+        assert_eq!(
+            particle_effects_for_event(
+                &GameEvent::ZombieDamageTierChanged { entity: 2, tier: 2 },
+                SceneKind::Day,
+                &anchors,
+                &empty,
+            ),
+            vec![("ZamboniSmoke", 347.0, 459.0, 11)]
+        );
+        assert!(
+            particle_effects_for_event(
+                &GameEvent::ZombieDamageTierChanged { entity: 2, tier: 1 },
+                SceneKind::Day,
+                &anchors,
+                &empty,
+            )
+            .is_empty()
+        );
+        assert_eq!(
+            particle_effects_for_event(
+                &GameEvent::VehicleDisabled { entity: 8 },
+                SceneKind::Day,
+                &anchors,
+                &empty,
+            ),
+            vec![("ZamboniTire", 329.0, 496.0, 11)]
+        );
+        assert_eq!(
+            particle_effects_for_event(
+                &GameEvent::PogoStickLost { entity: 9 },
+                SceneKind::Day,
+                &anchors,
+                &empty,
+            ),
+            vec![("ZombiePogo", 360.0, 480.0, 11)]
+        );
+        assert_eq!(
+            particle_effects_for_event(
+                &GameEvent::ZombieArmorLost { entity: 3 },
+                SceneKind::Day,
+                &anchors,
+                &empty,
+            ),
+            vec![("ZombieTrafficCone", 360.0, 440.0, 11)]
+        );
+        assert_eq!(
+            particle_effects_for_event(
+                &GameEvent::ZombieArmorLost { entity: 4 },
+                SceneKind::Day,
+                &anchors,
+                &empty,
+            ),
+            vec![("ZombiePail", 360.0, 440.0, 11)]
+        );
+        assert_eq!(
+            particle_effects_for_event(
+                &GameEvent::ZombieShieldLost { entity: 5 },
+                SceneKind::Day,
+                &anchors,
+                &empty,
+            ),
+            vec![("ZombieDoor", 360.0, 450.0, 11)]
+        );
+        assert_eq!(
+            particle_effects_for_event(
+                &GameEvent::ZombieShieldLost { entity: 6 },
+                SceneKind::Day,
+                &anchors,
+                &empty,
+            ),
+            vec![("ZombieLadder", 331.0, 462.0, 11)]
+        );
+        assert_eq!(
+            particle_effects_for_event(
+                &GameEvent::ZombieNewspaperRipped { entity: 7 },
+                SceneKind::Day,
+                &anchors,
+                &empty,
+            ),
+            vec![("ZombieNewspaper", 360.0, 442.0, 11)]
+        );
+        assert_eq!(
+            particle_effects_for_event(
+                &GameEvent::ZombieBodyPartLost {
+                    entity: 7,
+                    head: true,
+                },
+                SceneKind::Day,
+                &anchors,
+                &empty,
+            ),
+            vec![("ZombieNewspaperHead", 360.0, 440.0, 11)]
+        );
+    }
+
+    #[test]
+    fn mower_zamboni_uses_the_source_explosion_variant() {
+        let mut anchors = BoardVisualAnchors::default();
+        anchors.zombies.insert(
+            1,
+            BoardVisualAnchor {
+                x: 300.0,
+                y: 400.0,
+                previous_x: 300.0,
+                previous_y: 400.0,
+                row: 2,
+                zombie_type: Some(ZombieType::Zamboni),
+            },
+        );
+        let events = [
+            GameEvent::MowerZombieHit {
+                entity: 1,
+                pool: false,
+                variant: 0,
+            },
+            GameEvent::VehicleExploded { entity: 1 },
+        ];
+        assert_eq!(
+            particle_effects_for_event_batch(
+                &events[1],
+                &events,
+                SceneKind::Day,
+                &anchors,
+                &BoardVisualAnchors::default(),
+            ),
+            vec![("ZamboniExplosion2", 380.0, 442.0, 11)]
+        );
+        assert_eq!(
+            particle_effects_for_event(
+                &events[1],
+                SceneKind::Day,
+                &anchors,
+                &BoardVisualAnchors::default(),
+            ),
+            vec![("ZamboniExplosion", 380.0, 442.0, 11)]
+        );
+    }
+
+    #[test]
+    fn zombie_head_particles_follow_source_special_and_pool_variants() {
+        for (zombie_type, scene, expected) in [
+            (ZombieType::Pogo, SceneKind::Day, "ZombiePogoHead"),
+            (ZombieType::Balloon, SceneKind::Day, "ZombieBalloonHead"),
+            (ZombieType::Normal, SceneKind::Pool, "ZombieHeadPool"),
+        ] {
+            let mut anchors = BoardVisualAnchors::default();
+            anchors.zombies.insert(
+                1,
+                BoardVisualAnchor {
+                    x: 300.0,
+                    y: 400.0,
+                    previous_x: 300.0,
+                    previous_y: 400.0,
+                    row: 2,
+                    zombie_type: Some(zombie_type),
+                },
+            );
+            if expected == "ZombieHeadPool" {
+                anchors.zombie_in_pool.insert(1, true);
+            }
+            assert_eq!(
+                particle_effects_for_event(
+                    &GameEvent::ZombieBodyPartLost {
+                        entity: 1,
+                        head: true,
+                    },
+                    scene,
+                    &anchors,
+                    &BoardVisualAnchors::default(),
+                ),
+                vec![(expected, 360.0, 440.0, 11)]
+            );
+        }
+    }
+
+    #[test]
+    fn fume_and_gloom_firing_start_source_cloud_particles() {
+        let mut anchors = BoardVisualAnchors::default();
+        anchors.plants.insert(
+            1,
+            BoardVisualAnchor {
+                x: 100.0,
+                y: 200.0,
+                previous_x: 100.0,
+                previous_y: 200.0,
+                row: 2,
+                zombie_type: None,
+            },
+        );
+        for (plant_type, expected) in [
+            (PlantType::Other(10), ("FumeCloud", 185.0, 231.0, 11)),
+            (PlantType::Other(42), ("GloomCloud", 140.0, 240.0, 11)),
+        ] {
+            assert_eq!(
+                particle_effects_for_event(
+                    &GameEvent::PlantParticleTriggered {
+                        entity: 1,
+                        plant_type,
+                    },
+                    SceneKind::Night,
+                    &anchors,
+                    &BoardVisualAnchors::default(),
+                ),
+                vec![expected]
+            );
+        }
+    }
+
+    #[test]
+    fn wallnut_chew_particles_follow_target_and_zombie_offsets() {
+        let mut anchors = BoardVisualAnchors::default();
+        anchors.plant_types.insert(7, PlantType::Other(3));
+        anchors.plant_types.insert(8, PlantType::Other(23));
+        anchors.plant_types.insert(9, PlantType::Other(21));
+        for (entity, zombie_type) in [
+            (1, ZombieType::Normal),
+            (2, ZombieType::Balloon),
+            (3, ZombieType::Imp),
+            (4, ZombieType::Snorkel),
+        ] {
+            anchors.zombies.insert(
+                entity,
+                BoardVisualAnchor {
+                    x: 300.0,
+                    y: 400.0,
+                    previous_x: 300.0,
+                    previous_y: 400.0,
+                    row: 2,
+                    zombie_type: Some(zombie_type),
+                },
+            );
+        }
+        assert_eq!(
+            particle_effects_for_event(
+                &GameEvent::ZombieChew {
+                    entity: 1,
+                    target: Some(7),
+                    soft: false,
+                    variant: 0,
+                },
+                SceneKind::Day,
+                &anchors,
+                &BoardVisualAnchors::default(),
+            ),
+            vec![("WallnutEatSmall", 337.0, 422.0, 11)]
+        );
+        assert_eq!(
+            particle_effects_for_event(
+                &GameEvent::ZombieChew {
+                    entity: 2,
+                    target: Some(8),
+                    soft: false,
+                    variant: 0,
+                },
+                SceneKind::Day,
+                &anchors,
+                &BoardVisualAnchors::default(),
+            ),
+            vec![("WallnutEatSmall", 337.0, 469.0, 11)]
+        );
+        assert_eq!(
+            particle_effects_for_event(
+                &GameEvent::ZombieChew {
+                    entity: 3,
+                    target: Some(8),
+                    soft: false,
+                    variant: 0,
+                },
+                SceneKind::Day,
+                &anchors,
+                &BoardVisualAnchors::default(),
+            ),
+            vec![("WallnutEatSmall", 361.0, 462.0, 11)]
+        );
+        assert_eq!(
+            particle_effects_for_event(
+                &GameEvent::ZombieChew {
+                    entity: 4,
+                    target: Some(7),
+                    soft: false,
+                    variant: 0,
+                },
+                SceneKind::Day,
+                &anchors,
+                &BoardVisualAnchors::default(),
+            ),
+            vec![("WallnutEatSmall", 293.0, 492.0, 11)]
+        );
+        assert!(
+            particle_effects_for_event(
+                &GameEvent::ZombieChew {
+                    entity: 1,
+                    target: Some(9),
+                    soft: false,
+                    variant: 0,
+                },
+                SceneKind::Day,
+                &anchors,
+                &BoardVisualAnchors::default(),
+            )
+            .is_empty()
+        );
+        assert!(
+            particle_effects_for_event(
+                &GameEvent::ZombieChew {
+                    entity: 1,
+                    target: None,
+                    soft: false,
+                    variant: 0,
+                },
+                SceneKind::Day,
+                &anchors,
+                &BoardVisualAnchors::default(),
+            )
+            .is_empty()
+        );
+    }
+
+    #[test]
+    fn wallnut_crack_particles_start_only_when_health_crosses_source_tiers() {
+        let mut anchors = BoardVisualAnchors::default();
+        anchors.plants.insert(
+            1,
+            BoardVisualAnchor {
+                x: 100.0,
+                y: 200.0,
+                previous_x: 100.0,
+                previous_y: 200.0,
+                row: 2,
+                zombie_type: None,
+            },
+        );
+        anchors.plant_types.insert(1, PlantType::Other(3));
+        anchors.plant_health.insert(1, (4_000, 4_000));
+        assert_eq!(
+            particle_effects_for_event(
+                &GameEvent::PlantDamaged {
+                    entity: 1,
+                    damage: 1_400,
+                    health_remaining: 2_600,
+                },
+                SceneKind::Day,
+                &anchors,
+                &BoardVisualAnchors::default(),
+            ),
+            vec![("WallnutEatLarge", 140.0, 210.0, 13)]
+        );
+        anchors.plant_health.insert(1, (2_600, 4_000));
+        assert_eq!(
+            particle_effects_for_event(
+                &GameEvent::PlantDamaged {
+                    entity: 1,
+                    damage: 1_300,
+                    health_remaining: 1_300,
+                },
+                SceneKind::Day,
+                &anchors,
+                &BoardVisualAnchors::default(),
+            ),
+            vec![("WallnutEatLarge", 140.0, 210.0, 13)]
+        );
+        anchors.plant_types.insert(1, PlantType::Other(23));
+        anchors.plant_health.insert(1, (8_000, 8_000));
+        assert_eq!(
+            particle_effects_for_event(
+                &GameEvent::PlantDamaged {
+                    entity: 1,
+                    damage: 2_700,
+                    health_remaining: 5_300,
+                },
+                SceneKind::Day,
+                &anchors,
+                &BoardVisualAnchors::default(),
+            ),
+            vec![("WallnutEatLarge", 140.0, 178.0, 13)]
+        );
+        anchors.plant_health.insert(1, (5_300, 8_000));
+        assert!(
+            particle_effects_for_event(
+                &GameEvent::PlantDamaged {
+                    entity: 1,
+                    damage: 100,
+                    health_remaining: 5_200,
+                },
+                SceneKind::Day,
+                &anchors,
+                &BoardVisualAnchors::default(),
+            )
+            .is_empty()
+        );
+    }
+
+    #[test]
+    fn collected_pickups_start_source_present_and_award_particles() {
+        let mut anchors = BoardVisualAnchors::default();
+        anchors.coins.insert(7, (100.0, 200.0));
+        let event = |coin_type| GameEvent::PickupCollected {
+            entity: 7,
+            coin_type,
+            value: 1,
+            coins_total: 0,
+            sun_total: 0,
+        };
+
+        assert_eq!(
+            particle_effects_for_event(
+                &event(CoinType::PresentPlant),
+                SceneKind::Day,
+                &anchors,
+                &BoardVisualAnchors::default(),
+            ),
+            vec![("PresentPickup", 130.0, 230.0, 13)]
+        );
+        assert_eq!(
+            particle_effects_for_event(
+                &event(CoinType::Note),
+                SceneKind::Day,
+                &anchors,
+                &BoardVisualAnchors::default(),
+            ),
+            vec![
+                ("Starburst", 130.0, 230.0, 13),
+                ("PresentPickup", 130.0, 230.0, 13),
+            ]
+        );
+        assert_eq!(
+            particle_effects_for_event(
+                &event(CoinType::AwardPresent),
+                SceneKind::Day,
+                &anchors,
+                &BoardVisualAnchors::default(),
+            ),
+            vec![("Starburst", 130.0, 230.0, 13)]
+        );
+        assert!(
+            particle_effects_for_event(
+                &event(CoinType::Gold),
+                SceneKind::Day,
+                &anchors,
+                &BoardVisualAnchors::default(),
+            )
+            .is_empty()
+        );
+    }
+
+    #[test]
+    fn landing_arrow_particles_follow_source_names_and_image_offsets() {
+        for (coin_type, expected) in [
+            (CoinType::FinalSeedPacket, ("SeedPacket", 25.0, -25.0)),
+            (CoinType::Silver, ("CoinPickupArrow", 32.0, -17.0)),
+            (CoinType::Gold, ("CoinPickupArrow", 32.0, -17.0)),
+            (CoinType::Trophy, ("AwardPickupArrow", 43.0, -29.0)),
+            (CoinType::Shovel, ("AwardPickupArrow", 40.0, -20.0)),
+            (CoinType::Almanac, ("AwardPickupArrow", 40.0, -20.0)),
+            (CoinType::CarKeys, ("AwardPickupArrow", 40.0, -20.0)),
+            (CoinType::Vase, ("AwardPickupArrow", 40.0, -10.0)),
+            (CoinType::WateringCan, ("AwardPickupArrow", 40.0, -20.0)),
+            (CoinType::Taco, ("AwardPickupArrow", 40.0, -20.0)),
+            (CoinType::Note, ("AwardPickupArrow", 39.0, -34.0)),
+            (CoinType::AwardMoneyBag, ("AwardPickupArrow", 47.0, -23.0)),
+            (CoinType::AwardPresent, ("AwardPickupArrow", 40.0, -40.0)),
+            (CoinType::AwardBagDiamond, ("AwardPickupArrow", 47.0, -23.0)),
+            (
+                CoinType::AwardSilverSunflower,
+                ("AwardPickupArrow", 72.0, 34.0),
+            ),
+            (
+                CoinType::AwardGoldSunflower,
+                ("AwardPickupArrow", 72.0, 34.0),
+            ),
+            (CoinType::AwardChocolate, ("AwardPickupArrow", 28.0, -27.0)),
+            (
+                CoinType::PresentMinigames,
+                ("AwardPickupArrow", 40.0, -40.0),
+            ),
+            (
+                CoinType::PresentPuzzleMode,
+                ("AwardPickupArrow", 40.0, -40.0),
+            ),
+            (
+                CoinType::PresentSurvivalMode,
+                ("AwardPickupArrow", 40.0, -40.0),
+            ),
+        ] {
+            assert_eq!(coin_arrow_particle(coin_type, true), Some(expected));
+        }
+        assert_eq!(coin_arrow_particle(CoinType::Trophy, false), None);
+        assert_eq!(coin_arrow_particle(CoinType::Diamond, true), None);
+    }
+
+    #[test]
     fn help_controls_use_the_source_note_button_regions() {
         assert!(help_selector_contains(700.0, 500.0));
         assert!(help_button_contains(350.0, 520.0));
@@ -10005,6 +13022,73 @@ mod tests {
         assert!(credits_replay_contains(40.0, 560.0));
         assert!(credits_main_menu_contains(400.0, 580.0));
         assert!(!credits_main_menu_contains(200.0, 580.0));
+    }
+
+    #[test]
+    fn credits_particles_follow_source_timed_events() {
+        let cues = (1..=credits_end_update_count())
+            .flat_map(|current| credits_particle_cues(current - 1, current))
+            .collect::<Vec<_>>();
+        let names = cues
+            .iter()
+            .filter_map(|cue| match cue {
+                CreditsParticleCue::Spawn(name) | CreditsParticleCue::StartFog(name) => Some(*name),
+                CreditsParticleCue::StopFog => None,
+            })
+            .collect::<Vec<_>>();
+        assert_eq!(
+            names
+                .iter()
+                .filter(|name| **name == "Credits_Strobe")
+                .count(),
+            58
+        );
+        assert_eq!(
+            names
+                .iter()
+                .filter(|name| **name == "Credits_RaysWipe")
+                .count(),
+            1
+        );
+        assert_eq!(
+            names
+                .iter()
+                .filter(|name| **name == "Credits_ZombieHeadWipe")
+                .count(),
+            2
+        );
+        assert_eq!(
+            names.iter().filter(|name| **name == "Credits_fog").count(),
+            1
+        );
+        assert_eq!(
+            cues.iter()
+                .filter(|cue| **cue == CreditsParticleCue::StopFog)
+                .count(),
+            1
+        );
+        assert!(credits_particle_cues(1333, 1334).is_empty());
+        assert!(credits_particle_cues(2000, 2000).is_empty());
+
+        let transform = |x| ReanimatorTransform {
+            x,
+            y: 0.0,
+            skew_x: 0.0,
+            skew_y: 0.0,
+            scale_x: 1.0,
+            scale_y: 1.0,
+            frame: 0.0,
+            alpha: 1.0,
+            image: None,
+        };
+        let definition = ReanimatorDefinition {
+            fps: 7.0,
+            tracks: vec![ReanimatorTrack {
+                name: "Background2".to_owned(),
+                transforms: vec![transform(0.0), transform(-10.0)],
+            }],
+        };
+        assert_eq!(credits_fog_x(Some(&definition), 0.5), Some(851.0));
     }
 
     #[test]
@@ -10368,6 +13452,8 @@ mod tests {
             (GameEvent::WhackHammerSwung, "sounds/swing.ogg"),
             (
                 GameEvent::WhackHit {
+                    x: 0,
+                    y: 0,
                     sound: WhackHitSound::Bonk,
                     variant: 0,
                 },
@@ -10375,6 +13461,8 @@ mod tests {
             ),
             (
                 GameEvent::WhackHit {
+                    x: 0,
+                    y: 0,
                     sound: WhackHitSound::Shield,
                     variant: 0,
                 },
@@ -10382,6 +13470,8 @@ mod tests {
             ),
             (
                 GameEvent::WhackHit {
+                    x: 0,
+                    y: 0,
                     sound: WhackHitSound::Shield,
                     variant: 1,
                 },
@@ -10389,6 +13479,8 @@ mod tests {
             ),
             (
                 GameEvent::WhackHit {
+                    x: 0,
+                    y: 0,
                     sound: WhackHitSound::Plastic,
                     variant: 0,
                 },
@@ -10396,6 +13488,8 @@ mod tests {
             ),
             (
                 GameEvent::WhackHit {
+                    x: 0,
+                    y: 0,
                     sound: WhackHitSound::Plastic,
                     variant: 1,
                 },
@@ -11009,6 +14103,10 @@ mod tests {
             Some((AudioKind::Effect, "sounds/gravestone_rumble.ogg"))
         );
         assert_eq!(
+            audio_for_event(&GameEvent::ZombieWhackRise { entity: 1 }),
+            Some((AudioKind::Effect, "sounds/dirt_rise.ogg"))
+        );
+        assert_eq!(
             audio_for_event(&GameEvent::LadderPlaced {
                 zombie: 1,
                 row: 2,
@@ -11178,6 +14276,7 @@ mod tests {
             assert_eq!(
                 audio_for_event(&GameEvent::ProjectileImpact {
                     projectile: 1,
+                    projectile_type: ProjectileType::Pea,
                     zombie: Some(2),
                     kind,
                     variant: match kind {
@@ -11327,22 +14426,63 @@ mod tests {
             }),
             Some((AudioKind::Effect, "sounds/digger_zombie.ogg"))
         );
-        assert_eq!(
-            audio_for_event(&GameEvent::ZombieGroaned {
-                entity: 3,
-                zombie_type: neopvz_core::ZombieType::Gargantuar,
-                variant: 1,
-            }),
-            Some((AudioKind::Effect, "sounds/lowgroan2.ogg"))
-        );
-        assert_eq!(
-            audio_for_event(&GameEvent::ZombieGroaned {
-                entity: 4,
-                zombie_type: neopvz_core::ZombieType::Normal,
-                variant: 0,
-            }),
-            Some((AudioKind::Effect, "sounds/groan.ogg"))
-        );
+        for (family, paths) in [
+            (
+                ZombieGroanFamily::Low,
+                &["sounds/lowgroan.ogg", "sounds/lowgroan2.ogg"][..],
+            ),
+            (
+                ZombieGroanFamily::Normal,
+                &[
+                    "sounds/groan.ogg",
+                    "sounds/groan2.ogg",
+                    "sounds/groan3.ogg",
+                    "sounds/groan4.ogg",
+                    "sounds/groan5.ogg",
+                    "sounds/groan6.ogg",
+                ][..],
+            ),
+            (
+                ZombieGroanFamily::Brains,
+                &[
+                    "sounds/groan.ogg",
+                    "sounds/groan2.ogg",
+                    "sounds/groan3.ogg",
+                    "sounds/groan4.ogg",
+                    "sounds/groan5.ogg",
+                    "sounds/groan6.ogg",
+                    "sounds/sukhbir4.ogg",
+                    "sounds/sukhbir5.ogg",
+                    "sounds/sukhbir6.ogg",
+                ][..],
+            ),
+            (
+                ZombieGroanFamily::Sukhbir,
+                &[
+                    "sounds/groan.ogg",
+                    "sounds/groan2.ogg",
+                    "sounds/groan3.ogg",
+                    "sounds/groan4.ogg",
+                    "sounds/groan5.ogg",
+                    "sounds/groan6.ogg",
+                    "sounds/sukhbir.ogg",
+                    "sounds/sukhbir2.ogg",
+                    "sounds/sukhbir3.ogg",
+                ][..],
+            ),
+        ] {
+            for (variant, path) in paths.iter().enumerate() {
+                assert_eq!(
+                    audio_for_event(&GameEvent::ZombieGroaned {
+                        entity: 3,
+                        zombie_type: neopvz_core::ZombieType::Normal,
+                        family,
+                        variant: variant as u8,
+                    }),
+                    Some((AudioKind::Effect, *path))
+                );
+            }
+        }
         assert_eq!(
             audio_for_event(&GameEvent::ZombieChew {
                 entity: 5,
@@ -11476,7 +14616,8 @@ mod tests {
     }
 
     #[test]
-    fn title_mouse_start_requires_left_click_inside_load_bar() {
+    fn title_start_input_uses_source_hitbox_and_button_sound() {
+        assert_eq!(TITLE_START_SOUND_PATH, "sounds/buttonclick.ogg");
         assert!(title_mouse_starts(MouseButton::Left, 400.0, 550.0));
         assert!(!title_mouse_starts(MouseButton::Right, 400.0, 550.0));
         assert!(!title_mouse_starts(MouseButton::Left, 242.0, 550.0));
@@ -11502,6 +14643,26 @@ mod tests {
         assert!(!mode_is_unlocked(ModeKind::ZenGarden, false, 44, 0));
         assert!(mode_is_unlocked(ModeKind::ZenGarden, false, 45, 0));
         assert!(mode_is_unlocked(ModeKind::Vasebreaker, true, 1, 0));
+    }
+
+    #[test]
+    fn selector_level_digits_follow_source_cels_and_offsets() {
+        assert_eq!(
+            selector_level_digits(1),
+            vec![(1, 486.0, 126.0), (1, 504.0, 128.0)]
+        );
+        assert_eq!(
+            selector_level_digits(3),
+            vec![(1, 486.0, 126.0), (3, 503.0, 128.0)]
+        );
+        assert_eq!(
+            selector_level_digits(40),
+            vec![(4, 485.0, 125.0), (1, 504.0, 128.0), (0, 513.0, 129.0)]
+        );
+        assert_eq!(
+            selector_level_digits(50),
+            vec![(5, 486.0, 125.0), (1, 504.0, 128.0), (0, 513.0, 129.0)]
+        );
     }
 
     #[test]
@@ -11848,43 +15009,162 @@ mod tests {
             ZombieType::Conehead,
             true,
             true,
-            true
+            true,
+            false
         ));
         assert!(!board_zombie_reanim_track_visible(
             "anim_cone",
             ZombieType::Conehead,
             false,
             true,
-            true
+            true,
+            false
         ));
         assert!(board_zombie_reanim_track_visible(
             "Zombie_outerarm_screendoor",
             ZombieType::ScreenDoor,
             true,
             true,
-            true
+            true,
+            false
         ));
         assert!(!board_zombie_reanim_track_visible(
             "Zombie_outerarm_screendoor",
             ZombieType::Normal,
             true,
             true,
-            true
+            true,
+            false
         ));
         assert!(board_zombie_reanim_track_visible(
             "Zombie_flaghand",
             ZombieType::Flag,
             true,
             true,
-            true
+            true,
+            false
         ));
         assert!(!board_zombie_reanim_track_visible(
             "anim_head1",
             ZombieType::Normal,
             true,
             false,
+            true,
+            false
+        ));
+        assert!(board_zombie_reanim_track_visible(
+            "Zombie_mustache",
+            ZombieType::Normal,
+            true,
+            true,
+            true,
             true
         ));
+        assert!(!board_zombie_reanim_track_visible(
+            "Zombie_mustache",
+            ZombieType::Normal,
+            true,
+            false,
+            true,
+            true
+        ));
+        assert!(board_zombie_reanim_track_visible(
+            "Zombie_duckytube",
+            ZombieType::DuckyTube,
+            true,
+            true,
+            true,
+            false
+        ));
+        assert_eq!(mustache_image_symbol(3), "IMAGE_REANIM_ZOMBIE_MUSTACHE3");
+        assert_eq!(
+            future_head_image_symbol(2),
+            "IMAGE_REANIM_ZOMBIE_HEAD_SUNGLASSES3"
+        );
+    }
+
+    #[test]
+    fn hidden_code_keys_audio_and_effect_anchors_use_source_mappings() {
+        assert_eq!(typing_code_character(KeyCode::KeyA), 'a');
+        assert_eq!(typing_code_character(KeyCode::KeyZ), 'z');
+        assert_eq!(typing_code_character(KeyCode::Digit1), '\0');
+        for (code, path) in [
+            (HiddenCode::Mustache, "sounds/polevault.ogg"),
+            (HiddenCode::Future, "sounds/boing.ogg"),
+            (HiddenCode::Pinata, "sounds/juicy.ogg"),
+            (HiddenCode::Daisies, "sounds/loadingbar_flower.ogg"),
+            (HiddenCode::Sukhbir, "sounds/sukhbir.ogg"),
+        ] {
+            assert_eq!(
+                audio_for_event(&GameEvent::HiddenCodeToggled {
+                    code,
+                    enabled: true,
+                }),
+                Some((AudioKind::Effect, path))
+            );
+        }
+        assert_eq!(
+            audio_for_event(&GameEvent::HiddenCodeRejected {
+                code: HiddenCode::Pinata,
+            }),
+            Some((AudioKind::Effect, "sounds/buzzer.ogg"))
+        );
+
+        let mut anchors = BoardVisualAnchors::default();
+        anchors.zombies.insert(
+            1,
+            BoardVisualAnchor {
+                x: 300.0,
+                y: 400.0,
+                previous_x: 300.0,
+                previous_y: 400.0,
+                row: 2,
+                zombie_type: Some(ZombieType::Pogo),
+            },
+        );
+        let empty = BoardVisualAnchors::default();
+        assert_eq!(
+            particle_effects_for_event(
+                &GameEvent::ZombieMustacheDropped {
+                    entity: 1,
+                    variant: 3,
+                },
+                SceneKind::Day,
+                &anchors,
+                &empty,
+            ),
+            vec![("ZombieMustache", 360.0, 440.0, 11)]
+        );
+        assert_eq!(
+            particle_effects_for_event(
+                &GameEvent::ZombieFutureGlassesDropped {
+                    entity: 1,
+                    frame: 1,
+                },
+                SceneKind::Day,
+                &anchors,
+                &empty,
+            ),
+            vec![("ZombieFutureGlasses", 360.0, 440.0, 11)]
+        );
+        assert_eq!(
+            particle_effects_for_event(
+                &GameEvent::ZombiePinataDropped { entity: 1 },
+                SceneKind::Day,
+                &anchors,
+                &empty,
+            ),
+            vec![("Pinata", 360.0, 440.0, 11)]
+        );
+        assert_eq!(
+            particle_effects_for_event(
+                &GameEvent::ZombieDaisiesDropped { entity: 1 },
+                SceneKind::Night,
+                &anchors,
+                &empty,
+            ),
+            vec![("Daisy", 320.0, 535.0, 11)]
+        );
     }
 
     #[test]
@@ -12110,6 +15390,73 @@ mod tests {
         assert!((identity.m11 - 1.0).abs() < 0.001);
         assert!(identity.m02.abs() < 0.001);
         assert!(identity.m12.abs() < 0.001);
+    }
+
+    #[test]
+    fn pool_rise_seaweed_uses_source_tracks_offsets_and_current_transforms() {
+        assert_eq!(
+            zombie_seaweed_attachment_specs(ZombieType::Normal),
+            [
+                ("anim_head1", 30.0, 20.0),
+                ("Zombie_outerarm_upper", 5.0, 5.0),
+                ("Zombie_duckytube", 77.0, 20.0),
+            ]
+        );
+        assert_eq!(
+            zombie_seaweed_attachment_specs(ZombieType::Conehead)[0],
+            ("anim_cone", 37.0, 20.0)
+        );
+        assert_eq!(
+            zombie_seaweed_attachment_specs(ZombieType::Buckethead)[0],
+            ("anim_bucket", 37.0, 20.0)
+        );
+
+        let transform = |x, y| ReanimatorTransform {
+            x,
+            y,
+            skew_x: 0.0,
+            skew_y: 0.0,
+            scale_x: 1.0,
+            scale_y: 1.0,
+            frame: 0.0,
+            alpha: 1.0,
+            image: None,
+        };
+        let definition = ReanimatorDefinition {
+            fps: 100.0,
+            tracks: vec![
+                ReanimatorTrack {
+                    name: "anim_walk".to_owned(),
+                    transforms: vec![transform(0.0, 0.0), transform(0.0, 0.0)],
+                },
+                ReanimatorTrack {
+                    name: "anim_head1".to_owned(),
+                    transforms: vec![transform(10.0, 20.0), transform(30.0, 20.0)],
+                },
+            ],
+        };
+        assert_eq!(
+            reanim_attachment_position(
+                &definition,
+                "anim_walk",
+                0,
+                (100.0, 200.0),
+                "anim_head1",
+                (30.0, 20.0),
+            ),
+            Some((140.0, 240.0))
+        );
+        assert_eq!(
+            reanim_attachment_position(
+                &definition,
+                "anim_walk",
+                1,
+                (100.0, 200.0),
+                "anim_head1",
+                (30.0, 20.0),
+            ),
+            Some((150.0, 240.0))
+        );
     }
 
     #[test]

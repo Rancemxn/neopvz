@@ -1251,6 +1251,7 @@ version = "0.1.0"
 dependencies = [
  "bytemuck",
  "neopvz-core",
+ "neopvz-data",
  "thiserror 2.0.19",
  "wgpu",
  "winit",
