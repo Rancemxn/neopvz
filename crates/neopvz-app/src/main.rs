@@ -39,9 +39,9 @@ use neopvz_render::{
     AWARD_NOTE2_IMAGE_ID, AWARD_NOTE3_IMAGE_ID, AWARD_NOTE4_IMAGE_ID,
     AWARD_SCREEN_BACKGROUND_IMAGE_ID, AWARD_SHOVEL_IMAGE_ID, AWARD_TACO_IMAGE_ID,
     AWARD_TITLE_TEXT_BASE_IMAGE_ID, AWARD_TITLE_TEXT_IMAGE_ID, AWARD_TROPHY_IMAGE_ID,
-    AWARD_WATERING_CAN_IMAGE_ID, AffineSpriteCommand, BOARD_BEGHOULED_TWIST_OVERLAY_IMAGE_ID,
-    BOARD_BRAIN_IMAGE_ID, BOARD_CHOCOLATE_IMAGE_ID, BOARD_COIN_GOLD_IMAGE_ID,
-    BOARD_COIN_SILVER_IMAGE_ID, BOARD_CONVEYOR_BELT_BACKDROP_IMAGE_ID,
+    AWARD_WATERING_CAN_IMAGE_ID, AffineSpriteCommand, AffineSpriteSource,
+    BOARD_BEGHOULED_TWIST_OVERLAY_IMAGE_ID, BOARD_BRAIN_IMAGE_ID, BOARD_CHOCOLATE_IMAGE_ID,
+    BOARD_COIN_GOLD_IMAGE_ID, BOARD_COIN_SILVER_IMAGE_ID, BOARD_CONVEYOR_BELT_BACKDROP_IMAGE_ID,
     BOARD_CONVEYOR_BELT_BASE_IMAGE_ID, BOARD_CRATER_IMAGE_ID, BOARD_DIAMOND_IMAGE_ID,
     BOARD_FUMESHROOM_IMAGE_ID, BOARD_GOLD_SUNFLOWER_IMAGE_ID, BOARD_GRAVE_IMAGE_ID,
     BOARD_MAGNETSHROOM_IMAGE_ID, BOARD_MONEYBAG_IMAGE_ID, BOARD_NOTE_IMAGE_ID,
@@ -114,8 +114,10 @@ use neopvz_render::{
     TITLE_LOAD_BAR_DIRT_IMAGE_ID, TITLE_LOAD_BAR_GRASS_IMAGE_ID, TITLE_LOAD_BAR_ROCK1_IMAGE_ID,
     TITLE_LOAD_BAR_ROCK3_IMAGE_ID, TITLE_LOAD_BAR_SPROUT_BODY_IMAGE_ID,
     TITLE_LOAD_BAR_SPROUT_PETAL_IMAGE_ID, TITLE_LOAD_BAR_ZOMBIE_HAIR_IMAGE_ID,
-    TITLE_LOAD_BAR_ZOMBIE_HEAD_IMAGE_ID, TITLE_LOAD_BAR_ZOMBIE_JAW_IMAGE_ID, TITLE_LOGO_IMAGE_ID,
-    TITLE_START_PROMPT_HOVER_IMAGE_ID, TITLE_START_PROMPT_IMAGE_ID,
+    TITLE_LOAD_BAR_ZOMBIE_HEAD_IMAGE_ID, TITLE_LOAD_BAR_ZOMBIE_JAW_IMAGE_ID,
+    TITLE_LOADING_PROMPT_HOVER_IMAGE_ID, TITLE_LOADING_PROMPT_IMAGE_ID,
+    TITLE_LOADING_PROMPT_SHADOW_IMAGE_ID, TITLE_LOGO_IMAGE_ID, TITLE_POPCAP_LOGO_IMAGE_ID,
+    TITLE_SOD_ROLL_CAP_IMAGE_ID, TITLE_START_PROMPT_HOVER_IMAGE_ID, TITLE_START_PROMPT_IMAGE_ID,
     TITLE_START_PROMPT_SHADOW_IMAGE_ID, TUTORIAL_BUBBLE_IMAGE_ID, TUTORIAL_CONTINUE_IMAGE_ID,
     TUTORIAL_TEXT1_IMAGE_ID, TUTORIAL_TEXT2_IMAGE_ID, UI_PIXEL_IMAGE_ID, ZOMBIES_WON_IMAGE_ID,
     logical_position,
@@ -392,9 +394,12 @@ impl From<Checkpoint> for SceneKind {
 }
 
 const SIMULATION_STEP: Duration = Duration::from_millis(10);
-const TITLE_LOAD_BAR_X: f32 = 243.0;
-const TITLE_LOAD_BAR_Y: f32 = 530.0;
-const TITLE_START_BUTTON_Y: f32 = 529.0;
+// Pixel-measured against the accepted original capture and the 1.0.0.1051
+// LoadingPage_Draw decompilation: grass/clip at x=240, dirt at x=244, the
+// resting start-button Y is 534 (BOUNCE clamps to the curve start at t>=1).
+const TITLE_LOAD_BAR_X: f32 = 240.0;
+const TITLE_LOAD_BAR_DIRT_X: f32 = 244.0;
+const TITLE_START_BUTTON_Y: f32 = 534.0;
 const TITLE_START_BUTTON_WIDTH: f32 = 314.0;
 const TITLE_START_BUTTON_HEIGHT: f32 = 50.0;
 const TITLE_START_SOUND_PATH: &str = "sounds/buttonclick.ogg";
@@ -523,123 +528,207 @@ fn credits_main_menu_contains(x: f32, y: f32) -> bool {
     (298.0..507.0).contains(&x) && (554.0..600.0).contains(&y)
 }
 
-#[derive(Clone, Copy)]
-struct TitleReanimPart {
-    resource_id: u32,
-    x: f32,
-    y: f32,
-    skew_x: f32,
-    skew_y: f32,
-    scale_x: f32,
-    scale_y: f32,
-}
-
-const fn title_reanim_part(
-    resource_id: u32,
-    x: f32,
-    y: f32,
-    skew_x: f32,
-    skew_y: f32,
-    scale_x: f32,
-    scale_y: f32,
-) -> TitleReanimPart {
-    TitleReanimPart {
-        resource_id,
-        x,
-        y,
-        skew_x,
-        skew_y,
-        scale_x,
-        scale_y,
-    }
-}
-
-#[rustfmt::skip]
-const TITLE_SPROUT_PARTS: [TitleReanimPart; 10] = [
-    title_reanim_part(TITLE_LOAD_BAR_ROCK3_IMAGE_ID,          5.2, 22.6,   15.0,   15.0, 0.200, 0.200),
-    title_reanim_part(TITLE_LOAD_BAR_SPROUT_BODY_IMAGE_ID,   -1.5,  4.5,    0.0,    0.0, 0.800, 0.753),
-    title_reanim_part(TITLE_LOAD_BAR_ROCK3_IMAGE_ID,         -0.2, 29.6, -119.9, -119.9, 0.424, 0.424),
-    title_reanim_part(TITLE_LOAD_BAR_ROCK3_IMAGE_ID,          6.0, 22.5,    0.0,    0.0, 0.382, 0.359),
-    title_reanim_part(TITLE_LOAD_BAR_ROCK3_IMAGE_ID,          1.2, 24.1,   15.0,   15.0, 0.200, 0.200),
-    title_reanim_part(TITLE_LOAD_BAR_ROCK3_IMAGE_ID,          6.4, 24.9,   15.0,   15.0, 0.200, 0.200),
-    title_reanim_part(TITLE_LOAD_BAR_ROCK1_IMAGE_ID,          2.1, 28.9, -104.9, -104.9, 0.555, 0.555),
-    title_reanim_part(TITLE_LOAD_BAR_SPROUT_PETAL_IMAGE_ID,   5.0, -6.4,   84.5,   82.5, 0.800, 0.800),
-    title_reanim_part(TITLE_LOAD_BAR_SPROUT_PETAL_IMAGE_ID,  11.1, -4.1,  135.0,  -44.9, 0.800, 0.800),
-    title_reanim_part(TITLE_LOAD_BAR_SPROUT_PETAL_IMAGE_ID,  -5.7,  1.5,    7.3,    7.3, 0.800, 0.800),
-];
-
-#[rustfmt::skip]
-const TITLE_ZOMBIE_PARTS: [TitleReanimPart; 12] = [
-    title_reanim_part(TITLE_LOAD_BAR_ZOMBIE_HEAD_IMAGE_ID, -14.8, -10.1,    1.5,    1.6, 0.799, 0.776),
-    title_reanim_part(TITLE_LOAD_BAR_ZOMBIE_HAIR_IMAGE_ID, -18.5, -12.6,    2.8,    2.8, 0.800, 0.774),
-    title_reanim_part(TITLE_LOAD_BAR_ZOMBIE_JAW_IMAGE_ID,   -9.9,  18.0,    0.0,    0.0, 0.820, 0.792),
-    title_reanim_part(TITLE_LOAD_BAR_ROCK3_IMAGE_ID,         26.3,  28.1,  150.0,  150.0, 0.437, 0.437),
-    title_reanim_part(TITLE_LOAD_BAR_ROCK3_IMAGE_ID,         12.6,  23.4,    0.0,    0.0, 0.400, 0.400),
-    title_reanim_part(TITLE_LOAD_BAR_ROCK1_IMAGE_ID,         19.6,  29.8,  165.0,  165.0, 0.700, 0.700),
-    title_reanim_part(TITLE_LOAD_BAR_ROCK1_IMAGE_ID,         -0.3,  27.6, -179.9, -179.9, 0.555, 0.555),
-    title_reanim_part(TITLE_LOAD_BAR_ROCK1_IMAGE_ID,         16.9,  27.3,  135.0,  135.0, 0.700, 0.700),
-    title_reanim_part(TITLE_LOAD_BAR_ROCK3_IMAGE_ID,         -2.4,  29.2, -179.9, -179.9, 0.471, 0.445),
-    title_reanim_part(TITLE_LOAD_BAR_ROCK3_IMAGE_ID,         -9.3,  28.7,  -59.9,  -59.9, 0.492, 0.555),
-    title_reanim_part(TITLE_LOAD_BAR_ROCK3_IMAGE_ID,          5.1,  23.8,   15.0,   15.0, 0.400, 0.400),
-    title_reanim_part(TITLE_LOAD_BAR_ROCK1_IMAGE_ID,          7.2,  27.5, -224.9, -224.9, 0.648, 0.648),
-];
-
-fn title_start_contains(x: f32, y: f32) -> bool {
+fn title_start_contains(x: f32, y: f32, button_y: f32) -> bool {
     (TITLE_LOAD_BAR_X..TITLE_LOAD_BAR_X + TITLE_START_BUTTON_WIDTH).contains(&x)
-        && (TITLE_START_BUTTON_Y..TITLE_START_BUTTON_Y + TITLE_START_BUTTON_HEIGHT).contains(&y)
+        && (button_y..button_y + TITLE_START_BUTTON_HEIGHT).contains(&y)
 }
 
-fn title_mouse_starts(button: MouseButton, x: f32, y: f32) -> bool {
-    button == MouseButton::Left && title_start_contains(x, y)
+// The target executable uses 0.906 for the final trigger.
+const TITLE_TRIGGER_FRACTIONS: [f32; 5] = [0.11, 0.32, 0.54, 0.72, 0.906];
+const TITLE_REANIM_RATE: f32 = 18.0;
+
+fn tod_curve_bounce(t: f32) -> f32 {
+    1.0 - (2.0 * t - 1.0).abs()
 }
 
-fn push_title_reanimation(
-    frame: &mut RenderFrame,
-    x: f32,
-    y: f32,
-    overlay_scale_x: f32,
-    overlay_scale_y: f32,
-    parts: &[TitleReanimPart],
-) {
-    for part in parts {
-        let skew_x = -part.skew_x.to_radians();
-        let skew_y = -part.skew_y.to_radians();
-        frame.affine_sprites.push(AffineSpriteCommand {
-            resource_id: part.resource_id,
-            x: x + overlay_scale_x * part.x,
-            y: y + overlay_scale_y * part.y,
-            m00: overlay_scale_x * skew_x.cos() * part.scale_x,
-            m01: overlay_scale_x * skew_y.sin() * part.scale_y,
-            m10: overlay_scale_y * -skew_x.sin() * part.scale_x,
-            m11: overlay_scale_y * skew_y.cos() * part.scale_y,
-            z: 4,
-            alpha: 1.0,
-            tint: [1.0; 3],
-            blend_mode: BlendMode::Alpha,
-            source: None,
-        });
+#[derive(Clone, Debug)]
+struct TitleLoadState {
+    logo_counter: u32,
+    counter: u32,
+    tick: u32,
+    bar_width: f32,
+    bar_vel: f32,
+    trigger_ticks: [Option<u32>; 5],
+    label_complete: bool,
+    pressed_button: Option<MouseButton>,
+}
+
+impl TitleLoadState {
+    fn new() -> Self {
+        // Resources load before the first frame, so the source's estimated
+        // load time clamps to 100 ticks and mBarVel starts at 314/100.
+        Self {
+            logo_counter: 200,
+            counter: 100,
+            tick: 0,
+            bar_width: 0.0,
+            bar_vel: TITLE_START_BUTTON_WIDTH / 100.0,
+            trigger_ticks: [None; 5],
+            label_complete: false,
+            pressed_button: None,
+        }
+    }
+
+    fn completed() -> Self {
+        let mut state = Self::new();
+        while !state.label_complete {
+            state.advance();
+        }
+        // Let the one-second load-bar reanimations reach their hold frames.
+        state.tick += 100;
+        state
+    }
+
+    fn ready(&self) -> bool {
+        // Resources are loaded before App is created. The original enables
+        // input on the first fill update that observes loader completion.
+        self.tick > 0
+    }
+
+    fn mouse_press(&mut self, button: MouseButton, over_start: bool) -> bool {
+        if !self.ready() {
+            return false;
+        }
+        self.pressed_button = over_start.then_some(button);
+        true
+    }
+
+    fn mouse_release(&mut self, button: MouseButton, over_start: bool) -> bool {
+        if self.pressed_button != Some(button) {
+            return false;
+        }
+        self.pressed_button = None;
+        over_start && self.ready()
+    }
+
+    fn logo_alpha(&self) -> f32 {
+        ((200 - self.logo_counter).min(self.logo_counter) as f32 / 50.0).min(1.0)
+    }
+
+    /// Start-button Y: EASE_IN 650->534 over counter 60..10, then BOUNCE
+    /// 534<->529 over counter 10..0 (rests at the curve start 534).
+    fn button_y(&self) -> f32 {
+        if self.counter > 10 {
+            let t = ((60.0 - self.counter as f32) / 50.0).clamp(0.0, 1.0);
+            (650.0 - (650.0 - TITLE_START_BUTTON_Y) * t * t).round()
+        } else {
+            let t = (10.0 - self.counter as f32) / 10.0;
+            (TITLE_START_BUTTON_Y - 5.0 * tod_curve_bounce(t)).round()
+        }
+    }
+
+    /// Logo Y: EASE_IN -150->10 over counter 100..60, then BOUNCE 10<->15
+    /// over counter 60..50 (rests at 10).
+    fn logo_y(&self) -> f32 {
+        if self.counter > 60 {
+            let t = ((100.0 - self.counter as f32) / 40.0).clamp(0.0, 1.0);
+            (-150.0 + 160.0 * t * t).round()
+        } else {
+            let t = ((60.0 - self.counter as f32) / 10.0).clamp(0.0, 1.0);
+            (10.0 + 5.0 * tod_curve_bounce(t)).round()
+        }
+    }
+
+    /// Advances one 10ms tick and returns the trigger indices whose loading
+    /// bar crossings fired this tick (each plays loadingbar_flower, index 4
+    /// also plays loadingbar_zombie).
+    fn advance(&mut self) -> Vec<usize> {
+        if self.logo_counter > 0 {
+            self.logo_counter -= 1;
+            return Vec::new();
+        }
+        if self.counter > 0 {
+            self.counter -= 1;
+            if self.counter > 0 {
+                return Vec::new();
+            }
+        }
+        self.tick += 1;
+        let previous_width = self.bar_width;
+        self.bar_width += self.bar_vel;
+        if self.bar_width > TITLE_START_BUTTON_WIDTH {
+            self.label_complete = true;
+            self.bar_width = TITLE_START_BUTTON_WIDTH;
+        }
+        let diff = TITLE_START_BUTTON_WIDTH - self.bar_width;
+        self.bar_vel = (self.bar_vel + diff * diff.abs() * 0.0001).clamp(0.01, 2.0);
+        let mut fired = Vec::new();
+        for (index, &fraction) in TITLE_TRIGGER_FRACTIONS.iter().enumerate() {
+            let trigger_point = TITLE_START_BUTTON_WIDTH * fraction;
+            if previous_width < trigger_point && self.bar_width >= trigger_point {
+                self.trigger_ticks[index] = Some(self.tick);
+                fired.push(index);
+            }
+        }
+        fired
     }
 }
 
-fn push_title_load_bar_reanimations(frame: &mut RenderFrame) {
-    for (index, fraction) in [0.11, 0.32, 0.54, 0.72, 0.91].into_iter().enumerate() {
-        let x = TITLE_START_BUTTON_WIDTH * fraction + 225.0;
-        let mut y = 511.0;
-        let mut scale_x = 1.0;
-        let mut scale_y = 1.0;
-        let parts: &[TitleReanimPart] = if index == 4 {
-            &TITLE_ZOMBIE_PARTS
-        } else {
-            if index == 1 || index == 3 {
-                scale_x = -1.0;
-            } else if index == 2 {
-                y -= 5.0;
-                scale_x = 1.1;
-                scale_y = 1.3;
-            }
-            &TITLE_SPROUT_PARTS
+fn push_title_load_bar_reanimations(
+    frame: &mut RenderFrame,
+    state: &TitleLoadState,
+    catalog: &ReanimCatalog,
+) {
+    for (index, &fraction) in TITLE_TRIGGER_FRACTIONS.iter().enumerate() {
+        let Some(fire_tick) = state.trigger_ticks[index] else {
+            continue;
         };
-        push_title_reanimation(frame, x, y, scale_x, scale_y, parts);
+        let x = TITLE_START_BUTTON_WIDTH * fraction + 225.0 + if index == 4 { -20.0 } else { 0.0 };
+        let y = 511.0 - if index == 2 { 5.0 } else { 0.0 };
+        let (overlay_scale_x, overlay_scale_y) = match index {
+            1 | 3 => (-1.0, 1.0),
+            2 => (1.1, 1.3),
+            _ => (1.0, 1.0),
+        };
+        let definition = if index == 4 {
+            catalog.loadbar_zombiehead.as_ref()
+        } else {
+            catalog.loadbar_sprout.as_ref()
+        };
+        if let Some(definition) = definition {
+            let frame_count = definition
+                .tracks
+                .first()
+                .map_or(0, |track| track.transforms.len());
+            if frame_count == 0 {
+                continue;
+            }
+            let progress = (state.tick.saturating_sub(fire_tick) as f32 * 0.01 * TITLE_REANIM_RATE
+                / frame_count as f32)
+                .min(1.0);
+            let position = progress * (frame_count - 1) as f32;
+            for track in &definition.tracks {
+                let Some(transform) = reanim_transform_at(track, position) else {
+                    continue;
+                };
+                let Some(image) = transform.image.as_deref() else {
+                    continue;
+                };
+                let Some(&resource_id) = catalog.image_ids.get(&image.to_ascii_uppercase()) else {
+                    continue;
+                };
+                let skew_x = -transform.skew_x.to_radians();
+                let skew_y = -transform.skew_y.to_radians();
+                frame.affine_sprites.push(AffineSpriteCommand {
+                    resource_id,
+                    x: x + overlay_scale_x * transform.x - 0.5,
+                    y: y + overlay_scale_y * transform.y - 0.5,
+                    m00: overlay_scale_x * skew_x.cos() * transform.scale_x,
+                    m01: overlay_scale_x * skew_y.sin() * transform.scale_y,
+                    m10: overlay_scale_y * -skew_x.sin() * transform.scale_x,
+                    m11: overlay_scale_y * skew_y.cos() * transform.scale_y,
+                    z: 4,
+                    alpha: transform.alpha,
+                    tint: [1.0; 3],
+                    blend_mode: BlendMode::Alpha,
+                    source: Some(AffineSpriteSource {
+                        uv_min: [0.0; 2],
+                        uv_max: [1.0; 2],
+                        pivot_uv: [0.0; 2],
+                    }),
+                });
+            }
+        }
     }
 }
 
@@ -734,13 +823,32 @@ fn main() -> ExitCode {
             return ExitCode::FAILURE;
         }
     };
-    let audio = match KiraAudioBackend::new() {
+    let mut audio = match KiraAudioBackend::new() {
         Ok(audio) => Some(audio),
         Err(error) => {
             tracing::warn!(%error, "audio backend unavailable; continuing without audio");
             None
         }
     };
+    if let Some(audio) = &mut audio {
+        for path in [
+            TITLE_START_SOUND_PATH,
+            "sounds/loadingbar_flower.ogg",
+            "sounds/loadingbar_zombie.ogg",
+        ] {
+            let preload = resources
+                .read(path)
+                .map_err(|error| error.to_string())
+                .and_then(|bytes| {
+                    audio
+                        .preload_bytes(path, bytes)
+                        .map_err(|error| error.to_string())
+                });
+            if let Err(error) = preload {
+                tracing::warn!(%error, path, "title sound preload failed");
+            }
+        }
+    }
 
     let event_loop = match EventLoop::new() {
         Ok(event_loop) => event_loop,
@@ -911,6 +1019,8 @@ struct ReanimCatalog {
     coin_gold: Option<ReanimatorDefinition>,
     diamond: Option<ReanimatorDefinition>,
     credits_main2: Option<ReanimatorDefinition>,
+    loadbar_sprout: Option<ReanimatorDefinition>,
+    loadbar_zombiehead: Option<ReanimatorDefinition>,
     specialized: Vec<(ZombieType, ReanimatorDefinition)>,
     plants: Vec<(PlantType, ReanimatorDefinition)>,
     image_ids: HashMap<String, u32>,
@@ -926,6 +1036,11 @@ type LoadedAssets = (
 fn load_assets(resources: &ResourceProvider) -> Result<LoadedAssets, String> {
     let mut assets = vec![
         load_image(resources, TITLE_IMAGE_ID, "images/titlescreen.jpg")?,
+        load_image(
+            resources,
+            TITLE_POPCAP_LOGO_IMAGE_ID,
+            "images/PopCap_Logo.jpg",
+        )?,
         load_title_logo(resources)?,
         load_image(
             resources,
@@ -972,12 +1087,41 @@ fn load_assets(resources: &ResourceProvider) -> Result<LoadedAssets, String> {
             TITLE_LOAD_BAR_ZOMBIE_JAW_IMAGE_ID,
             "reanim/Zombie_jaw.png",
         )?,
+        load_image(
+            resources,
+            TITLE_SOD_ROLL_CAP_IMAGE_ID,
+            "reanim/SodRollCap.png",
+        )?,
+        render_colored_text_image(
+            TITLE_LOADING_PROMPT_SHADOW_IMAGE_ID,
+            "\u{8f7d}\u{5165}\u{4e2d}\u{2026}\u{2026}",
+            120,
+            24,
+            19,
+            [71, 45, 0],
+        )?,
+        render_colored_text_image(
+            TITLE_LOADING_PROMPT_IMAGE_ID,
+            "\u{8f7d}\u{5165}\u{4e2d}\u{2026}\u{2026}",
+            120,
+            24,
+            19,
+            [218, 184, 33],
+        )?,
+        render_colored_text_image(
+            TITLE_LOADING_PROMPT_HOVER_IMAGE_ID,
+            "\u{8f7d}\u{5165}\u{4e2d}\u{2026}\u{2026}",
+            120,
+            24,
+            19,
+            [250, 90, 15],
+        )?,
         render_colored_text_image(
             TITLE_START_PROMPT_SHADOW_IMAGE_ID,
             "\u{70b9}\u{51fb}\u{5f00}\u{59cb}",
             120,
             24,
-            16,
+            19,
             [71, 45, 0],
         )?,
         render_colored_text_image(
@@ -985,7 +1129,7 @@ fn load_assets(resources: &ResourceProvider) -> Result<LoadedAssets, String> {
             "\u{70b9}\u{51fb}\u{5f00}\u{59cb}",
             120,
             24,
-            16,
+            19,
             [218, 184, 33],
         )?,
         render_colored_text_image(
@@ -993,7 +1137,7 @@ fn load_assets(resources: &ResourceProvider) -> Result<LoadedAssets, String> {
             "\u{70b9}\u{51fb}\u{5f00}\u{59cb}",
             120,
             24,
-            16,
+            19,
             [250, 90, 15],
         )?,
         load_image(
@@ -2396,6 +2540,15 @@ fn load_assets(resources: &ResourceProvider) -> Result<LoadedAssets, String> {
     );
     let reanim_catalog = load_reanim_catalog(resources, &mut assets)?;
     let (particle_catalog, particle_images) = load_particle_catalog(resources, &mut assets)?;
+    let mut image_ids = std::collections::HashSet::new();
+    for asset in &assets {
+        if !image_ids.insert(asset.resource_id) {
+            return Err(format!(
+                "duplicate image resource ID: {}",
+                asset.resource_id
+            ));
+        }
+    }
     Ok((assets, reanim_catalog, particle_catalog, particle_images))
 }
 
@@ -2547,6 +2700,16 @@ fn load_reanim_catalog(
         &definition_paths,
         "Credits_Main2.reanim.compiled",
     )?;
+    let loadbar_sprout = load_reanim_definition(
+        resources,
+        &definition_paths,
+        "LoadBar_sprout.reanim.compiled",
+    )?;
+    let loadbar_zombiehead = load_reanim_definition(
+        resources,
+        &definition_paths,
+        "LoadBar_Zombiehead.reanim.compiled",
+    )?;
     let mut specialized = Vec::new();
     for &(zombie_type, file_name) in SPECIALIZED_REANIM_FILES {
         if let Some(definition) = load_reanim_definition(resources, &definition_paths, file_name)? {
@@ -2571,6 +2734,8 @@ fn load_reanim_catalog(
         && coin_silver.is_none()
         && coin_gold.is_none()
         && diamond.is_none()
+        && loadbar_sprout.is_none()
+        && loadbar_zombiehead.is_none()
         && specialized.is_empty()
         && plants.is_empty()
     {
@@ -2652,6 +2817,40 @@ fn load_reanim_catalog(
         assets.push(load_image(resources, id, &path)?);
         image_ids.insert(symbol, id);
     }
+    // The load-bar reanim tracks reuse the title images already loaded as
+    // fixed IDs; map their symbols without loading duplicate textures.
+    for (symbol, id) in [
+        (
+            "IMAGE_REANIM_POTATOMINE_ROCK1",
+            TITLE_LOAD_BAR_ROCK1_IMAGE_ID,
+        ),
+        (
+            "IMAGE_REANIM_POTATOMINE_ROCK3",
+            TITLE_LOAD_BAR_ROCK3_IMAGE_ID,
+        ),
+        (
+            "IMAGE_REANIM_SPROUT_BODY",
+            TITLE_LOAD_BAR_SPROUT_BODY_IMAGE_ID,
+        ),
+        (
+            "IMAGE_REANIM_SPROUT_PETAL",
+            TITLE_LOAD_BAR_SPROUT_PETAL_IMAGE_ID,
+        ),
+        (
+            "IMAGE_REANIM_ZOMBIE_HEAD",
+            TITLE_LOAD_BAR_ZOMBIE_HEAD_IMAGE_ID,
+        ),
+        (
+            "IMAGE_REANIM_ZOMBIE_HAIR",
+            TITLE_LOAD_BAR_ZOMBIE_HAIR_IMAGE_ID,
+        ),
+        (
+            "IMAGE_REANIM_ZOMBIE_JAW",
+            TITLE_LOAD_BAR_ZOMBIE_JAW_IMAGE_ID,
+        ),
+    ] {
+        image_ids.entry(symbol.to_owned()).or_insert(id);
+    }
     tracing::info!(
         zombie_tracks = zombie
             .as_ref()
@@ -2713,6 +2912,8 @@ fn load_reanim_catalog(
         coin_gold,
         diamond,
         credits_main2,
+        loadbar_sprout,
+        loadbar_zombiehead,
         specialized,
         plants,
         image_ids,
@@ -3062,6 +3263,7 @@ mod windows_text {
             rect: *mut Rect,
             format: u32,
         ) -> i32;
+        fn GdiFlush() -> i32;
         fn DeleteObject(object: Handle) -> i32;
         fn DeleteDC(device_context: Handle) -> i32;
     }
@@ -3228,13 +3430,15 @@ mod windows_text {
                 &mut rect,
                 DT_CENTER | DT_VCENTER | DT_WORDBREAK | DT_NOPREFIX,
             ) == 0
+                || GdiFlush() == 0
             {
+                DeleteDC(device_context);
                 DeleteObject(font);
                 DeleteObject(bitmap);
-                DeleteDC(device_context);
-                return Err("DrawTextW failed".to_owned());
+                return Err("GDI text drawing failed".to_owned());
             }
 
+            // GDI batches drawing calls; flush before directly reading the DIB.
             let mut rgba = Vec::with_capacity(pixel_count * 4);
             for pixel in buffer.chunks_exact(4) {
                 let luminance = (u16::from(pixel[0]) * 29
@@ -3243,9 +3447,9 @@ mod windows_text {
                     / 256;
                 rgba.extend([0, 0, 0, 255_u16.saturating_sub(luminance) as u8]);
             }
+            DeleteDC(device_context);
             DeleteObject(font);
             DeleteObject(bitmap);
-            DeleteDC(device_context);
             ImageAsset::new(resource_id, width, height, rgba).map_err(|error| error.to_string())
         }
     }
@@ -4226,6 +4430,7 @@ struct App {
     startup_coin_collection: Option<EntityId>,
     startup_particle_warmup: usize,
     visual_effects: Vec<BoardFireEffect>,
+    title_load_state: TitleLoadState,
     profile: Option<SaveProfile>,
 }
 
@@ -4713,6 +4918,14 @@ impl App {
                 _ => 0,
             },
             visual_effects: Vec::new(),
+            // Normal startup runs the slide-in and fill animation; a
+            // Title checkpoint captures the first rendered frame, so it
+            // starts in the completed CLICK_TO_START state.
+            title_load_state: if initial_scene == SceneKind::Title && checkpoint.is_none() {
+                TitleLoadState::new()
+            } else {
+                TitleLoadState::completed()
+            },
             profile,
         };
         let particle_warmup = match checkpoint {
@@ -4817,6 +5030,9 @@ impl App {
     }
 
     fn title_start_hovered(&self) -> bool {
+        if !self.title_load_state.ready() {
+            return false;
+        }
         let Some(position) = self.cursor_position else {
             return false;
         };
@@ -4830,7 +5046,7 @@ impl App {
             position,
             LogicalViewport::default(),
         )
-        .is_some_and(|(x, y)| title_start_contains(x, y))
+        .is_some_and(|(x, y)| title_start_contains(x, y, self.title_load_state.button_y()))
     }
 
     fn can_open_store(&self) -> bool {
@@ -4900,6 +5116,10 @@ impl App {
     }
 
     fn handle_key(&mut self, event_loop: &ActiveEventLoop, key: PhysicalKey) {
+        if self.game.state().scene == SceneKind::Title {
+            self.start_from_title();
+            return;
+        }
         let PhysicalKey::Code(key) = key else {
             return;
         };
@@ -5005,7 +5225,6 @@ impl App {
             KeyCode::Escape => event_loop.exit(),
             KeyCode::F11 => self.toggle_fullscreen(),
             KeyCode::Enter => match self.game.state().scene {
-                SceneKind::Title => self.start_from_title(),
                 SceneKind::AdventureSelect => self.start_scene(SceneKind::AdventureTutorial),
                 SceneKind::AdventureTutorial => self.advance_tutorial(),
                 SceneKind::ModeSelect => self.start_selected_mode(),
@@ -5230,6 +5449,9 @@ impl App {
     }
 
     fn start_from_title(&mut self) {
+        if self.game.state().scene != SceneKind::Title || !self.title_load_state.ready() {
+            return;
+        }
         self.play_audio_resource(AudioKind::Effect, TITLE_START_SOUND_PATH);
         self.start_scene(SceneKind::AdventureSelect);
     }
@@ -5542,8 +5764,12 @@ impl App {
             return;
         };
         if scene == SceneKind::Title {
-            if title_mouse_starts(button, x, y) {
-                self.start_from_title();
+            let over_start = title_start_contains(x, y, self.title_load_state.button_y());
+            if self.title_load_state.mouse_press(button, over_start) {
+                self.play_audio_resource(AudioKind::Effect, TITLE_START_SOUND_PATH);
+                if !over_start {
+                    self.start_scene(SceneKind::AdventureSelect);
+                }
             }
             return;
         }
@@ -5945,6 +6171,31 @@ impl App {
                 self.pending_input.clear();
                 self.simulation_accumulator -= SIMULATION_STEP;
                 continue;
+            }
+            if self.game.state().scene == SceneKind::Title {
+                let was_complete = self.title_load_state.label_complete;
+                let fired = self.title_load_state.advance();
+                if self.title_load_state.tick == 1
+                    || (!was_complete && self.title_load_state.label_complete)
+                {
+                    tracing::info!(
+                        title_tick = self.title_load_state.tick,
+                        ready = self.title_load_state.ready(),
+                        complete = self.title_load_state.label_complete,
+                        "title loading state changed"
+                    );
+                }
+                for index in fired {
+                    tracing::info!(
+                        title_tick = self.title_load_state.tick,
+                        trigger = index,
+                        "title loading trigger"
+                    );
+                    self.play_audio_resource(AudioKind::Effect, "sounds/loadingbar_flower.ogg");
+                    if index == 4 {
+                        self.play_audio_resource(AudioKind::Effect, "sounds/loadingbar_zombie.ogg");
+                    }
+                }
             }
             let input = InputFrame {
                 actions: std::mem::take(&mut self.pending_input),
@@ -8091,6 +8342,19 @@ impl App {
         let mut frame = RenderFrame::default();
         match self.game.state().scene {
             SceneKind::Title => {
+                let state = &self.title_load_state;
+                if state.logo_counter > 0 {
+                    frame.sprites.push(SpriteCommand {
+                        resource_id: TITLE_POPCAP_LOGO_IMAGE_ID,
+                        x: 250.0,
+                        y: 150.0,
+                        z: 0,
+                        scale: 1.0,
+                        alpha: state.logo_alpha(),
+                    });
+                    return frame;
+                }
+                let grass_y = state.button_y() - 17.0;
                 frame.sprites.push(SpriteCommand {
                     resource_id: TITLE_IMAGE_ID,
                     x: 0.0,
@@ -8102,45 +8366,107 @@ impl App {
                 frame.sprites.push(SpriteCommand {
                     resource_id: TITLE_LOGO_IMAGE_ID,
                     x: 50.0,
-                    y: 15.0,
+                    y: state.logo_y(),
                     z: 1,
                     scale: 1.0,
                     alpha: 1.0,
                 });
                 frame.sprites.push(SpriteCommand {
                     resource_id: TITLE_LOAD_BAR_DIRT_IMAGE_ID,
-                    x: TITLE_LOAD_BAR_X,
-                    y: TITLE_LOAD_BAR_Y,
+                    x: TITLE_LOAD_BAR_DIRT_X,
+                    y: grass_y + 18.0,
                     z: 2,
                     scale: 1.0,
                     alpha: 1.0,
                 });
+                if state.bar_width >= TITLE_START_BUTTON_WIDTH {
+                    frame.sprites.push(SpriteCommand {
+                        resource_id: TITLE_LOAD_BAR_GRASS_IMAGE_ID,
+                        x: TITLE_LOAD_BAR_X,
+                        y: grass_y,
+                        z: 3,
+                        scale: 1.0,
+                        alpha: 1.0,
+                    });
+                } else {
+                    let width = state.bar_width.floor();
+                    if width > 0.0 {
+                        // Clipped grass: ClipRect(240, aGrassY, width, 33) in
+                        // the source, expressed as a cropped uv rectangle.
+                        frame.affine_sprites.push(AffineSpriteCommand {
+                            resource_id: TITLE_LOAD_BAR_GRASS_IMAGE_ID,
+                            x: TITLE_LOAD_BAR_X,
+                            y: grass_y,
+                            m00: 1.0,
+                            m01: 0.0,
+                            m10: 0.0,
+                            m11: 1.0,
+                            z: 3,
+                            alpha: 1.0,
+                            tint: [1.0; 3],
+                            blend_mode: BlendMode::Alpha,
+                            source: Some(AffineSpriteSource {
+                                uv_min: [0.0, 0.0],
+                                uv_max: [width / TITLE_START_BUTTON_WIDTH, 1.0],
+                                pivot_uv: [0.0, 0.0],
+                            }),
+                        });
+                    }
+                    // SodRollCap riding the leading edge of the fill.
+                    let roll_len = state.bar_width * 0.94;
+                    let roll_scale = 1.0 - 0.5 * state.bar_width / TITLE_START_BUTTON_WIDTH;
+                    let rotation = -roll_len / 180.0 * std::f32::consts::TAU;
+                    let (sin, cos) = rotation.sin_cos();
+                    frame.affine_sprites.push(AffineSpriteCommand {
+                        resource_id: TITLE_SOD_ROLL_CAP_IMAGE_ID,
+                        x: TITLE_LOAD_BAR_X + 11.0 + roll_len,
+                        y: grass_y - 3.0 - 35.0 * roll_scale + 35.0,
+                        m00: cos * roll_scale,
+                        m01: sin * roll_scale,
+                        m10: -sin * roll_scale,
+                        m11: cos * roll_scale,
+                        z: 3,
+                        alpha: 1.0,
+                        tint: [1.0; 3],
+                        blend_mode: BlendMode::Alpha,
+                        source: None,
+                    });
+                }
+                push_title_load_bar_reanimations(&mut frame, state, &self.reanim_catalog);
+                // The source enables hover as soon as resources are ready,
+                // even while the bar still displays the loading label.
+                let label_y = state.button_y() + 12.0;
+                let (shadow_id, label_id) = if state.label_complete {
+                    (
+                        TITLE_START_PROMPT_SHADOW_IMAGE_ID,
+                        if self.title_start_hovered() {
+                            TITLE_START_PROMPT_HOVER_IMAGE_ID
+                        } else {
+                            TITLE_START_PROMPT_IMAGE_ID
+                        },
+                    )
+                } else {
+                    (
+                        TITLE_LOADING_PROMPT_SHADOW_IMAGE_ID,
+                        if self.title_start_hovered() {
+                            TITLE_LOADING_PROMPT_HOVER_IMAGE_ID
+                        } else {
+                            TITLE_LOADING_PROMPT_IMAGE_ID
+                        },
+                    )
+                };
                 frame.sprites.push(SpriteCommand {
-                    resource_id: TITLE_LOAD_BAR_GRASS_IMAGE_ID,
-                    x: TITLE_LOAD_BAR_X,
-                    y: TITLE_START_BUTTON_Y - 17.0,
-                    z: 3,
-                    scale: 1.0,
-                    alpha: 1.0,
-                });
-                // The source holds these load-bar reanimations on their final frame once ready.
-                push_title_load_bar_reanimations(&mut frame);
-                frame.sprites.push(SpriteCommand {
-                    resource_id: TITLE_START_PROMPT_SHADOW_IMAGE_ID,
+                    resource_id: shadow_id,
                     x: 341.0,
-                    y: 544.0,
+                    y: label_y + 1.0,
                     z: 5,
                     scale: 1.0,
                     alpha: 1.0,
                 });
                 frame.sprites.push(SpriteCommand {
-                    resource_id: if self.title_start_hovered() {
-                        TITLE_START_PROMPT_HOVER_IMAGE_ID
-                    } else {
-                        TITLE_START_PROMPT_IMAGE_ID
-                    },
+                    resource_id: label_id,
                     x: 340.0,
-                    y: 543.0,
+                    y: label_y,
                     z: 6,
                     scale: 1.0,
                     alpha: 1.0,
@@ -11519,6 +11845,7 @@ impl ApplicationHandler for App {
             WindowEvent::CursorMoved { position, .. } => {
                 self.cursor_position = Some(position);
             }
+            WindowEvent::CursorLeft { .. } => self.cursor_position = None,
             WindowEvent::MouseWheel { delta, .. }
                 if self.game.state().scene == SceneKind::SeedChooser =>
             {
@@ -11544,7 +11871,17 @@ impl ApplicationHandler for App {
                 state: ElementState::Released,
                 button,
                 ..
-            } => self.handle_beghouled_mouse_release(button),
+            } => {
+                if self.game.state().scene == SceneKind::Title {
+                    let over_start = self.title_start_hovered();
+                    if self.title_load_state.mouse_release(button, over_start) {
+                        self.start_scene(SceneKind::AdventureSelect);
+                    }
+                } else {
+                    self.handle_beghouled_mouse_release(button);
+                }
+            }
+            WindowEvent::Focused(false) => self.title_load_state.pressed_button = None,
             WindowEvent::KeyboardInput { event, .. }
                 if event.state == ElementState::Pressed && !event.repeat =>
             {
@@ -14608,19 +14945,236 @@ mod tests {
         );
     }
 
+    #[cfg(windows)]
     #[test]
-    fn title_start_hitbox_matches_the_source_load_bar() {
-        assert!(title_start_contains(400.0, 550.0));
-        assert!(!title_start_contains(242.0, 550.0));
-        assert!(!title_start_contains(400.0, 579.0));
+    fn windows_text_images_are_complete_across_repeated_draws() {
+        let text = "\u{70b9}\u{51fb}\u{5f00}\u{59cb}";
+        let first = render_text_image(1, text, 120, 24, 19).unwrap();
+        assert!(first.rgba8.chunks_exact(4).any(|pixel| pixel[3] != 0));
+        for _ in 0..64 {
+            let next = render_text_image(1, text, 120, 24, 19).unwrap();
+            assert!(next.rgba8 == first.rgba8, "GDI returned incomplete text");
+        }
     }
 
     #[test]
-    fn title_start_input_uses_source_hitbox_and_button_sound() {
+    fn title_start_hitbox_matches_the_source_load_bar() {
+        // The start button rests at (240, 534) with size 314x50.
+        assert!(title_start_contains(400.0, 550.0, 534.0));
+        assert!(!title_start_contains(239.0, 550.0, 534.0));
+        assert!(!title_start_contains(400.0, 533.0, 534.0));
+        assert!(!title_start_contains(400.0, 584.0, 534.0));
+    }
+
+    #[test]
+    fn title_start_input_uses_source_readiness_and_button_release() {
         assert_eq!(TITLE_START_SOUND_PATH, "sounds/buttonclick.ogg");
-        assert!(title_mouse_starts(MouseButton::Left, 400.0, 550.0));
-        assert!(!title_mouse_starts(MouseButton::Right, 400.0, 550.0));
-        assert!(!title_mouse_starts(MouseButton::Left, 242.0, 550.0));
+        let mut state = TitleLoadState::new();
+        assert!(!state.mouse_press(MouseButton::Left, true));
+        assert!(!state.mouse_release(MouseButton::Left, true));
+        for _ in 0..300 {
+            state.advance();
+        }
+        assert!(state.ready());
+        assert!(!state.label_complete);
+        for button in [MouseButton::Left, MouseButton::Right] {
+            // A background press starts immediately, without a captured button.
+            assert!(state.mouse_press(button, false));
+            assert_eq!(state.pressed_button, None);
+            assert!(!state.mouse_release(button, true));
+            assert!(state.mouse_press(button, true));
+            assert_eq!(state.pressed_button, Some(button));
+            assert!(state.mouse_release(button, true));
+            assert!(!state.mouse_release(button, true));
+            // Dragging off the button before release cancels the press.
+            assert!(state.mouse_press(button, true));
+            assert!(!state.mouse_release(button, false));
+            assert_eq!(state.pressed_button, None);
+        }
+    }
+
+    #[test]
+    fn title_start_guard_and_opening_logo_follow_the_live_app_route() {
+        let mut app = App::new(
+            Default::default(),
+            ResourceProvider::Directory(PathBuf::from("neopvz-test-no-resources")),
+            None,
+            SceneKind::Title,
+            false,
+            None,
+            None,
+        );
+        let frame = app.render_frame();
+        assert_eq!(frame.sprites.len(), 1);
+        assert_eq!(frame.sprites[0].resource_id, TITLE_POPCAP_LOGO_IMAGE_ID);
+        assert_eq!((frame.sprites[0].x, frame.sprites[0].y), (250.0, 150.0));
+        assert_eq!(frame.sprites[0].alpha, 0.0);
+        for _ in 0..299 {
+            app.start_from_title();
+            assert_eq!(app.game.state().scene, SceneKind::Title);
+            app.title_load_state.advance();
+        }
+        app.start_from_title();
+        assert_eq!(app.game.state().scene, SceneKind::Title);
+        app.title_load_state.advance();
+        assert!(!app.title_load_state.label_complete);
+        app.start_from_title();
+        assert_eq!(app.game.state().scene, SceneKind::AdventureSelect);
+    }
+
+    #[test]
+    fn title_curves_match_the_source_tod_animate_curves() {
+        let mut state = TitleLoadState::new();
+        for (counter, alpha) in [(200, 0.0), (175, 0.5), (150, 1.0), (50, 1.0), (25, 0.5)] {
+            state.logo_counter = counter;
+            assert_eq!(state.logo_alpha(), alpha);
+        }
+        // Logo off-screen at y=-150 while the counter is above 60.
+        assert_eq!(state.logo_y(), -150.0);
+        // BOUNCE peak 15 at counter 55 (curve 60->50, midpoint).
+        state.counter = 55;
+        assert_eq!(state.logo_y(), 15.0);
+        state.counter = 50;
+        assert_eq!(state.logo_y(), 10.0);
+        // Logo rests at y=10 after the BOUNCE settles (t>=1 clamps to start).
+        state.counter = 0;
+        assert_eq!(state.logo_y(), 10.0);
+        // Button rests at y=534 (BOUNCE clamps to start at t>=1).
+        assert_eq!(state.button_y(), 534.0);
+        // BOUNCE peak 529 at counter 5 (curve 10->0, midpoint).
+        state.counter = 5;
+        assert_eq!(state.button_y(), 529.0);
+        // Button off-screen at y=650 while counter is above 60.
+        state.counter = 61;
+        assert_eq!(state.button_y(), 650.0);
+        // EASE_IN midpoint at counter 35: t=0.5, 650-116*0.25.
+        state.counter = 35;
+        assert!((state.button_y() - 621.0).abs() < 0.001);
+    }
+
+    #[test]
+    fn title_fill_follows_the_source_velocity_model() {
+        let mut state = TitleLoadState::new();
+        // The logo lasts 200 ticks. The slide-in decrements before its gate,
+        // so its 100th update is also the first fill update.
+        for _ in 0..299 {
+            assert!(state.advance().is_empty());
+            assert!(!state.ready());
+        }
+        assert_eq!(state.counter, 1);
+        // First fill tick: width = 314/100, velocity clamps to 2.
+        assert!(state.advance().is_empty());
+        assert_eq!(state.tick, 1);
+        assert_eq!(state.counter, 0);
+        assert!(state.ready());
+        assert!(
+            (state.bar_width * 100.0 - 314.0).abs() < 0.01,
+            "{}",
+            state.bar_width
+        );
+        assert!((state.bar_vel - 2.0).abs() < 0.001, "{}", state.bar_vel);
+        state.advance();
+        assert!(
+            (state.bar_width - 5.14).abs() < 0.001,
+            "{}",
+            state.bar_width
+        );
+        // width(t) = 2t + 1.14.
+        state.advance();
+        assert!(
+            (state.bar_width - 7.14).abs() < 0.001,
+            "{}",
+            state.bar_width
+        );
+    }
+
+    #[test]
+    fn title_fill_fires_triggers_and_completes_at_source_ticks() {
+        let mut state = TitleLoadState::new();
+        let mut fired = Vec::new();
+        while !state.label_complete {
+            fired.extend(state.advance());
+        }
+        assert_eq!(fired, vec![0, 1, 2, 3, 4]);
+        assert_eq!(state.tick, 157);
+        assert_eq!(state.bar_width, TITLE_START_BUTTON_WIDTH);
+        assert_eq!(
+            state.trigger_ticks,
+            [Some(17), Some(50), Some(85), Some(113), Some(142)]
+        );
+        // Reanimations keep animating after the bar completes: the last
+        // trigger (tick 142) reaches its hold frame at tick 242.
+        while state.tick < 242 {
+            assert!(state.advance().is_empty());
+        }
+        for &fire_tick in state.trigger_ticks.iter().flatten() {
+            assert!(state.tick - fire_tick >= 100);
+        }
+        // Advancing past completion is idempotent.
+        let width = state.bar_width;
+        assert!(state.advance().is_empty());
+        assert_eq!(state.bar_width, width);
+        assert_eq!(
+            state.trigger_ticks,
+            [Some(17), Some(50), Some(85), Some(113), Some(142)]
+        );
+    }
+
+    #[test]
+    fn title_completed_state_matches_the_accepted_capture() {
+        let state = TitleLoadState::completed();
+        assert!(state.label_complete);
+        assert_eq!(state.button_y(), 534.0);
+        assert_eq!(state.logo_y(), 10.0);
+        assert_eq!(state.bar_width, TITLE_START_BUTTON_WIDTH);
+        // Every trigger is at the hold frame.
+        for &fire_tick in state.trigger_ticks.iter().flatten() {
+            assert!(state.tick - fire_tick >= 100);
+        }
+    }
+
+    #[test]
+    fn title_reanimation_holds_its_final_frame() {
+        let transform = ReanimatorTransform {
+            x: 6.0,
+            y: 8.0,
+            skew_x: 0.0,
+            skew_y: 0.0,
+            scale_x: 1.0,
+            scale_y: 1.0,
+            frame: 0.0,
+            alpha: 1.0,
+            image: Some("SYNTHETIC_IMAGE".to_owned()),
+        };
+        let definition = ReanimatorDefinition {
+            fps: 12.0,
+            tracks: vec![ReanimatorTrack {
+                name: "synthetic".to_owned(),
+                transforms: vec![transform; 18],
+            }],
+        };
+        let image_ids = HashMap::from([("SYNTHETIC_IMAGE".to_owned(), 1)]);
+        let mut catalog = ReanimCatalog {
+            loadbar_sprout: Some(definition.clone()),
+            loadbar_zombiehead: Some(definition),
+            image_ids,
+            ..Default::default()
+        };
+        // Only the final frame is visible, so a held checkpoint must retain
+        // it, while an animation at its trigger tick must draw nothing.
+        for definition in [&mut catalog.loadbar_sprout, &mut catalog.loadbar_zombiehead] {
+            for transform in &mut definition.as_mut().unwrap().tracks[0].transforms[..17] {
+                transform.frame = -1.0;
+            }
+        }
+        let mut state = TitleLoadState::completed();
+        let mut held = RenderFrame::default();
+        push_title_load_bar_reanimations(&mut held, &state, &catalog);
+        assert_eq!(held.affine_sprites.len(), 5);
+        state.trigger_ticks = [Some(state.tick); 5];
+        let mut born = RenderFrame::default();
+        push_title_load_bar_reanimations(&mut born, &state, &catalog);
+        assert!(born.affine_sprites.is_empty());
     }
 
     #[test]
