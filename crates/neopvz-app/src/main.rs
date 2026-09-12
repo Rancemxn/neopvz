@@ -2998,7 +2998,12 @@ fn load_masked_image(
         return Err(format!("{color_path} and {mask_path} dimensions differ"));
     }
     let mut rgba8 = color.rgba8;
-    for (color_pixel, mask_pixel) in rgba8.chunks_exact_mut(4).zip(mask.rgba8.chunks_exact(4)) {
+    for (color_pixel, mask_pixel) in rgba8
+        .as_chunks_mut::<4>()
+        .0
+        .iter_mut()
+        .zip(mask.rgba8.as_chunks::<4>().0)
+    {
         color_pixel[3] = mask_pixel[0];
     }
     ImageAsset::new(resource_id, color.width, color.height, rgba8)
@@ -3102,7 +3107,7 @@ fn render_colored_text_image(
     color: [u8; 3],
 ) -> Result<ImageAsset, String> {
     let mut asset = render_text_image(resource_id, text, width, height, font_size)?;
-    for pixel in asset.rgba8.chunks_exact_mut(4) {
+    for pixel in asset.rgba8.as_chunks_mut::<4>().0 {
         if pixel[3] != 0 {
             pixel[..3].copy_from_slice(&color);
         }
@@ -3440,7 +3445,7 @@ mod windows_text {
 
             // GDI batches drawing calls; flush before directly reading the DIB.
             let mut rgba = Vec::with_capacity(pixel_count * 4);
-            for pixel in buffer.chunks_exact(4) {
+            for pixel in buffer.as_chunks::<4>().0 {
                 let luminance = (u16::from(pixel[0]) * 29
                     + u16::from(pixel[1]) * 150
                     + u16::from(pixel[2]) * 77)
@@ -14950,7 +14955,14 @@ mod tests {
     fn windows_text_images_are_complete_across_repeated_draws() {
         let text = "\u{70b9}\u{51fb}\u{5f00}\u{59cb}";
         let first = render_text_image(1, text, 120, 24, 19).unwrap();
-        assert!(first.rgba8.chunks_exact(4).any(|pixel| pixel[3] != 0));
+        assert!(
+            first
+                .rgba8
+                .as_chunks::<4>()
+                .0
+                .iter()
+                .any(|pixel| pixel[3] != 0)
+        );
         for _ in 0..64 {
             let next = render_text_image(1, text, 120, 24, 19).unwrap();
             assert!(next.rgba8 == first.rgba8, "GDI returned incomplete text");
