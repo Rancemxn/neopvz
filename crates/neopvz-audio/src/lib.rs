@@ -1,4 +1,8 @@
-use std::{io::Cursor, path::Path};
+use std::{
+    collections::{HashMap, hash_map::Entry},
+    io::Cursor,
+    path::Path,
+};
 
 use kira::backend::cpal::{
     CpalBackendSettings,
@@ -40,6 +44,7 @@ pub struct KiraAudioBackend {
     effects: TrackHandle,
     music: TrackHandle,
     music_handle: Option<StaticSoundHandle>,
+    sounds: HashMap<String, StaticSoundData>,
 }
 
 impl KiraAudioBackend {
@@ -72,13 +77,21 @@ impl KiraAudioBackend {
             effects,
             music,
             music_handle: None,
+            sounds: HashMap::new(),
         })
+    }
+
+    pub fn preload_bytes(&mut self, path: &str, bytes: Vec<u8>) -> Result<(), AudioError> {
+        cached_sound(&mut self.sounds, path, || load_sound_bytes(path, bytes)).map(|_| ())
     }
 }
 
 impl AudioBackend for KiraAudioBackend {
     fn play(&mut self, kind: AudioKind, path: &Path) -> Result<(), AudioError> {
-        self.play_data(kind, load_sound(path)?)
+        let data = cached_sound(&mut self.sounds, &path.to_string_lossy(), || {
+            load_sound(path)
+        })?;
+        self.play_data(kind, data)
     }
 
     fn play_bytes(
@@ -87,7 +100,8 @@ impl AudioBackend for KiraAudioBackend {
         path: &str,
         bytes: Vec<u8>,
     ) -> Result<(), AudioError> {
-        self.play_data(kind, load_sound_bytes(path, bytes)?)
+        let data = cached_sound(&mut self.sounds, path, || load_sound_bytes(path, bytes))?;
+        self.play_data(kind, data)
     }
 
     fn stop_music(&mut self) {
@@ -124,6 +138,19 @@ impl KiraAudioBackend {
         }
         Ok(())
     }
+}
+
+fn cached_sound(
+    sounds: &mut HashMap<String, StaticSoundData>,
+    path: &str,
+    load: impl FnOnce() -> Result<StaticSoundData, AudioError>,
+) -> Result<StaticSoundData, AudioError> {
+    let data = match sounds.entry(path.to_owned()) {
+        Entry::Occupied(entry) => entry.into_mut(),
+        Entry::Vacant(entry) => entry.insert(load()?),
+    };
+    // Kira clones share the decoded PCM; each playback has its own handle.
+    Ok(data.clone())
 }
 
 fn load_sound(path: &Path) -> Result<StaticSoundData, AudioError> {
@@ -212,6 +239,28 @@ fn decode_mulaw(sample: u8) -> f32 {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn cached_sounds_reuse_pcm_and_failed_decodes_can_be_retried() {
+        let mut sounds = HashMap::new();
+        assert!(
+            cached_sound(&mut sounds, "sample", || load_sound_bytes("sample", vec![])).is_err()
+        );
+        assert!(sounds.is_empty());
+        let first = cached_sound(&mut sounds, "sample", || {
+            Ok(StaticSoundData {
+                sample_rate: 8_012,
+                frames: vec![Frame::from_mono(0.5)].into(),
+                settings: Default::default(),
+                slice: None,
+            })
+        })
+        .unwrap();
+        let second =
+            cached_sound(&mut sounds, "sample", || panic!("decoded a cached sound")).unwrap();
+        assert!(std::sync::Arc::ptr_eq(&first.frames, &second.frames));
+        assert_eq!(second.frames[0], Frame::from_mono(0.5));
+    }
 
     #[test]
     fn rejects_missing_audio_before_decoding() {
