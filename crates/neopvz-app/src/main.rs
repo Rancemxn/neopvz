@@ -185,6 +185,7 @@ enum Checkpoint {
     UsableSeedCollection,
     SunProduction,
     PlantFiring,
+    PlantAttachments,
     PlantingAudio,
     WallnutBowlingAudio,
     WallnutBowlingImpactAudio,
@@ -309,6 +310,7 @@ impl From<Checkpoint> for SceneKind {
             Checkpoint::UsableSeedCollection => Self::Day,
             Checkpoint::SunProduction => Self::Day,
             Checkpoint::PlantFiring => Self::Night,
+            Checkpoint::PlantAttachments => Self::Pool,
             Checkpoint::PlantingAudio => Self::Pool,
             Checkpoint::WallnutBowlingAudio | Checkpoint::WallnutBowlingImpactAudio => Self::Day,
             Checkpoint::PlanternAudio => Self::Night,
@@ -1024,6 +1026,7 @@ struct ReanimCatalog {
     specialized: Vec<(ZombieType, ReanimatorDefinition)>,
     plants: Vec<(PlantType, ReanimatorDefinition)>,
     image_ids: HashMap<String, u32>,
+    image_sizes: HashMap<u32, [f32; 2]>,
 }
 
 type LoadedAssets = (
@@ -2851,6 +2854,10 @@ fn load_reanim_catalog(
     ] {
         image_ids.entry(symbol.to_owned()).or_insert(id);
     }
+    let image_sizes = assets
+        .iter()
+        .map(|asset| (asset.resource_id, [asset.width as f32, asset.height as f32]))
+        .collect();
     tracing::info!(
         zombie_tracks = zombie
             .as_ref()
@@ -2917,6 +2924,7 @@ fn load_reanim_catalog(
         specialized,
         plants,
         image_ids,
+        image_sizes,
     })
 }
 
@@ -4512,6 +4520,7 @@ impl App {
             Some(Checkpoint::UsableSeedCollection) => Game::new(0, SceneKind::Day),
             Some(Checkpoint::SunProduction) => Game::new(0, SceneKind::Day),
             Some(Checkpoint::PlantFiring) => Game::new(0, SceneKind::Night),
+            Some(Checkpoint::PlantAttachments) => Game::new_mode(7, ModeKind::MiniGame, 15),
             Some(Checkpoint::PlantingAudio) => Game::new(0, SceneKind::Pool),
             Some(Checkpoint::WallnutBowlingAudio | Checkpoint::WallnutBowlingImpactAudio) => {
                 Game::new_mode(7, ModeKind::MiniGame, 1)
@@ -4602,6 +4611,32 @@ impl App {
             Some(Checkpoint::SunProduction) => game.debug_prepare_sun_production(),
             Some(Checkpoint::PlantFiring) => {
                 startup_events = game.debug_prepare_plant_firing_audio()
+            }
+            Some(Checkpoint::PlantAttachments) => {
+                let seeds = vec![
+                    PlantType::Peashooter,
+                    PlantType::Other(5),
+                    PlantType::Other(7),
+                    PlantType::Other(18),
+                    PlantType::Other(28),
+                    PlantType::Other(3),
+                ];
+                startup_events = game.advance(InputFrame {
+                    actions: vec![InputAction::ConfirmLastStandSeeds { seeds }],
+                });
+                startup_events.extend(
+                    game.advance(InputFrame {
+                        actions: [(0, 0), (3, 1), (4, 4)]
+                            .into_iter()
+                            .flat_map(|(slot, row)| {
+                                [
+                                    InputAction::SelectSeed { slot },
+                                    InputAction::Plant { row, column: 3 },
+                                ]
+                            })
+                            .collect(),
+                    }),
+                );
             }
             Some(Checkpoint::PlantingAudio) => startup_events = game.debug_prepare_planting_audio(),
             Some(Checkpoint::WallnutBowlingAudio) => {
@@ -8105,7 +8140,7 @@ impl App {
                 definition,
                 &self.reanim_catalog.image_ids,
                 frame_position,
-                (effect.x, effect.y, 1.0),
+                reanim_matrix_translation(effect.x, effect.y),
                 |_| Some((effect.z, BlendMode::Alpha)),
             );
         }
@@ -8122,16 +8157,18 @@ impl App {
         let Some(definition) = definition else {
             return false;
         };
-        let Some(frame_position) = reanim_frame_position(definition, "anim_idle", tick) else {
+        let Some(track) = definition.tracks.first() else {
             return false;
         };
+        let frame_position =
+            reanim_loop_frame_position(0, track.transforms.len(), definition.fps, tick);
         // ponytail: share the board clock for pickup reanimations; exact source random phase/rate needs persisted visual state.
         push_reanim_tracks(
             frame,
             definition,
             &self.reanim_catalog.image_ids,
             frame_position,
-            (x, y, 1.0),
+            reanim_matrix_translation(x, y),
             |_| Some((6, BlendMode::Alpha)),
         )
     }
@@ -8152,7 +8189,7 @@ impl App {
             return false;
         };
         let tick = self.game.state().tick;
-        let Some((action, frame_position)) = board_plant_reanim_actions(
+        let Some(frame_position) = board_plant_reanim_actions(
             plant.plant_type,
             plant.asleep,
             plant.special_counter,
@@ -8161,9 +8198,7 @@ impl App {
             plant.production_stage,
         )
         .iter()
-        .find_map(|action| {
-            reanim_frame_position(definition, action, tick).map(|position| (*action, position))
-        }) else {
+        .find_map(|action| reanim_frame_position(definition, action, tick)) else {
             return false;
         };
         let body_drawn = push_reanim_tracks(
@@ -8171,7 +8206,7 @@ impl App {
             definition,
             &self.reanim_catalog.image_ids,
             frame_position,
-            (x, y, 1.0),
+            reanim_matrix_translation(x, y),
             |name| {
                 board_plant_reanim_track_style(
                     plant.plant_type,
@@ -8181,19 +8216,20 @@ impl App {
                 )
             },
         );
-        body_drawn
-            || push_board_plant_reanim_attachments(
-                frame,
-                definition,
-                &self.reanim_catalog.image_ids,
-                board_plant_reanim_attachment_specs(
-                    plant.plant_type,
-                    action,
-                    plant.firing_directions,
-                ),
-                tick,
-                (x, y, frame_position),
-            )
+        let attachments_drawn = push_board_plant_reanim_attachments(
+            frame,
+            definition,
+            &self.reanim_catalog.image_ids,
+            board_plant_reanim_attachment_specs(
+                plant.plant_type,
+                plant.shooting_counter > 0,
+                plant.firing_directions,
+                (plant.row, self.game.state().board.rows),
+            ),
+            tick,
+            (x, y, frame_position),
+        );
+        body_drawn || attachments_drawn
     }
 
     fn render_board_zombie_reanim(
@@ -8224,7 +8260,7 @@ impl App {
             definition,
             &self.reanim_catalog.image_ids,
             frame_position,
-            (x, y, 1.0),
+            reanim_matrix_translation(x, y),
             |name| {
                 if specialized {
                     board_specialized_zombie_reanim_track_visible(
@@ -8247,14 +8283,26 @@ impl App {
                     .then_some((7, BlendMode::Alpha))
                 }
             },
-            |name| {
-                if self.game.state().future_mode && name.eq_ignore_ascii_case("anim_head1") {
+            |name, original_id| {
+                let replacement = if self.game.state().future_mode
+                    && name.eq_ignore_ascii_case("anim_head1")
+                {
                     Some(future_head_image_symbol(zombie.id))
                 } else if self.game.state().mustache_mode && name.starts_with("Zombie_mustache") {
                     Some(mustache_image_symbol(zombie.mustache_variant))
                 } else {
                     None
-                }
+                }?;
+                let &replacement_id = self.reanim_catalog.image_ids.get(replacement)?;
+                let original_size = self.reanim_catalog.image_sizes.get(&original_id)?;
+                let replacement_size = self.reanim_catalog.image_sizes.get(&replacement_id)?;
+                Some((
+                    replacement_id,
+                    [
+                        (original_size[0] - replacement_size[0]) * 0.5,
+                        (original_size[1] - replacement_size[1]) * 0.5,
+                    ],
+                ))
             },
         );
         if drawn && zombie.zombie_type == ZombieType::Flag {
@@ -8285,7 +8333,7 @@ impl App {
             body,
             &self.reanim_catalog.image_ids,
             body_frame_position,
-            (x, y, 1.0),
+            reanim_matrix_translation(x, y),
             |name| Some((board_boss_reanim_track_z(name), BlendMode::Alpha)),
         );
         let driver_drawn = self
@@ -8296,15 +8344,32 @@ impl App {
                 let anchor = body
                     .tracks
                     .iter()
-                    .find(|track| track.name.eq_ignore_ascii_case("Boss_head2"))
-                    .and_then(|track| reanim_transform_at(track, body_frame_position))?;
+                    .find(|track| track.name == "Boss_head2")?;
+                if reanim_transform_at(anchor, body_frame_position)?.alpha <= 0.0 {
+                    return None;
+                }
+                let parent_overlay = reanim_attachment_overlay(
+                    body,
+                    "Boss_head2",
+                    0.0,
+                    body_frame_position,
+                    reanim_matrix_translation(x, y),
+                )?;
+                let driver_overlay = reanim_matrix_mul(
+                    parent_overlay,
+                    ReanimMatrix {
+                        m00: 1.2,
+                        m11: 1.2,
+                        ..reanim_matrix_translation(28.0, -84.0)
+                    },
+                );
                 let driver_frame_position = reanim_frame_position(driver, "anim_idle", tick)?;
                 Some(push_reanim_tracks(
                     frame,
                     driver,
                     &self.reanim_catalog.image_ids,
                     driver_frame_position,
-                    (x + anchor.x + 28.0, y + anchor.y - 84.0, 1.2),
+                    driver_overlay,
                     |_| Some((7, BlendMode::Alpha)),
                 ))
             })
@@ -8323,10 +8388,9 @@ impl App {
                     definition,
                     &self.reanim_catalog.image_ids,
                     frame_position,
-                    (
+                    reanim_matrix_translation(
                         fixed_point_to_logical(zombie.boss_ball_x),
                         board_row_y(zombie.boss_ball_row) - 90.0,
-                        1.0,
                     ),
                     |name| {
                         Some((
@@ -10269,7 +10333,12 @@ fn board_plant_reanim_actions(
     if plant_type == PlantType::Other(47) && special_counter > 0 && !special_armed {
         return &["anim_unarmed_idle", "anim_idle"];
     }
-    if shooting_counter > 0 {
+    if shooting_counter > 0
+        && !matches!(
+            plant_type,
+            PlantType::Peashooter | PlantType::Other(5 | 7 | 18 | 28 | 40)
+        )
+    {
         return &["anim_shooting", "anim_shoot", "anim_idle"];
     }
     if plant_type == PlantType::Other(9) && production_stage > 0 {
@@ -10284,9 +10353,6 @@ fn board_plant_reanim_track_style(
     kernel_pult_projectile: Option<ProjectileType>,
     name: &str,
 ) -> Option<(i32, BlendMode)> {
-    if board_plant_reanim_head_track(plant_type, name) {
-        return None;
-    }
     if plant_type == PlantType::Other(4) && name.eq_ignore_ascii_case("anim_glow") && !special_armed
     {
         return None;
@@ -10307,22 +10373,12 @@ fn board_plant_reanim_track_style(
     Some((10, BlendMode::Alpha))
 }
 
-fn board_plant_reanim_head_track(plant_type: PlantType, name: &str) -> bool {
-    match plant_type {
-        PlantType::Peashooter | PlantType::Other(5 | 7 | 40) => name.starts_with("anim_head"),
-        PlantType::Other(28) => name.starts_with("anim_head") || name.starts_with("anim_splitpea"),
-        PlantType::Other(18) => name.starts_with("anim_head"),
-        _ => false,
-    }
-}
-
 fn board_plant_reanim_attachment_specs(
     plant_type: PlantType,
-    action: &str,
+    shooting: bool,
     firing_directions: u8,
+    (row, rows): (u8, u8),
 ) -> &'static [(&'static str, &'static str)] {
-    let shooting =
-        action.eq_ignore_ascii_case("anim_shooting") || action.eq_ignore_ascii_case("anim_shoot");
     match plant_type {
         PlantType::Peashooter | PlantType::Other(5 | 7 | 40) => {
             if shooting {
@@ -10332,8 +10388,14 @@ fn board_plant_reanim_attachment_specs(
             }
         }
         PlantType::Other(28) if shooting => match firing_directions & 3 {
-            1 => &[("anim_idle", "anim_shooting")],
-            2 => &[("anim_idle", "anim_splitpea_shooting")],
+            1 => &[
+                ("anim_idle", "anim_shooting"),
+                ("anim_idle", "anim_splitpea_idle"),
+            ],
+            2 => &[
+                ("anim_idle", "anim_head_idle"),
+                ("anim_idle", "anim_splitpea_shooting"),
+            ],
             _ => &[
                 ("anim_idle", "anim_shooting"),
                 ("anim_idle", "anim_splitpea_shooting"),
@@ -10342,6 +10404,16 @@ fn board_plant_reanim_attachment_specs(
         PlantType::Other(28) => &[
             ("anim_idle", "anim_head_idle"),
             ("anim_idle", "anim_splitpea_idle"),
+        ],
+        PlantType::Other(18) if shooting && row == 0 => &[
+            ("anim_head1", "anim_head_idle1"),
+            ("anim_head2", "anim_shooting2"),
+            ("anim_head3", "anim_shooting3"),
+        ],
+        PlantType::Other(18) if shooting && row + 1 == rows => &[
+            ("anim_head1", "anim_shooting1"),
+            ("anim_head2", "anim_shooting2"),
+            ("anim_head3", "anim_head_idle3"),
         ],
         PlantType::Other(18) if shooting => &[
             ("anim_head1", "anim_shooting1"),
@@ -10355,10 +10427,6 @@ fn board_plant_reanim_attachment_specs(
         ],
         _ => &[],
     }
-}
-
-fn board_plant_reanim_attached_track_visible(action: &str, name: &str) -> bool {
-    name.eq_ignore_ascii_case(action)
 }
 
 #[derive(Clone, Copy)]
@@ -10429,91 +10497,65 @@ fn push_board_plant_reanim_attachments(
     tick: u64,
     (x, y, frame_position): (f32, f32, f32),
 ) -> bool {
-    if specs.is_empty() {
-        return false;
-    }
-    let Some(anchor_name) = specs.first().map(|(anchor, _)| *anchor) else {
-        return false;
-    };
-    let anchor_track = definition
-        .tracks
-        .iter()
-        .find(|track| track.name.eq_ignore_ascii_case(anchor_name))
-        .or_else(|| {
-            if anchor_name == "anim_stem" {
-                definition
-                    .tracks
-                    .iter()
-                    .find(|track| track.name.eq_ignore_ascii_case("anim_idle"))
-            } else {
-                None
-            }
-        });
-    let Some(anchor_track) = anchor_track else {
-        return false;
-    };
     let Some((base_frame, _)) = reanim_frames(definition, "anim_idle") else {
         return false;
     };
-    let Some(anchor_current) = reanim_transform_at_any(anchor_track, frame_position) else {
-        return false;
-    };
-    let Some(anchor_base) = reanim_transform_at_any(anchor_track, base_frame as f32) else {
-        return false;
-    };
-    let Some(anchor_base_inverse) =
-        reanim_matrix_inverse(reanim_matrix_from_transform(&anchor_base))
-    else {
-        return false;
-    };
-    let parent_overlay = reanim_matrix_mul(
-        reanim_matrix_translation(x, y),
-        reanim_matrix_mul(
-            reanim_matrix_from_transform(&anchor_current),
-            anchor_base_inverse,
-        ),
-    );
     let mut drawn = false;
     for &(anchor, child_action) in specs {
-        if anchor != anchor_name {
+        let Some(parent_overlay) = reanim_attachment_overlay(
+            definition,
+            anchor,
+            base_frame as f32,
+            frame_position,
+            reanim_matrix_translation(x, y),
+        ) else {
             continue;
-        }
+        };
         let Some(child_position) = reanim_frame_position(definition, child_action, tick) else {
             continue;
         };
-        for track in &definition.tracks {
-            if !board_plant_reanim_attached_track_visible(child_action, &track.name) {
-                continue;
-            }
-            let Some(transform) = reanim_transform_at(track, child_position) else {
-                continue;
-            };
-            let Some(image) = transform.image.as_deref() else {
-                continue;
-            };
-            let Some(&resource_id) = image_ids.get(&image.to_ascii_uppercase()) else {
-                continue;
-            };
-            let matrix =
-                reanim_matrix_mul(parent_overlay, reanim_matrix_from_transform(&transform));
-            frame.affine_sprites.push(AffineSpriteCommand {
-                resource_id,
-                x: matrix.m02,
-                y: matrix.m12,
-                m00: matrix.m00,
-                m01: matrix.m01,
-                m10: matrix.m10,
-                m11: matrix.m11,
-                z: 11,
-                alpha: transform.alpha * anchor_current.alpha,
-                tint: [1.0; 3],
-                blend_mode: BlendMode::Alpha,
-                source: None,
-            });
-            drawn = true;
-        }
+        drawn |= push_reanim_tracks(
+            frame,
+            definition,
+            image_ids,
+            child_position,
+            parent_overlay,
+            |_| Some((11, BlendMode::Alpha)),
+        );
     }
     drawn
+}
+
+fn reanim_attachment_overlay(
+    definition: &ReanimatorDefinition,
+    anchor: &str,
+    base_frame: f32,
+    frame_position: f32,
+    overlay: ReanimMatrix,
+) -> Option<ReanimMatrix> {
+    let track = definition
+        .tracks
+        .iter()
+        .find(|track| track.name.eq_ignore_ascii_case(anchor))
+        .or_else(|| {
+            (anchor == "anim_stem")
+                .then(|| {
+                    definition
+                        .tracks
+                        .iter()
+                        .find(|track| track.name == "anim_idle")
+                })
+                .flatten()
+        })?;
+    let current = reanim_transform_at_any(track, frame_position)?;
+    let base = reanim_transform_at_any(track, base_frame)?;
+    Some(reanim_matrix_mul(
+        overlay,
+        reanim_matrix_mul(
+            reanim_matrix_from_transform(&current),
+            reanim_matrix_inverse(reanim_matrix_from_transform(&base))?,
+        ),
+    ))
 }
 
 fn reanim_frames(definition: &ReanimatorDefinition, name: &str) -> Option<(usize, usize)> {
@@ -10538,9 +10580,18 @@ fn reanim_frame_position(
     tick: u64,
 ) -> Option<f32> {
     let (frame_start, frame_count) = reanim_frames(definition, action)?;
+    Some(reanim_loop_frame_position(
+        frame_start,
+        frame_count,
+        definition.fps,
+        tick,
+    ))
+}
+
+fn reanim_loop_frame_position(frame_start: usize, frame_count: usize, fps: f32, tick: u64) -> f32 {
     let frame_count = frame_count.max(1);
-    let progress = (tick as f32 * 0.01 * definition.fps / frame_count as f32).fract();
-    Some(frame_start as f32 + progress * frame_count.saturating_sub(1) as f32)
+    let progress = (tick as f32 * 0.01 * fps / frame_count as f32).fract();
+    frame_start as f32 + progress * frame_count.saturating_sub(1) as f32
 }
 
 fn reanim_transform_at(track: &ReanimatorTrack, position: f32) -> Option<ReanimatorTransform> {
@@ -10573,7 +10624,7 @@ fn push_reanim_tracks(
     definition: &ReanimatorDefinition,
     image_ids: &HashMap<String, u32>,
     frame_position: f32,
-    (x, y, scale): (f32, f32, f32),
+    overlay: ReanimMatrix,
     track_style: impl Fn(&str) -> Option<(i32, BlendMode)>,
 ) -> bool {
     push_reanim_tracks_with_image_override(
@@ -10581,9 +10632,9 @@ fn push_reanim_tracks(
         definition,
         image_ids,
         frame_position,
-        (x, y, scale),
+        overlay,
         track_style,
-        |_| None,
+        |_, _| None,
     )
 }
 
@@ -10592,9 +10643,9 @@ fn push_reanim_tracks_with_image_override(
     definition: &ReanimatorDefinition,
     image_ids: &HashMap<String, u32>,
     frame_position: f32,
-    (x, y, scale): (f32, f32, f32),
+    overlay: ReanimMatrix,
     track_style: impl Fn(&str) -> Option<(i32, BlendMode)>,
-    image_override: impl Fn(&str) -> Option<&'static str>,
+    image_override: impl Fn(&str, u32) -> Option<(u32, [f32; 2])>,
 ) -> bool {
     let mut drawn = false;
     for track in &definition.tracks {
@@ -10604,27 +10655,38 @@ fn push_reanim_tracks_with_image_override(
         let Some(transform) = reanim_transform_at(track, frame_position) else {
             continue;
         };
-        let Some(image) = image_override(&track.name).or(transform.image.as_deref()) else {
+        let Some(image) = transform.image.as_deref() else {
             continue;
         };
         let Some(&resource_id) = image_ids.get(&image.to_ascii_uppercase()) else {
             continue;
         };
-        let skew_x = -transform.skew_x.to_radians();
-        let skew_y = -transform.skew_y.to_radians();
+        let (resource_id, offset) =
+            image_override(&track.name, resource_id).unwrap_or((resource_id, [0.0, 0.0]));
+        let matrix = reanim_matrix_mul(
+            overlay,
+            reanim_matrix_mul(
+                reanim_matrix_from_transform(&transform),
+                reanim_matrix_translation(offset[0], offset[1]),
+            ),
+        );
         frame.affine_sprites.push(AffineSpriteCommand {
             resource_id,
-            x: x + transform.x,
-            y: y + transform.y,
-            m00: skew_x.cos() * transform.scale_x * scale,
-            m01: skew_y.sin() * transform.scale_y * scale,
-            m10: -skew_x.sin() * transform.scale_x * scale,
-            m11: skew_y.cos() * transform.scale_y * scale,
+            x: matrix.m02,
+            y: matrix.m12,
+            m00: matrix.m00,
+            m01: matrix.m01,
+            m10: matrix.m10,
+            m11: matrix.m11,
             z,
             alpha: transform.alpha,
             tint: [1.0; 3],
             blend_mode,
-            source: None,
+            source: Some(AffineSpriteSource {
+                uv_min: [0.0, 0.0],
+                uv_max: [1.0, 1.0],
+                pivot_uv: [0.0, 0.0],
+            }),
         });
         drawn = true;
     }
@@ -15860,7 +15922,7 @@ mod tests {
         );
         assert_eq!(
             board_plant_reanim_actions(PlantType::Other(7), false, 0, false, 1, 0),
-            &["anim_shooting", "anim_shoot", "anim_idle"]
+            &["anim_idle", "anim_walk", "anim_shoot"]
         );
         assert_eq!(
             board_plant_reanim_actions(PlantType::Other(9), false, 0, false, 0, 1),
@@ -15909,15 +15971,18 @@ mod tests {
     #[test]
     fn plant_reanim_attachments_follow_source_layer_setup() {
         assert_eq!(
-            board_plant_reanim_attachment_specs(PlantType::Peashooter, "anim_idle", 0),
+            board_plant_reanim_attachment_specs(PlantType::Peashooter, false, 0, (2, 5)),
             &[("anim_stem", "anim_head_idle")]
         );
         assert_eq!(
-            board_plant_reanim_attachment_specs(PlantType::Other(28), "anim_shooting", 1),
-            &[("anim_idle", "anim_shooting")]
+            board_plant_reanim_attachment_specs(PlantType::Other(28), true, 1, (2, 5)),
+            &[
+                ("anim_idle", "anim_shooting"),
+                ("anim_idle", "anim_splitpea_idle")
+            ]
         );
         assert_eq!(
-            board_plant_reanim_attachment_specs(PlantType::Other(18), "anim_idle", 0),
+            board_plant_reanim_attachment_specs(PlantType::Other(18), false, 0, (2, 5)),
             &[
                 ("anim_head1", "anim_head_idle1"),
                 ("anim_head2", "anim_head_idle2"),
@@ -15926,12 +15991,8 @@ mod tests {
         );
         assert_eq!(
             board_plant_reanim_track_style(PlantType::Peashooter, false, None, "anim_head_idle"),
-            None
+            Some((10, BlendMode::Alpha))
         );
-        assert!(board_plant_reanim_attached_track_visible(
-            "anim_head_idle",
-            "anim_head_idle"
-        ));
 
         let transform = ReanimatorTransform {
             x: 10.0,
@@ -15956,6 +16017,364 @@ mod tests {
         assert!((identity.m11 - 1.0).abs() < 0.001);
         assert!(identity.m02.abs() < 0.001);
         assert!(identity.m12.abs() < 0.001);
+    }
+
+    #[test]
+    fn board_reanimation_draws_body_and_every_visible_child_track() {
+        let sample = |x, y, image: Option<&str>| ReanimatorTransform {
+            x,
+            y,
+            skew_x: 0.0,
+            skew_y: 0.0,
+            scale_x: 1.0,
+            scale_y: 1.0,
+            frame: 0.0,
+            alpha: 1.0,
+            image: image.map(str::to_owned),
+        };
+        let hidden = ReanimatorTransform {
+            frame: -1.0,
+            ..sample(0.0, 0.0, None)
+        };
+        let track = |name: &str, visible_frame: usize, transform: ReanimatorTransform| {
+            let mut transforms = vec![hidden.clone(); 7];
+            transforms[visible_frame] = transform;
+            ReanimatorTrack {
+                name: name.to_owned(),
+                transforms,
+            }
+        };
+        let mut definition = ReanimatorDefinition {
+            fps: 12.0,
+            tracks: vec![
+                track("anim_idle", 0, sample(0.0, 0.0, None)),
+                track("leaves", 0, sample(0.0, 0.0, Some("BODY"))),
+            ],
+        };
+        for head in 1..=3 {
+            // Action markers have no image; art lives on separately named tracks.
+            definition.tracks.extend([
+                track(
+                    &format!("anim_head{head}"),
+                    0,
+                    sample(10.0 * head as f32, 20.0, None),
+                ),
+                track(
+                    &format!("anim_head_idle{head}"),
+                    head,
+                    sample(0.0, 0.0, None),
+                ),
+                track(
+                    &format!("anim_shooting{head}"),
+                    head + 3,
+                    sample(0.0, 0.0, None),
+                ),
+                track(
+                    &format!("face{head}"),
+                    head,
+                    sample(head as f32, 20.0, Some("IDLE")),
+                ),
+                track(
+                    &format!("mouth{head}"),
+                    head + 3,
+                    sample(head as f32, 30.0, Some("SHOT")),
+                ),
+            ]);
+        }
+        let mut app = App::new(
+            Default::default(),
+            ResourceProvider::Directory(PathBuf::from("neopvz-test-no-resources")),
+            None,
+            SceneKind::Pool,
+            false,
+            Some(Checkpoint::PlantAttachments),
+            None,
+        );
+        assert_eq!(app.game.state().board.plants.len(), 3);
+        let mut plant = app
+            .game
+            .state()
+            .board
+            .plants
+            .iter()
+            .find(|plant| plant.plant_type == PlantType::Other(18))
+            .unwrap()
+            .clone();
+        app.game = Game::new(0, SceneKind::Night);
+        app.reanim_catalog.plants = vec![(plant.plant_type, definition)];
+        app.reanim_catalog.image_ids = HashMap::from([
+            ("BODY".to_owned(), 1),
+            ("IDLE".to_owned(), 2),
+            ("SHOT".to_owned(), 3),
+        ]);
+        for (shooting, row, expected) in [
+            (false, 2, [1, 2, 2, 2]),
+            (true, 2, [1, 3, 3, 3]),
+            (true, 0, [1, 2, 3, 3]),
+            (true, 4, [1, 3, 3, 2]),
+        ] {
+            plant.shooting_counter = u32::from(shooting);
+            plant.row = row;
+            let mut frame = RenderFrame::default();
+            assert!(app.render_board_plant_reanim(&mut frame, &plant, 100.0, 200.0));
+            assert_eq!(
+                frame
+                    .affine_sprites
+                    .iter()
+                    .map(|sprite| sprite.resource_id)
+                    .collect::<Vec<_>>(),
+                expected
+            );
+            for (index, sprite) in frame.affine_sprites.iter().skip(1).enumerate() {
+                assert_eq!(sprite.x, 101.0 + index as f32);
+                assert_eq!(sprite.source.unwrap().pivot_uv, [0.0, 0.0]);
+            }
+        }
+        for (direction, expected) in [
+            (
+                1,
+                [
+                    ("anim_idle", "anim_shooting"),
+                    ("anim_idle", "anim_splitpea_idle"),
+                ],
+            ),
+            (
+                2,
+                [
+                    ("anim_idle", "anim_head_idle"),
+                    ("anim_idle", "anim_splitpea_shooting"),
+                ],
+            ),
+        ] {
+            assert_eq!(
+                board_plant_reanim_attachment_specs(PlantType::Other(28), true, direction, (2, 5)),
+                &expected
+            );
+        }
+        let definition = &mut app.reanim_catalog.plants[0].1;
+        for head in 1..=3 {
+            let anchor = definition
+                .tracks
+                .iter_mut()
+                .find(|track| track.name == format!("anim_head{head}"))
+                .unwrap();
+            anchor.transforms[1] = ReanimatorTransform {
+                skew_x: 90.0,
+                skew_y: 90.0,
+                ..sample(15.0 * head as f32, 20.0, None)
+            };
+        }
+        let mut frame = RenderFrame::default();
+        assert!(push_board_plant_reanim_attachments(
+            &mut frame,
+            definition,
+            &app.reanim_catalog.image_ids,
+            board_plant_reanim_attachment_specs(PlantType::Other(18), false, 0, (2, 5)),
+            0,
+            (100.0, 200.0, 1.0),
+        ));
+        for (sprite, (x, y)) in
+            frame
+                .affine_sprites
+                .iter()
+                .zip([(115.0, 211.0), (130.0, 202.0), (145.0, 193.0)])
+        {
+            assert!((sprite.x - x).abs() < 0.001);
+            assert!((sprite.y - y).abs() < 0.001);
+        }
+    }
+
+    #[test]
+    fn board_reanimation_composes_scaled_track_and_attachment_origins() {
+        let transform = ReanimatorTransform {
+            x: 10.0,
+            y: 20.0,
+            skew_x: 90.0,
+            skew_y: 90.0,
+            scale_x: 2.0,
+            scale_y: 3.0,
+            frame: 0.0,
+            alpha: 0.75,
+            image: Some("IMAGE".to_owned()),
+        };
+        let definition = ReanimatorDefinition {
+            fps: 12.0,
+            tracks: vec![ReanimatorTrack {
+                name: "anchor".to_owned(),
+                transforms: vec![transform.clone()],
+            }],
+        };
+        let overlay = ReanimMatrix {
+            m00: 1.2,
+            m11: 1.2,
+            ..reanim_matrix_translation(100.0, 200.0)
+        };
+        let mut frame = RenderFrame::default();
+        assert!(push_reanim_tracks(
+            &mut frame,
+            &definition,
+            &HashMap::from([("IMAGE".to_owned(), 1)]),
+            0.0,
+            overlay,
+            |_| Some((7, BlendMode::Alpha))
+        ));
+        let sprite = &frame.affine_sprites[0];
+        assert_eq!((sprite.x, sprite.y), (112.0, 224.0));
+        assert_eq!(sprite.source.unwrap().pivot_uv, [0.0, 0.0]);
+        // Four source-image corners after a quarter turn and both scales.
+        for ((x, y), expected) in [
+            ((0.0, 0.0), (112.0, 224.0)),
+            ((4.0, 0.0), (112.0, 233.6)),
+            ((4.0, 6.0), (90.4, 233.6)),
+            ((0.0, 6.0), (90.4, 224.0)),
+        ] {
+            assert!((sprite.x + sprite.m00 * x + sprite.m01 * y - expected.0).abs() < 0.001);
+            assert!((sprite.y + sprite.m10 * x + sprite.m11 * y - expected.1).abs() < 0.001);
+        }
+        // The Boss base pose cancels even with nonzero translation/skew/scale.
+        let parent = reanim_attachment_overlay(
+            &definition,
+            "anchor",
+            0.0,
+            0.0,
+            reanim_matrix_translation(100.0, 200.0),
+        )
+        .unwrap();
+        let driver = reanim_matrix_mul(
+            parent,
+            ReanimMatrix {
+                m00: 1.2,
+                m11: 1.2,
+                ..reanim_matrix_translation(28.0, -84.0)
+            },
+        );
+        assert!((driver.m02 - 128.0).abs() < 0.001);
+        assert!((driver.m12 - 116.0).abs() < 0.001);
+        assert!((driver.m00 - 1.2).abs() < 0.001);
+        assert!((driver.m11 - 1.2).abs() < 0.001);
+        assert!(reanim_attachment_overlay(&definition, "missing", 0.0, 0.0, overlay).is_none());
+
+        let mut app = App::new(
+            Default::default(),
+            ResourceProvider::Directory(PathBuf::from("neopvz-test-no-resources")),
+            None,
+            SceneKind::Boss,
+            false,
+            None,
+            None,
+        );
+        let marker = ReanimatorTrack {
+            name: "anim_idle".to_owned(),
+            transforms: vec![ReanimatorTransform {
+                image: None,
+                ..transform.clone()
+            }],
+        };
+        app.game = Game::new_mode(7, ModeKind::MiniGame, 19);
+        app.reanim_catalog.boss = Some(ReanimatorDefinition {
+            fps: 12.0,
+            tracks: vec![
+                marker.clone(),
+                ReanimatorTrack {
+                    name: "Boss_head2".to_owned(),
+                    transforms: vec![transform.clone()],
+                },
+            ],
+        });
+        app.reanim_catalog.boss_driver = Some(ReanimatorDefinition {
+            fps: 18.0,
+            tracks: vec![
+                marker,
+                ReanimatorTrack {
+                    name: "driver".to_owned(),
+                    transforms: vec![ReanimatorTransform {
+                        x: 0.0,
+                        y: 0.0,
+                        image: Some("DRIVER".to_owned()),
+                        ..transform.clone()
+                    }],
+                },
+            ],
+        });
+        app.reanim_catalog.image_ids =
+            HashMap::from([("IMAGE".to_owned(), 1), ("DRIVER".to_owned(), 2)]);
+        let boss = app
+            .game
+            .state()
+            .board
+            .zombies
+            .iter()
+            .find(|zombie| zombie.zombie_type == ZombieType::Boss)
+            .unwrap();
+        let mut frame = RenderFrame::default();
+        assert!(app.render_board_boss_reanim(&mut frame, boss, 100.0, 200.0));
+        assert_eq!(frame.affine_sprites.len(), 2);
+        assert!((frame.affine_sprites[1].x - 128.0).abs() < 0.001);
+        assert!((frame.affine_sprites[1].y - 116.0).abs() < 0.001);
+        app.reanim_catalog.boss.as_mut().unwrap().tracks[1].transforms[0].frame = -1.0;
+        let mut frame = RenderFrame::default();
+        assert!(!app.render_board_boss_reanim(&mut frame, boss, 100.0, 200.0));
+        assert!(frame.affine_sprites.is_empty());
+
+        app.game = Game::new(0, SceneKind::Day);
+        app.game.debug_prepare_hidden_code_effects();
+        let zombie = &app.game.state().board.zombies[0];
+        let replacement = future_head_image_symbol(zombie.id);
+        app.reanim_catalog.zombie = Some(ReanimatorDefinition {
+            fps: 12.0,
+            tracks: vec![
+                ReanimatorTrack {
+                    name: "anim_walk".to_owned(),
+                    transforms: vec![ReanimatorTransform {
+                        image: None,
+                        ..transform.clone()
+                    }],
+                },
+                ReanimatorTrack {
+                    name: "anim_head1".to_owned(),
+                    transforms: vec![transform.clone()],
+                },
+            ],
+        });
+        app.reanim_catalog
+            .image_ids
+            .insert(replacement.to_owned(), 3);
+        app.reanim_catalog.image_sizes = HashMap::from([(1, [8.0, 6.0]), (3, [12.0, 6.0])]);
+        let mut frame = RenderFrame::default();
+        assert!(app.render_board_zombie_reanim(&mut frame, zombie, 100.0, 200.0));
+        assert_eq!(frame.affine_sprites.len(), 1);
+        assert_eq!(frame.affine_sprites[0].resource_id, 3);
+        assert!((frame.affine_sprites[0].x - 110.0).abs() < 0.001);
+        assert!((frame.affine_sprites[0].y - 216.0).abs() < 0.001);
+
+        // Pickup resources have no named action marker and loop over the full range.
+        let pickup = ReanimatorDefinition {
+            fps: 100.0,
+            tracks: vec![ReanimatorTrack {
+                name: "pickup".to_owned(),
+                transforms: vec![
+                    transform.clone(),
+                    ReanimatorTransform {
+                        x: 20.0,
+                        y: 40.0,
+                        ..transform
+                    },
+                ],
+            }],
+        };
+        for (tick, expected) in [
+            (0, (110.0, 220.0)),
+            (1, (115.0, 230.0)),
+            (2, (110.0, 220.0)),
+        ] {
+            let mut frame = RenderFrame::default();
+            assert!(app.render_board_pickup_reanim(&mut frame, Some(&pickup), 100.0, 200.0, tick));
+            assert_eq!(frame.affine_sprites.len(), 1);
+            assert_eq!(
+                (frame.affine_sprites[0].x, frame.affine_sprites[0].y),
+                expected
+            );
+        }
     }
 
     #[test]

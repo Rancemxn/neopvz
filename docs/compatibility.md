@@ -674,6 +674,21 @@ four completed effect units.
 | AUD-MUSIC | Music playback, loop, and stem units | 1 | 2 | partial | Main/hihats MO3 loop duration and source track mapping verified in ignored `artifacts/music-loop/verification.md`; runtime playback/stem synchronization remains |
 | AUD-SYNC | Event-to-device timing and music synchronization contract | 0 | 1 | missing | Issue `#19` |
 
+The board reanimation work for Issue `#295` corrects top-left image placement,
+full overlay/track composition, and replacement-image center alignment. Plant
+bodies retain their own animation while every attached head draws its visible
+tracks through its own anchor; the Boss driver inherits the head transform and
+hidden state. Unlayered pickups now use their complete frame range instead of
+falling back when an idle marker is absent. Focused renderer-route checks,
+same-version IDB/runtime matrix
+observations, the local Cargo gate, and external-resource checkpoints are kept
+in ignored `artifacts/board-reanim-origin/verification.md`. This resolves shared
+rendering defects without accepting a VIS unit: matching animation clocks,
+board coordinates, image masking, layering, and complete visual review remain
+under the existing obligations, tracked concretely by Issues `#299`, `#300`, and
+`#301`. The hidden `plant-attachments` checkpoint
+reaches the three representative plants through Last Stand planting inputs.
+
 The accepted title-button SFX unit maps `TitleScreen::ButtonPress` and the
 currently exposed completed-title start controls to `SOUND_BUTTONCLICK` /
 `sounds/buttonclick.ogg`. Same-version function-table/IDB evidence, resource
